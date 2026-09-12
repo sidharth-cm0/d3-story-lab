@@ -25,7 +25,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Project runtime data
-backend/data/projects/*.json
+backend/data/projects/*
 !backend/data/projects/.gitkeep
 
 # IDEs and OS

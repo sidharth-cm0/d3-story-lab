@@ -11,6 +11,7 @@ from .fact import DiscoveredFact
 from .world import Location, WorldObject, WorldState
 from .character import Character, EmotionalState
 from .action import ActionProposal, ActionResult, ActionType, ActionResultStatus
+from .continuity import ActorVisualProfile, ObjectVisualProfile, LocationVisualProfile
 
 __all__ = [
     "SimulationClock",
@@ -33,4 +34,7 @@ __all__ = [
     "ActionResult",
     "ActionType",
     "ActionResultStatus",
+    "ActorVisualProfile",
+    "ObjectVisualProfile",
+    "LocationVisualProfile",
 ]

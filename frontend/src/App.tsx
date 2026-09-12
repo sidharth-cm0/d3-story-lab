@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ProjectMetadata, ProjectData, Event, ActiveView } from './types';
+import { ProjectMetadata, ProjectData, Event, ActiveView, StoryInputType } from './types';
 import * as api from './api';
 import { Header } from './components/Header';
 import { SpotlightCursor } from './components/SpotlightCursor';
@@ -10,6 +10,7 @@ import { WorldInspector } from './components/WorldInspector';
 import { SimulationTicker } from './components/SimulationTicker';
 import { ScreenplayViewer } from './components/ScreenplayViewer';
 import { StoryboardViewer } from './components/StoryboardViewer';
+import { ExportViewer } from './components/ExportViewer';
 
 export const App: React.FC = () => {
   const [projects, setProjects] = useState<ProjectMetadata[]>([]);
@@ -61,12 +62,23 @@ export const App: React.FC = () => {
     }
   }, [currentProjectId, loadCurrentProject]);
 
-  const handleCreateProject = async (seedPrompt: string, title?: string) => {
-    const meta = await api.createProject(seedPrompt, title);
+  const handleCreateProject = async (
+    seedPrompt: string,
+    title?: string,
+    inputType?: StoryInputType,
+    targetDuration?: number
+  ) => {
+    const meta = await api.createProject(
+      seedPrompt,
+      title,
+      inputType || 'beginning',
+      targetDuration || 20
+    );
     await loadProjects();
     setCurrentProjectId(meta.id);
     setActiveView('simulation');
   };
+
 
   const handleDeleteProject = async (id: string) => {
     await api.deleteProject(id);
@@ -235,7 +247,21 @@ export const App: React.FC = () => {
             </div>
           )
         )}
+
+        {activeView === 'export' && (
+          projectData ? (
+            <div className="view-page-container full-height">
+              <ExportViewer project={projectData} />
+            </div>
+          ) : (
+            <div className="empty-quiet" style={{ margin: 'auto' }}>
+              NO ACTIVE PROJECT. SELECT A PROJECT TO EXPORT PRODUCTION ARTIFACTS.
+            </div>
+          )
+        )}
       </main>
+
+
 
       <NewProjectModal
         isOpen={isModalOpen}

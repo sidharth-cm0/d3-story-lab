@@ -1,6 +1,7 @@
 """Character model"""
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field, field_validator, ConfigDict
+from .continuity import ActorVisualProfile
 
 
 class EmotionalState(BaseModel):
@@ -72,6 +73,9 @@ class Character(BaseModel):
         None, description="Current location ID"
     )
     inventory: List[str] = Field(default_factory=list, description="Object IDs held")
+    visual_profile: Optional[ActorVisualProfile] = Field(
+        default=None, description="Visual identity profile for continuity"
+    )
 
     model_config = ConfigDict(
         json_schema_extra={

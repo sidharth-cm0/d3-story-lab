@@ -2,6 +2,8 @@
 from enum import Enum
 from typing import List, Dict, Optional
 from pydantic import BaseModel, Field, ConfigDict
+from ..domain.continuity import ActorVisualProfile, LocationVisualProfile, ObjectVisualProfile
+from ..narrative.completion import StoryOutline
 
 
 class FactType(str, Enum):
@@ -36,6 +38,7 @@ class CharacterPlan(BaseModel):
     secrets: List[str] = Field(default_factory=list)
     initial_beliefs: List[str] = Field(default_factory=list)
     emotional_state: Dict[str, float] = Field(default_factory=dict)
+    visual_profile: Optional[ActorVisualProfile] = None
 
     model_config = ConfigDict(frozen=True)
 
@@ -48,6 +51,7 @@ class LocationPlan(BaseModel):
     description: str
     connected_location_ids: List[str] = Field(default_factory=list)
     capacity: Optional[int] = None
+    visual_profile: Optional[LocationVisualProfile] = None
 
     model_config = ConfigDict(frozen=True)
 
@@ -62,6 +66,7 @@ class ObjectPlan(BaseModel):
     starting_holder_id: Optional[str] = None
     portable: bool = True
     properties: Dict[str, str] = Field(default_factory=dict)
+    visual_profile: Optional[ObjectVisualProfile] = None
 
     model_config = ConfigDict(frozen=True)
 
@@ -93,5 +98,6 @@ class WorldInitializationPlan(BaseModel):
     objects: List[ObjectPlan] = Field(default_factory=list)
     relationships: List[RelationshipPlan] = Field(default_factory=list)
     possible_conflicts: List[str] = Field(default_factory=list)
+    story_outline: Optional[StoryOutline] = None
 
     model_config = ConfigDict(frozen=True)

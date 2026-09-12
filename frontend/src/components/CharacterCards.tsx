@@ -87,8 +87,34 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({ world }) => {
                 {renderGauge('CURIOSITY', emo.curiosity ?? 0.5, '#D89C38')}
               </div>
 
+              {/* Visual Identity & Continuity Profile */}
+              {char.visual_profile && (
+                <div className="actor-visual-profile-box">
+                  <div className="profile-box-title">VISUAL IDENTITY PROFILE</div>
+                  <div className="profile-detail-row">
+                    <span className="profile-detail-label">ATTIRE:</span>
+                    <span className="profile-detail-val">{formatDisplayValue(char.visual_profile.clothing)}</span>
+                  </div>
+                  <div className="profile-detail-row">
+                    <span className="profile-detail-label">LOOKS:</span>
+                    <span className="profile-detail-val">
+                      {formatDisplayValue(`${char.visual_profile.age} • ${char.visual_profile.face_traits} • ${char.visual_profile.hairstyle}`)}
+                    </span>
+                  </div>
+                  {char.visual_profile.signature_items && char.visual_profile.signature_items.length > 0 && (
+                    <div className="profile-detail-row">
+                      <span className="profile-detail-label">SIGNATURE:</span>
+                      <span className="profile-detail-val text-amber">
+                        {char.visual_profile.signature_items.join(', ')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Goals */}
               <div className="actor-field-group">
+
                 <span className="field-group-title">GOAL</span>
                 <div className="actor-goal-list">
                   {(char.goals || []).map((gid) => {

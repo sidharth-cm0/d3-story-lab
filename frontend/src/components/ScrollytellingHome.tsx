@@ -116,14 +116,19 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
             DROP IN<br />AN IDEA.
           </h2>
           <p className="split-subtext">
-            Prompt. Clipping. Incident. Scenario.
+            Prompt. Clipping. Incident. Scenario. Choose beginning, midpoint, ending, or full concept.
           </p>
+          <div style={{ marginTop: '24px' }}>
+            <button className="btn-cinematic-primary" onClick={onStartNew}>
+              CONFIGURE SIMULATION
+            </button>
+          </div>
         </div>
 
         <div className="split-right">
           <div className="spark-input-simulation">
             <div className="spark-prompt-box">
-              <div className="spark-label">RAW SEED</div>
+              <div className="spark-label">NARRATIVE INPUT</div>
               <div className="spark-text">
                 "In a rain-slicked luxury penthouse, investigative journalist Maya Lin confronts diplomat Arjun Mehta regarding a confidential offshore ledger before unknown forces intervene."
               </div>
@@ -158,6 +163,7 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
       </section>
 
       {/* SECTION 03: CAST */}
+
       <section className="scrolly-section split-editorial-section cast-section">
         <div className="split-left sticky-title-col">
           <div className="section-index">03 / CHARACTERS</div>

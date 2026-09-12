@@ -65,6 +65,14 @@ export const WorldInspector: React.FC<WorldInspectorProps> = ({ world }) => {
                   <span className="card-sub-tag">ROOM</span>
                 </div>
                 <p className="card-desc">{formatDisplayValue(loc.description)}</p>
+                {loc.visual_profile && (
+                  <div className="card-visual-profile-box">
+                    <span className="visual-profile-tag">VISUAL ENVIRONMENT:</span>
+                    <span className="visual-profile-desc">
+                      {formatDisplayValue(`${loc.visual_profile.environment_type} • ${loc.visual_profile.palette} • ${loc.visual_profile.lighting}`)}
+                    </span>
+                  </div>
+                )}
                 <div className="card-meta-line">
                   <span className="meta-label">CONNECTIVITY</span>
                   <span className="meta-value">
@@ -92,6 +100,14 @@ export const WorldInspector: React.FC<WorldInspectorProps> = ({ world }) => {
                     <span className="card-sub-tag">{obj.portable ? 'PORTABLE' : 'FIXED'}</span>
                   </div>
                   <p className="card-desc">{formatDisplayValue(obj.description)}</p>
+                  {obj.visual_profile && (
+                    <div className="card-visual-profile-box">
+                      <span className="visual-profile-tag">VISUAL PROP CONTINUITY:</span>
+                      <span className="visual-profile-desc">
+                        {formatDisplayValue(`${obj.visual_profile.color} ${obj.visual_profile.material} (${obj.visual_profile.size}). Marker: ${obj.visual_profile.unique_markers}`)}
+                      </span>
+                    </div>
+                  )}
                   <div className="card-meta-line">
                     <span className="meta-label">STATUS</span>
                     <span className="meta-value">
@@ -103,6 +119,7 @@ export const WorldInspector: React.FC<WorldInspectorProps> = ({ world }) => {
             })
           )
         )}
+
 
         {tab === 'facts' && (
           facts.length === 0 ? (

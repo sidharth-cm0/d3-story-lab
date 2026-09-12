@@ -1,8 +1,9 @@
-"""Data models for Storyboard Preparation phase."""
+"""Data models for Storyboard Generation, Comic Compositing, and Continuity pipeline."""
 
 from __future__ import annotations
 from enum import Enum
 from typing import List, Optional, Dict, Any
+from datetime import datetime, timezone
 import uuid
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +16,8 @@ class ShotType(str, Enum):
     CLOSE_UP = "close_up"
     EXTREME_CLOSE_UP = "extreme_close_up"
     OVER_SHOULDER = "over_shoulder"
+    INSERT = "insert"
+    REACTION = "reaction"
 
 
 class CameraAngle(str, Enum):
@@ -26,39 +29,169 @@ class CameraAngle(str, Enum):
     BIRD_EYE = "bird_eye"
 
 
+class ShotPurpose(str, Enum):
+    """Narrative storytelling function of the storyboard shot."""
+    ESTABLISH = "establish"
+    INTRODUCE_CHARACTER = "introduce_character"
+    ACTION = "action"
+    DIALOGUE = "dialogue"
+    REACTION = "reaction"
+    REVELATION = "revelation"
+    CLUE = "clue"
+    THREAT = "threat"
+    TRANSITION = "transition"
+    CLIMAX = "climax"
+    RESOLUTION = "resolution"
+
+
+class StoryboardImageStatus(str, Enum):
+    """Status of image generation for an individual panel."""
+    PLANNED = "planned"
+    QUEUED = "queued"
+    GENERATING = "generating"
+    READY = "ready"
+    FAILED = "failed"
+    FALLBACK = "fallback"
+
+
+class PageLayoutTemplate(str, Enum):
+    """Comic/graphic novel page layout templates."""
+    TEMPLATE_A = "template_a"  # Hero top strip, two middle square panels, hero bottom strip
+    TEMPLATE_B = "template_b"  # 2x2 balanced grid
+    TEMPLATE_C = "template_c"  # Tall hero panel left, two stacked horizontal panels right
+    TEMPLATE_D = "template_d"  # 3 cinematic panoramic horizontal strips
+
+
+class StoryboardImageVersion(BaseModel):
+    """A specific generated version of a panel's visual artwork."""
+    model_config = ConfigDict(extra="ignore")
+
+    version: int = 1
+    image_url: str = ""
+    prompt_used: str = ""
+    negative_prompt: str = ""
+    provider: str = ""
+    mode: str = "fallback_comic"  # "ai_image" | "fallback_comic"
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    is_selected: bool = False
+    render_metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class StoryboardPanel(BaseModel):
-    """An individual visual storyboard panel representing a shot."""
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    """An individual visual storyboard panel representing a shot in the narrative."""
+    model_config = ConfigDict(extra="ignore")
 
     id: str = Field(default_factory=lambda: f"pnl_{uuid.uuid4().hex[:8]}")
+    panel_id: str = ""
+    project_id: str = ""
+    scene_id: str = ""
     scene_number: int = Field(default=1, ge=1)
     panel_number: int = Field(default=1, ge=1)
     shot_number: int = Field(default=1, ge=1)
+    page_number: int = Field(default=1, ge=1)
     shot_type: ShotType = ShotType.MEDIUM
     camera_angle: CameraAngle = CameraAngle.EYE_LEVEL
+    narrative_purpose: ShotPurpose = ShotPurpose.ACTION
+    lens_feel: str = "35mm cinematic standard, sharp depth of field"
+    composition: str = "Rule of thirds, strong diagonal shadows, leading lines"
+    subject_focus: str = ""
+    layout_slot: str = "default"
+
     location_id: str = ""
     location_name: str = ""
     characters_present: List[str] = Field(default_factory=list)
     character_names: List[str] = Field(default_factory=list)
+    objects_in_frame: List[str] = Field(default_factory=list)
     action: str = ""
     action_description: str = ""
     visual_description: str = ""
     lighting: str = "Low-key lighting, dramatic shadows"
     mood: str = "Tense, suspenseful"
+    style_profile_id: str = "noir_graphic_novel"
+
     prompt: str = ""
+    image_prompt: str = ""
+    visual_prompt: str = Field(default="", description="Optimized prompt for visual generation")
+    compiled_prompt: str = Field(default="", description="Fully compiled multi-layer prompt")
+    negative_prompt: str = (
+        "text, watermark, speech bubbles rendered in image, blurry, low quality, "
+        "distorted anatomy, cartoonish, 3d render, plastic smooth skin"
+    )
+    style_tags: List[str] = Field(
+        default_factory=lambda: [
+            "cinematic graphic novel",
+            "noir comic ink",
+            "high contrast chiaroscuro",
+            "heavy black brushwork",
+        ]
+    )
+
+    character_references: Dict[str, str] = Field(default_factory=dict)
+    object_references: Dict[str, str] = Field(default_factory=dict)
+    location_reference: str = ""
+    caption: str = ""
     dialogue_excerpt: Optional[str] = None
-    visual_prompt: str = Field(default="", description="Optimized prompt for static visual panel generation")
+    dialogue_bubble_type: Optional[str] = None  # "speech" | "whisper" | "shout" | "thought" | "caption"
+    sfx_label: Optional[str] = None
+    continuity_notes: str = ""
+
+    image_asset_id: Optional[str] = None
+    image_url: Optional[str] = None
+    rendered_image_url: Optional[str] = None
+    rendered_svg: Optional[str] = None
+    image_status: StoryboardImageStatus = StoryboardImageStatus.PLANNED
+    provider: str = ""
+    generation_version: int = 1
+    selected_version: int = 1
+    versions: List[StoryboardImageVersion] = Field(default_factory=list)
+
     aspect_ratio: str = "16:9"
     source_event_ids: List[str] = Field(default_factory=list)
     source_screenplay_block_ids: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+    def model_post_init(self, __context: Any) -> None:
+        """Ensure synchronized fallbacks for IDs, prompts, and URLs."""
+        if not self.panel_id:
+            self.panel_id = self.id
+        if not self.image_prompt:
+            self.image_prompt = self.compiled_prompt or self.visual_prompt or self.prompt
+        if not self.prompt:
+            self.prompt = self.image_prompt
+        if not self.visual_prompt:
+            self.visual_prompt = self.image_prompt
+        if not self.compiled_prompt:
+            self.compiled_prompt = self.image_prompt
+        if not self.caption:
+            cap = self.dialogue_excerpt or self.action or self.action_description
+            self.caption = cap[:120] if cap else ""
+        if self.image_url and not self.rendered_image_url:
+            self.rendered_image_url = self.image_url
+        elif self.rendered_image_url and not self.image_url:
+            self.image_url = self.rendered_image_url
+
+
+class StoryboardPage(BaseModel):
+    """A collection of storyboard panels formatted as a comic/graphic novel page."""
+    model_config = ConfigDict(extra="ignore")
+
+    page_number: int
+    total_pages: int
+    title: str = ""
+    layout_template: PageLayoutTemplate = PageLayoutTemplate.TEMPLATE_A
+    panels: List[StoryboardPanel] = Field(default_factory=list)
+
 
 class ShotPlan(BaseModel):
-    """A complete sequence of storyboard panels for a screenplay."""
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    """A complete sequence of storyboard panels for a screenplay, organized into pages."""
+    model_config = ConfigDict(extra="ignore")
 
     project_title: str
     total_panels: int
+    total_pages: int = 1
+    panels_per_page: int = 4
     panels: List[StoryboardPanel] = Field(default_factory=list)
     aspect_ratio: str = "16:9"
+    pages: List[StoryboardPage] = Field(default_factory=list)
+    density_mode: str = "standard"  # "quick" | "standard" | "detailed"
+    storyboard_coverage: Dict[str, Any] = Field(default_factory=dict)

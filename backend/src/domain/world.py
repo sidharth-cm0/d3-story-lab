@@ -10,6 +10,7 @@ from .relationship import Relationship
 from .memory import Memory
 from .event import Event
 from .fact import DiscoveredFact
+from .continuity import LocationVisualProfile, ObjectVisualProfile
 
 
 class Location(BaseModel):
@@ -23,6 +24,9 @@ class Location(BaseModel):
     )
     capacity: Optional[int] = Field(
         None, description="Maximum number of characters allowed (None = unlimited)"
+    )
+    visual_profile: Optional[LocationVisualProfile] = Field(
+        default=None, description="Visual environment profile for panel continuity"
     )
 
     model_config = ConfigDict(
@@ -62,6 +66,9 @@ class WorldObject(BaseModel):
     )
     discovered_properties: Dict[str, Any] = Field(
         default_factory=dict, description="Revealed properties discovered by investigation"
+    )
+    visual_profile: Optional[ObjectVisualProfile] = Field(
+        default=None, description="Visual identity profile for panel continuity"
     )
 
     model_config = ConfigDict(

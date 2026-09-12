@@ -33,7 +33,9 @@ export const Header: React.FC<HeaderProps> = ({
     { key: 'simulation', label: 'SIMULATION' },
     { key: 'script', label: 'SCRIPT' },
     { key: 'storyboard', label: 'STORYBOARD' },
+    { key: 'export', label: 'EXPORT' },
   ];
+
 
   return (
     <header className="app-header">

@@ -8,6 +8,8 @@ from .fountain import (
     ScreenplayDocument,
 )
 from .scribe import Scribe
+from .completion import StoryCompletionEngine, StoryOutline, StoryInputType, ActBeat
+from .synopsis import SynopsisGenerator, StorySynopsis
 
 __all__ = [
     "NarrativeBeat",
@@ -19,4 +21,10 @@ __all__ = [
     "ScreenplayScene",
     "ScreenplayDocument",
     "Scribe",
+    "StoryCompletionEngine",
+    "StoryOutline",
+    "StoryInputType",
+    "ActBeat",
+    "SynopsisGenerator",
+    "StorySynopsis",
 ]

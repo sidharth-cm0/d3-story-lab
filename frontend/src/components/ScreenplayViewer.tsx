@@ -13,7 +13,7 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
   onGenerate,
   loading,
 }) => {
-  const [activeTab, setActiveTab] = useState<'screenplay' | 'sources' | 'raw'>('screenplay');
+  const [activeTab, setActiveTab] = useState<'synopsis' | 'screenplay' | 'sources' | 'raw'>('screenplay');
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -21,6 +21,8 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
   const beats = project.selection?.filtered_beats || [];
   const fountainText = project.fountain_text || '';
   const events = project.world?.events || {};
+  const synopsis = project.synopsis;
+  const outline = project.story_outline;
 
   const handleCopy = () => {
     if (fountainText) {
@@ -49,8 +51,8 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
       {/* Top Header Controls */}
       <div className="pane-header">
         <div>
-          <span className="pane-kicker">SCRIBE CONSOLE</span>
-          <h2 className="pane-title">SCREENPLAY</h2>
+          <span className="pane-kicker">SCRIBE CONSOLE &amp; NARRATIVE ARCHITECTURE</span>
+          <h2 className="pane-title">SCREENPLAY &amp; SYNOPSIS</h2>
         </div>
 
         <div className="screenplay-action-buttons">
@@ -90,6 +92,12 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
           SCREENPLAY
         </button>
         <button
+          className={`sub-tab-btn ${activeTab === 'synopsis' ? 'active' : ''}`}
+          onClick={() => setActiveTab('synopsis')}
+        >
+          SYNOPSIS &amp; BEATS
+        </button>
+        <button
           className={`sub-tab-btn ${activeTab === 'sources' ? 'active' : ''}`}
           onClick={() => setActiveTab('sources')}
         >
@@ -105,132 +113,203 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
 
       {/* Main View Area */}
       <div className="screenplay-main-scroll">
-        {!doc && !fountainText ? (
-          <div className="empty-quiet" style={{ marginTop: '60px' }}>
-            NO SCREENPLAY GENERATED YET.<br />
-            ADVANCE SIMULATION TICKS, THEN CLICK <strong>REFRESH / TRANSCRIBE</strong> TO ACTIVATE SCRIBE.
+        {/* TAB 1: SYNOPSIS */}
+        {activeTab === 'synopsis' && (
+          <div className="synopsis-container">
+            <div className="synopsis-card">
+              <span className="synopsis-badge">ONE-LINE LOGLINE</span>
+              <p className="synopsis-logline">
+                {synopsis?.logline ||
+                  `When sovereign actors clash over opposing secrets in ${project.world.name}, mounting crises force a decisive choice between survival and the truth.`}
+              </p>
+            </div>
+
+            <div className="synopsis-card">
+              <span className="synopsis-badge">PARAGRAPH SUMMARY</span>
+              <p className="synopsis-summary-text">
+                {synopsis?.paragraph_summary ||
+                  `In this ${project.metadata.target_duration_minutes || 20}-minute episode, tensions escalate inside ${project.world.name} as conflicting loyalties and concealed objectives erupt into irreversible confrontation.`}
+              </p>
+            </div>
+
+            <div className="synopsis-card">
+              <span className="synopsis-badge">DRAMATIC QUESTION</span>
+              <p className="synopsis-question">
+                {synopsis?.dramatic_question || outline?.dramatic_question || 'Will truth survive the clash of sovereign actors?'}
+              </p>
+            </div>
+
+            {/* Act Structure Breakdown */}
+            {outline && outline.act_structure && (
+              <div className="synopsis-acts-grid">
+                <div className="act-card">
+                  <span className="act-header-tag">ACT I: SETUP</span>
+                  <p className="act-desc">{outline.act_structure.act_1}</p>
+                </div>
+                <div className="act-card">
+                  <span className="act-header-tag">ACT II: CONFRONTATION</span>
+                  <p className="act-desc">{outline.act_structure.act_2}</p>
+                </div>
+                <div className="act-card">
+                  <span className="act-header-tag">ACT III: CLIMAX &amp; RESOLUTION</span>
+                  <p className="act-desc">{outline.act_structure.act_3}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Full Multi-Paragraph Episode Synopsis */}
+            <div className="synopsis-card full-synopsis-box">
+              <span className="synopsis-badge">FULL EPISODE SYNOPSIS</span>
+              <pre className="full-synopsis-text">
+                {synopsis?.full_synopsis ||
+                  `EPISODE: ${project.metadata.title}\n\nPREMISE:\n${project.metadata.seed_prompt}\n\nOBSERVED PROGRESSION:\nScreenplay grounded in canonical simulation state.`}
+              </pre>
+            </div>
           </div>
-        ) : (
-          <>
-            {activeTab === 'screenplay' && (
-              <div className="screenplay-stage-layout">
-                {/* Screenplay Document Sheet */}
-                <div className="screenplay-sheet">
-                  <div className="sheet-title-block">
-                    <h2 className="screenplay-h1">{doc?.title || project.metadata.title}</h2>
-                    <div className="screenplay-meta-line">Written by D3 Story Lab Engine</div>
-                    <div className="screenplay-meta-line">Based on autonomous simulation history</div>
-                  </div>
+        )}
 
-                  {doc?.scenes.map((scene) => (
-                    <div key={scene.scene_number} className="screenplay-scene-section">
-                      <div className="screenplay-slugline">{scene.heading}</div>
+        {/* TAB 2: SCREENPLAY */}
+        {activeTab === 'screenplay' && (
+          !doc && !fountainText ? (
+            <div className="empty-quiet" style={{ marginTop: '60px' }}>
+              NO SCREENPLAY GENERATED YET.<br />
+              ADVANCE SIMULATION TICKS, THEN CLICK <strong>REFRESH / TRANSCRIBE</strong> TO ACTIVATE SCRIBE.
+            </div>
+          ) : (
+            <div className="screenplay-stage-layout">
+              {/* Screenplay Document Sheet */}
+              <div className="screenplay-sheet">
+                <div className="sheet-title-block">
+                  <h2 className="screenplay-h1">{doc?.title || project.metadata.title}</h2>
+                  <div className="screenplay-byline">Written by D3 Story Lab Simulation Engine</div>
+                </div>
 
-                      {scene.blocks.map((b) => {
-                        const isBlockSelected = selectedBlockId === b.id;
-                        if (b.block_type === 'character') {
+                {doc?.scenes.map((scene) => (
+                  <section key={`scene-${scene.scene_number}`} className="screenplay-scene-section">
+                    <div className="scene-slugline">
+                      <span className="scene-num-prefix">{scene.scene_number}.</span>
+                      <span>{scene.heading}</span>
+                    </div>
+
+                    <div className="scene-blocks-flow">
+                      {scene.blocks.map((block) => {
+                        const isSelected = selectedBlockId === block.id;
+
+                        if (block.block_type === 'action') {
+                          return (
+                            <p
+                              key={block.id}
+                              className={`screenplay-action ${isSelected ? 'selected' : ''}`}
+                              onClick={() => setSelectedBlockId(block.id)}
+                            >
+                              {block.text}
+                            </p>
+                          );
+                        }
+
+                        if (block.block_type === 'character') {
                           return (
                             <div
-                              key={b.id}
-                              className={`screenplay-character-cue ${isBlockSelected ? 'block-highlighted' : ''}`}
-                              onClick={() => setSelectedBlockId(b.id)}
+                              key={block.id}
+                              className={`screenplay-character-cue ${isSelected ? 'selected' : ''}`}
+                              onClick={() => setSelectedBlockId(block.id)}
                             >
-                              {b.text}
+                              {block.text}
                             </div>
                           );
                         }
-                        if (b.block_type === 'dialogue') {
+
+                        if (block.block_type === 'parenthetical') {
                           return (
                             <div
-                              key={b.id}
-                              className={`screenplay-dialogue-line ${isBlockSelected ? 'block-highlighted' : ''}`}
-                              onClick={() => setSelectedBlockId(b.id)}
+                              key={block.id}
+                              className={`screenplay-parenthetical ${isSelected ? 'selected' : ''}`}
+                              onClick={() => setSelectedBlockId(block.id)}
                             >
-                              "{b.text}"
+                              ({block.text})
                             </div>
                           );
                         }
-                        if (b.block_type === 'parenthetical') {
+
+                        if (block.block_type === 'dialogue') {
                           return (
-                            <div
-                              key={b.id}
-                              className={`screenplay-parenthetical ${isBlockSelected ? 'block-highlighted' : ''}`}
-                              onClick={() => setSelectedBlockId(b.id)}
+                            <p
+                              key={block.id}
+                              className={`screenplay-dialogue ${isSelected ? 'selected' : ''}`}
+                              onClick={() => setSelectedBlockId(block.id)}
                             >
-                              ({b.text})
-                            </div>
+                              "{block.text}"
+                            </p>
                           );
                         }
+
                         return (
-                          <div
-                            key={b.id}
-                            className={`screenplay-action-para ${isBlockSelected ? 'block-highlighted' : ''}`}
-                            onClick={() => setSelectedBlockId(b.id)}
-                          >
-                            {b.text}
+                          <div key={block.id} className="screenplay-generic">
+                            {block.text}
                           </div>
                         );
                       })}
                     </div>
-                  ))}
-                </div>
-
-                {/* Source Verification Drawer */}
-                <aside className="source-grounding-drawer">
-                  <div className="drawer-header">
-                    <span>GROUNDED SOURCE VERIFICATION</span>
-                  </div>
-
-                  {selectedBlockId && activeSources.length > 0 ? (
-                    <div className="grounding-list">
-                      <div className="drawer-intro">
-                        Verified events behind selected script block:
-                      </div>
-                      {activeSources.map((ev) => (
-                        <div key={ev.id} className="grounding-event-card">
-                          <span className="grounding-tick">T{ev.tick}</span>
-                          <span className="grounding-type">{ev.event_type}</span>
-                          <div className="grounding-desc">{ev.description}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="drawer-empty-hint">
-                      Click any dialogue cue or action line to inspect its provable simulation events.
-                    </div>
-                  )}
-                </aside>
-              </div>
-            )}
-
-            {activeTab === 'sources' && (
-              <div className="beats-list-view">
-                <div className="beats-arc-summary">
-                  <span className="summary-label">DRAMATIC ARC: </span>
-                  {project.selection?.dramatic_arc_summary || 'Emergent narrative arc clustered by Observer Agent.'}
-                </div>
-
-                {beats.map((beat) => (
-                  <div key={beat.id} className="noir-beat-card">
-                    <div className="beat-top-bar">
-                      <span className="beat-tag">{beat.beat_type}</span>
-                      <span className="beat-tension-score">TENSION {Math.round(beat.dramatic_score * 100)}%</span>
-                    </div>
-                    <p className="beat-summary-text">{beat.summary}</p>
-                    <div className="beat-provenance">
-                      TICKS {beat.start_tick}–{beat.end_tick} | PROVENANCE: {beat.source_event_ids.join(', ')}
-                    </div>
-                  </div>
+                  </section>
                 ))}
               </div>
-            )}
 
-            {activeTab === 'raw' && (
-              <div className="raw-fountain-view">
-                <pre className="fountain-paper-console">{fountainText}</pre>
+              {/* Provenance Grounding Drawer */}
+              <aside className="provenance-grounding-drawer">
+                <div className="drawer-kicker">STRICT PROVENANCE AUDIT</div>
+                <h3 className="drawer-title">GROUNDING SOURCE EVENTS</h3>
+
+                {activeSources.length > 0 ? (
+                  <div className="grounding-events-list">
+                    <div className="grounding-intro">
+                      Block mapped to <strong>{activeSources.length}</strong> verified simulation event(s):
+                    </div>
+                    {activeSources.map((ev) => (
+                      <div key={ev.id} className="grounding-event-card">
+                        <span className="grounding-tick">T{ev.tick}</span>
+                        <span className="grounding-type">{ev.event_type}</span>
+                        <div className="grounding-desc">{ev.description}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="drawer-empty-hint">
+                    Click any dialogue cue or action line to inspect its provable simulation events.
+                  </div>
+                )}
+              </aside>
+            </div>
+          )
+        )}
+
+        {/* TAB 3: SOURCES */}
+        {activeTab === 'sources' && (
+          <div className="beats-list-view">
+            <div className="beats-arc-summary">
+              <span className="summary-label">DRAMATIC ARC: </span>
+              {project.selection?.dramatic_arc_summary || 'Emergent narrative arc clustered by Observer Agent.'}
+            </div>
+
+            {beats.map((beat) => (
+              <div key={beat.id} className="noir-beat-card">
+                <div className="beat-top-bar">
+                  <span className="beat-tag">{beat.beat_type}</span>
+                  <span className="beat-tension-score">TENSION {Math.round(beat.dramatic_score * 100)}%</span>
+                </div>
+                <p className="beat-summary-text">{beat.summary}</p>
+                <div className="beat-provenance">
+                  TICKS {beat.start_tick}–{beat.end_tick} | PROVENANCE: {beat.source_event_ids.join(', ')}
+                </div>
               </div>
-            )}
-          </>
+            ))}
+          </div>
+        )}
+
+        {/* TAB 4: RAW FOUNTAIN */}
+        {activeTab === 'raw' && (
+          <div className="raw-fountain-view">
+            <pre className="fountain-paper-console">{fountainText}</pre>
+          </div>
         )}
       </div>
     </div>
