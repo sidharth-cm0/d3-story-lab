@@ -506,22 +506,29 @@ class StoryboardPlanner:
         pages: List[StoryboardPage] = []
 
         layout_templates_cycle = [
-            PageLayoutTemplate.TEMPLATE_A,  # Strip: Hero top, 2 mid, hero bottom
-            PageLayoutTemplate.TEMPLATE_B,  # 2x2 Grid
-            PageLayoutTemplate.TEMPLATE_C,  # Hero left + 2 stacked right
-            PageLayoutTemplate.TEMPLATE_D,  # 3 horizontal strips
+            PageLayoutTemplate.TEMPLATE_A,  # Large wide, two small, large footer
+            PageLayoutTemplate.TEMPLATE_B,  # Three horizontal strips
+            PageLayoutTemplate.TEMPLATE_C,  # One vertical + two stacked
+            PageLayoutTemplate.TEMPLATE_D,  # Six-frame sequence
+            PageLayoutTemplate.TEMPLATE_E,  # Large climax splash
         ]
 
         slot_mapping_by_template = {
             PageLayoutTemplate.TEMPLATE_A: ["top_hero", "mid_left", "mid_right", "bottom_hero"],
-            PageLayoutTemplate.TEMPLATE_B: ["grid_top_left", "grid_top_right", "grid_bot_left", "grid_bot_right"],
+            PageLayoutTemplate.TEMPLATE_B: ["strip_1", "strip_2", "strip_3", "strip_4"],
             PageLayoutTemplate.TEMPLATE_C: ["hero_left", "stack_top_right", "stack_bot_right", "bottom_wide"],
-            PageLayoutTemplate.TEMPLATE_D: ["strip_1", "strip_2", "strip_3", "strip_4"],
+            PageLayoutTemplate.TEMPLATE_D: ["frame_1", "frame_2", "frame_3", "frame_4", "frame_5", "frame_6"],
+            PageLayoutTemplate.TEMPLATE_E: ["climax_splash", "reaction_inset", "detail_inset_1", "detail_inset_2"],
         }
 
         for p in range(1, total_pages + 1):
             page_panels = [pnl for pnl in panels if pnl.page_number == p]
-            template = layout_templates_cycle[(p - 1) % len(layout_templates_cycle)]
+            # Check for climax or revelation in page
+            has_climax = any(pnl.narrative_purpose in (ShotPurpose.CLIMAX, ShotPurpose.REVELATION) for pnl in page_panels)
+            if has_climax and len(page_panels) <= 4:
+                template = PageLayoutTemplate.TEMPLATE_E
+            else:
+                template = layout_templates_cycle[(p - 1) % len(layout_templates_cycle)]
             slots = slot_mapping_by_template.get(template, ["slot_1", "slot_2", "slot_3", "slot_4"])
 
             for idx, pnl in enumerate(page_panels):

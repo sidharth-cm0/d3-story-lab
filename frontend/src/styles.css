@@ -3101,6 +3101,13 @@ html, body {
   box-shadow: 0 2px 6px rgba(217, 119, 6, 0.4);
 }
 
+.badge-hand-drawn {
+  background: rgba(2, 132, 199, 0.85);
+  color: #f0f9ff;
+  border: 1px solid #38bdf8;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.4);
+}
+
 .badge-purpose {
   background: rgba(15, 23, 42, 0.85);
   color: #38bdf8;

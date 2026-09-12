@@ -258,7 +258,8 @@ export type PageLayoutTemplate =
   | 'template_a'
   | 'template_b'
   | 'template_c'
-  | 'template_d';
+  | 'template_d'
+  | 'template_e';
 
 export interface StoryboardImageVersion {
   version: number;
@@ -266,7 +267,7 @@ export interface StoryboardImageVersion {
   prompt_used?: string;
   negative_prompt?: string;
   provider?: string;
-  mode?: 'ai_image' | 'fallback_comic';
+  mode?: 'ai_image' | 'fallback_comic' | 'hand_drawn';
   fallback_reason?: string;
   mime_type?: string;
   continuity_mode?: string;
@@ -397,6 +398,7 @@ export interface StoryboardPanel {
   rendered_svg?: string | null;
   image_status?: StoryboardImageStatus | string;
   provider?: string;
+  mode?: string;
   fallback_reason?: string;
   mime_type?: string;
   continuity_mode?: string;
@@ -439,6 +441,7 @@ export interface RenderedPanelData {
   camera_angle?: string;
   image_url?: string;
   rendered_svg?: string;
+  svg_content?: string;
   render_type?: string;
   provider?: string;
   mode?: string;

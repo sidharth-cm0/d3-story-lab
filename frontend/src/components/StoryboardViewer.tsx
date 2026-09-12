@@ -334,6 +334,16 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                       const isAi =
                         (typeof renderData === 'object' && renderData?.mode === 'ai_image') ||
                         panel.versions?.some((v) => v.is_selected && v.mode === 'ai_image');
+                      const isHandDrawn =
+                        !isAi &&
+                        ((typeof renderData === 'object' && (renderData?.mode === 'hand_drawn' || renderData?.provider === 'hand_drawn_storyboard')) ||
+                          panel.versions?.some((v) => v.is_selected && (v.mode === 'hand_drawn' || v.provider === 'hand_drawn_storyboard')) ||
+                          panel.provider === 'hand_drawn_storyboard' ||
+                          panel.mode === 'hand_drawn' ||
+                          !panel.fallback_reason);
+                      const badgeLabel = isAi ? 'AI IMAGE' : (isHandDrawn ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC');
+                      const badgeClass = isAi ? 'badge-ai-image' : (isHandDrawn ? 'badge-hand-drawn' : 'badge-fallback-comic');
+
                       const activeVer =
                         panel.selected_version ||
                         (typeof renderData === 'object' && renderData?.version) ||
@@ -382,10 +392,10 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                               <span className="panel-badge text-amber">{shotType}</span>
                               <span className="panel-badge">{cameraAngle}</span>
                               <span className="badge-pill badge-version">v{activeVer}</span>
-                              <span className={`badge-pill ${isAi ? 'badge-ai-image' : 'badge-fallback-comic'}`}>
-                                {isAi ? 'AI IMAGE' : 'FALLBACK COMIC'}
+                              <span className={`badge-pill ${badgeClass}`}>
+                                {badgeLabel}
                               </span>
-                              {!isAi && panel.fallback_reason && (
+                              {!isAi && !isHandDrawn && panel.fallback_reason && (
                                 <span className="badge-pill" style={{ background: '#451a03', color: '#fca5a5', fontSize: '9px', border: '1px solid #78350f' }} title={`Fallback: ${panel.fallback_reason}`}>
                                   {panel.fallback_reason}
                                 </span>
@@ -500,6 +510,16 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                   const isAi =
                     (typeof renderData === 'object' && renderData?.mode === 'ai_image') ||
                     panel.versions?.some((v) => v.is_selected && v.mode === 'ai_image');
+                  const isHandDrawn =
+                    !isAi &&
+                    ((typeof renderData === 'object' && (renderData?.mode === 'hand_drawn' || renderData?.provider === 'hand_drawn_storyboard')) ||
+                      panel.versions?.some((v) => v.is_selected && (v.mode === 'hand_drawn' || v.provider === 'hand_drawn_storyboard')) ||
+                      panel.provider === 'hand_drawn_storyboard' ||
+                      panel.mode === 'hand_drawn' ||
+                      !panel.fallback_reason);
+                  const badgeLabel = isAi ? 'AI IMAGE' : (isHandDrawn ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC');
+                  const badgeClass = isAi ? 'badge-ai-image' : (isHandDrawn ? 'badge-hand-drawn' : 'badge-fallback-comic');
+
                   const activeVer =
                     panel.selected_version ||
                     (typeof renderData === 'object' && renderData?.version) ||
@@ -550,10 +570,10 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
 
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                           <span className="badge-pill badge-version">v{activeVer}</span>
-                          <span className={`badge-pill ${isAi ? 'badge-ai-image' : 'badge-fallback-comic'}`}>
-                            {isAi ? 'AI IMAGE' : 'FALLBACK COMIC'}
+                          <span className={`badge-pill ${badgeClass}`}>
+                            {badgeLabel}
                           </span>
-                          {!isAi && panel.fallback_reason && (
+                          {!isAi && !isHandDrawn && panel.fallback_reason && (
                             <span className="badge-pill" style={{ background: '#451a03', color: '#fca5a5', fontSize: '9px', border: '1px solid #78350f' }} title={`Fallback: ${panel.fallback_reason}`}>
                               {panel.fallback_reason}
                             </span>
@@ -960,8 +980,8 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                           <span style={{ fontSize: '10px', color: '#94a3b8' }}>VER {ver.version}</span>
                         </div>
                         <div style={{ fontWeight: 800 }}>VERSION {ver.version}</div>
-                        <div style={{ fontSize: '9px', color: ver.mode === 'ai_image' ? '#a78bfa' : '#f59e0b' }}>
-                          {ver.mode === 'ai_image' ? 'AI IMAGE' : 'FALLBACK'}
+                        <div style={{ fontSize: '9px', color: ver.mode === 'ai_image' ? '#a78bfa' : (ver.mode === 'hand_drawn' ? '#38bdf8' : '#f59e0b') }}>
+                          {ver.mode === 'ai_image' ? 'AI IMAGE' : (ver.mode === 'hand_drawn' ? 'HAND-DRAWN' : 'FALLBACK')}
                         </div>
                       </div>
                     ))}
@@ -974,10 +994,21 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                   (v) => (selectedPanel.selected_version ? v.version === selectedPanel.selected_version : v.is_selected)
                 ) || selectedPanel.versions?.[selectedPanel.versions.length - 1];
 
-                const currentMode = currentVersion?.mode || (selectedPanel as any).mode || (selectedPanel.image_url?.endsWith('.svg') || selectedPanel.rendered_svg ? 'fallback_comic' : 'ai_image');
-                const currentReason = currentVersion?.fallback_reason || selectedPanel.fallback_reason;
-                const currentContinuity = currentVersion?.continuity_mode || selectedPanel.continuity_mode || 'TEXTUAL CONTINUITY ONLY';
-                const currentProvider = currentVersion?.provider || selectedPanel.provider || 'CloudImagenStoryboardProvider';
+                const isAiMode = currentVersion?.mode === 'ai_image' || (selectedPanel as any).mode === 'ai_image';
+                const isHandDrawnMode =
+                  !isAiMode &&
+                  (currentVersion?.mode === 'hand_drawn' ||
+                    currentVersion?.provider === 'hand_drawn_storyboard' ||
+                    selectedPanel.provider === 'hand_drawn_storyboard' ||
+                    (selectedPanel as any).mode === 'hand_drawn' ||
+                    !currentVersion?.fallback_reason);
+
+                const currentReason = isHandDrawnMode ? null : (currentVersion?.fallback_reason || selectedPanel.fallback_reason);
+                const currentContinuity = currentVersion?.continuity_mode || selectedPanel.continuity_mode || 'Deterministic Visual Bible';
+                const currentProvider = isHandDrawnMode
+                  ? 'HandDrawnStoryboardProvider'
+                  : (currentVersion?.provider || selectedPanel.provider || 'CloudImagenStoryboardProvider');
+                const currentStyle = (currentVersion?.render_metadata?.style as string) || 'Pencil Noir';
 
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -986,8 +1017,18 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                       style={{
                         padding: '12px 14px',
                         borderRadius: '4px',
-                        background: currentMode === 'ai_image' ? 'rgba(124, 58, 237, 0.12)' : 'rgba(245, 158, 11, 0.08)',
-                        border: `1px solid ${currentMode === 'ai_image' ? 'rgba(167, 139, 250, 0.4)' : 'rgba(245, 158, 11, 0.35)'}`,
+                        background: isAiMode
+                          ? 'rgba(124, 58, 237, 0.12)'
+                          : isHandDrawnMode
+                          ? 'rgba(2, 132, 199, 0.12)'
+                          : 'rgba(245, 158, 11, 0.08)',
+                        border: `1px solid ${
+                          isAiMode
+                            ? 'rgba(167, 139, 250, 0.4)'
+                            : isHandDrawnMode
+                            ? 'rgba(56, 189, 248, 0.4)'
+                            : 'rgba(245, 158, 11, 0.35)'
+                        }`,
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '8px',
@@ -998,8 +1039,16 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                           RENDER DIAGNOSTICS
                         </span>
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span className={`badge-pill ${currentMode === 'ai_image' ? 'badge-ai-image' : 'badge-fallback-comic'}`}>
-                            SOURCE: {currentMode === 'ai_image' ? 'AI IMAGE' : 'FALLBACK COMIC'}
+                          <span
+                            className={`badge-pill ${
+                              isAiMode
+                                ? 'badge-ai-image'
+                                : isHandDrawnMode
+                                ? 'badge-hand-drawn'
+                                : 'badge-fallback-comic'
+                            }`}
+                          >
+                            SOURCE: {isAiMode ? 'AI IMAGE' : isHandDrawnMode ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC'}
                           </span>
                           {currentReason && (
                             <span className="badge-pill badge-fallback-reason">
@@ -1010,18 +1059,34 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
-                        <span style={{ color: '#94a3b8' }}>CONTINUITY MODE:</span>
+                        <span style={{ color: '#94a3b8' }}>RENDERER:</span>
+                        <span style={{ color: '#cbd5e1', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                          {currentProvider}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                        <span style={{ color: '#94a3b8' }}>STYLE:</span>
+                        <span style={{ color: '#f59e0b', fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 }}>
+                          {currentStyle}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                        <span style={{ color: '#94a3b8' }}>CONTINUITY:</span>
                         <span className="badge-pill badge-continuity-mode">
                           {currentContinuity}
                         </span>
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
-                        <span style={{ color: '#94a3b8' }}>PROVIDER:</span>
-                        <span style={{ color: '#cbd5e1', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
-                          {currentProvider}
-                        </span>
-                      </div>
+                      {isHandDrawnMode && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                          <span style={{ color: '#94a3b8' }}>CLOUD API:</span>
+                          <span style={{ color: '#38bdf8', fontSize: '11px', fontWeight: 600 }}>
+                            NO CLOUD API (100% Offline SVG)
+                          </span>
+                        </div>
+                      )}
 
                       {currentReason === 'QUOTA_EXCEEDED' && (
                         <div

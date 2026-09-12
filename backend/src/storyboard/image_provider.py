@@ -583,3 +583,11 @@ class MockStoryboardImageProvider(StoryboardImageProvider):
                 "fallback_reason": FallbackReason.PROVIDER_NOT_CONFIGURED.value,
             },
         )
+
+
+def get_default_storyboard_provider(
+    asset_store: Optional[StoryboardAssetStore] = None,
+) -> StoryboardImageProvider:
+    """Return the default offline deterministic hand-drawn storyboard provider."""
+    from src.storyboard.sketch.renderer import HandDrawnStoryboardProvider
+    return HandDrawnStoryboardProvider(asset_store=asset_store)

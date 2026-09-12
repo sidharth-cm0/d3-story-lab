@@ -37,6 +37,7 @@ from .provider import (
     ComicGraphicStoryboardProvider,
     GeminiImageStoryboardProvider,
 )
+from .sketch.renderer import HandDrawnStoryboardProvider
 
 __all__ = [
     "ShotType",
@@ -70,4 +71,5 @@ __all__ = [
     "MockStoryboardProvider",
     "ComicGraphicStoryboardProvider",
     "GeminiImageStoryboardProvider",
+    "HandDrawnStoryboardProvider",
 ]

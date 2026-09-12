@@ -57,9 +57,10 @@ class StoryboardImageStatus(str, Enum):
 class PageLayoutTemplate(str, Enum):
     """Comic/graphic novel page layout templates."""
     TEMPLATE_A = "template_a"  # Hero top strip, two middle square panels, hero bottom strip
-    TEMPLATE_B = "template_b"  # 2x2 balanced grid
+    TEMPLATE_B = "template_b"  # 3 cinematic panoramic horizontal strips
     TEMPLATE_C = "template_c"  # Tall hero panel left, two stacked horizontal panels right
-    TEMPLATE_D = "template_d"  # 3 cinematic panoramic horizontal strips
+    TEMPLATE_D = "template_d"  # 6-frame sequence (2x3 grid)
+    TEMPLATE_E = "template_e"  # Large climax splash hero page with insets
 
 
 class StoryboardImageVersion(BaseModel):

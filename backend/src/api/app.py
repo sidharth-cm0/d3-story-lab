@@ -132,21 +132,26 @@ def get_image_provider(
     provider_type: Optional[str] = None,
     asset_store: Optional[StoryboardAssetStore] = None,
 ) -> StoryboardImageProvider:
-    """Instantiate provider-independent image generator with transparent fallback."""
+    """Instantiate storyboard renderer. Defaults to offline HandDrawnStoryboardProvider."""
     asset_store = asset_store or StoryboardAssetStore()
-    api_key = (
-        os.environ.get("GEMINI_API_KEY")
-        or os.environ.get("GOOGLE_API_KEY")
-        or os.environ.get("IMAGEN_API_KEY")
-    )
+    provider_type = provider_type or os.environ.get("STORYBOARD_PROVIDER", "hand_drawn")
+
+    if provider_type in ("hand_drawn", "hand_drawn_storyboard", "sketch"):
+        from src.storyboard.sketch.renderer import HandDrawnStoryboardProvider
+        return HandDrawnStoryboardProvider(asset_store=asset_store)
     if provider_type == "mock":
         return MockStoryboardImageProvider(asset_store=asset_store)
     if provider_type == "mock_ai":
         return MockStoryboardImageProvider(asset_store=asset_store, simulate_ai_mode=True)
     if provider_type == "fallback":
         return FallbackComicSvgProvider(asset_store=asset_store)
+
+    api_key = (
+        os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+        or os.environ.get("IMAGEN_API_KEY")
+    )
     model_name = os.environ.get("STORYBOARD_IMAGE_MODEL") or "gemini-3.1-flash-image"
-    # Default to Cloud provider (handles live generation if key exists or transparent fallback with diagnostic reason)
     return CloudImagenStoryboardProvider(api_key=api_key, asset_store=asset_store, model_name=model_name)
 
 
