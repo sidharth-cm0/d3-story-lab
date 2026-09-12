@@ -1022,6 +1022,23 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                           {currentProvider}
                         </span>
                       </div>
+
+                      {currentReason === 'QUOTA_EXCEEDED' && (
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            color: '#fca5a5',
+                            marginTop: '4px',
+                            background: 'rgba(239, 68, 68, 0.12)',
+                            padding: '6px 10px',
+                            borderRadius: '4px',
+                            border: '1px solid rgba(239, 68, 68, 0.25)',
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          ⚠ Cloud image generation unavailable because this Google project currently has no usable quota for the selected image model.
+                        </div>
+                      )}
                     </div>
 
                     <div>

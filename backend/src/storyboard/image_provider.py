@@ -232,15 +232,22 @@ class CloudImagenStoryboardProvider(StoryboardImageProvider):
         self,
         api_key: Optional[str] = None,
         asset_store: Optional[StoryboardAssetStore] = None,
-        model_name: str = "imagen-3.0-generate-002",
+        model_name: Optional[str] = None,
     ):
         self.api_key = (
             api_key
-            or os.environ.get("GEMINI_API_KEY")
-            or os.environ.get("GOOGLE_API_KEY")
-            or os.environ.get("IMAGEN_API_KEY")
+            if api_key is not None
+            else (
+                os.environ.get("GEMINI_API_KEY")
+                or os.environ.get("GOOGLE_API_KEY")
+                or os.environ.get("IMAGEN_API_KEY")
+            )
         )
-        self.model_name = model_name
+        self.model_name = (
+            model_name
+            or os.environ.get("STORYBOARD_IMAGE_MODEL")
+            or "gemini-3.1-flash-image"
+        )
         self.asset_store = asset_store or StoryboardAssetStore()
         self.compiler = StoryboardPromptCompiler()
         self.fallback = FallbackComicSvgProvider(asset_store=self.asset_store)
@@ -250,20 +257,42 @@ class CloudImagenStoryboardProvider(StoryboardImageProvider):
         self._last_fallback_reason: Optional[FallbackReason] = (
             None if self.api_key else FallbackReason.NO_API_KEY
         )
+        self._quota_status: str = "UNCHECKED" if self.api_key else "NO_KEY"
+        self._last_safe_message: Optional[str] = None
+        self._last_error_details: Dict[str, Any] = {}
+
+    def get_capabilities(self) -> Dict[str, Any]:
+        """Expose image provider capabilities and model options without exposing secrets."""
+        return {
+            "provider": "google_imagen",
+            "selected_model": self.model_name,
+            "available": bool(self.api_key),
+            "quota_status": self._quota_status,
+            "last_error_category": (
+                self._last_fallback_reason.value if self._last_fallback_reason else None
+            ),
+            "continuity_mode": "TEXTUAL CONTINUITY ONLY",
+            "status_message": (
+                self._last_safe_message
+                or (
+                    "Provider is ready for cloud image generation."
+                    if self.api_key
+                    else "No API key configured."
+                )
+            ),
+            "supports_image_conditioning": False,
+            "fallback_enabled": True,
+        }
 
     def get_status(self) -> Dict[str, Any]:
         """Expose runtime state safely without revealing secrets."""
-        return {
-            "storyboard_image_provider": "google_imagen",
-            "mode": "cloud",
-            "status": self._last_state.value,
-            "available": bool(self.api_key),
-            "model": self.model_name,
-            "fallback_enabled": True,
-            "fallback_reason": self._last_fallback_reason.value if self._last_fallback_reason else None,
-            "continuity_mode": "TEXTUAL CONTINUITY ONLY",
-            "supports_image_conditioning": False,
-        }
+        caps = self.get_capabilities()
+        caps["storyboard_image_provider"] = "google_imagen"
+        caps["mode"] = "cloud"
+        caps["status"] = self._last_state.value
+        caps["model"] = self.model_name
+        caps["fallback_reason"] = caps["last_error_category"]
+        return caps
 
     def _detect_mime_and_ext(self, raw_bytes: bytes) -> Tuple[str, str]:
         """Detect raster MIME type and file extension from magic bytes."""
@@ -287,31 +316,53 @@ class CloudImagenStoryboardProvider(StoryboardImageProvider):
         if not self.api_key:
             self._last_state = ProviderState.UNAVAILABLE
             self._last_fallback_reason = FallbackReason.NO_API_KEY
+            self._quota_status = "NO_KEY"
+            self._last_safe_message = "No Google API key configured for cloud image generation."
             res = self.fallback.generate_panel(panel, bible, version)
             res.fallback_reason = FallbackReason.NO_API_KEY.value
             res.provider_status = ProviderState.UNAVAILABLE.value
             res.render_metadata["fallback_reason"] = FallbackReason.NO_API_KEY.value
             res.render_metadata["provider_status"] = ProviderState.UNAVAILABLE.value
+            res.render_metadata["status_message"] = self._last_safe_message
             res.render_metadata["model"] = self.model_name
             res.render_metadata["label"] = "FALLBACK COMIC"
             return res
 
+        # Fast non-retrying circuit-breaker for quota exhaustion in this generation cycle
+        if self._quota_status == "EXCEEDED":
+            fallback_res = self.fallback.generate_panel(panel, bible, version)
+            fallback_res.fallback_reason = FallbackReason.QUOTA_EXCEEDED.value
+            fallback_res.provider_status = ProviderState.QUOTA_ERROR.value
+            fallback_res.render_metadata["fallback_reason"] = FallbackReason.QUOTA_EXCEEDED.value
+            fallback_res.render_metadata["provider_status"] = ProviderState.QUOTA_ERROR.value
+            fallback_res.render_metadata["status_message"] = self._last_safe_message
+            fallback_res.render_metadata["quota_status"] = "EXCEEDED"
+            fallback_res.render_metadata["model"] = self.model_name
+            fallback_res.render_metadata["label"] = "FALLBACK COMIC"
+            return fallback_res
+
         try:
             import httpx
 
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:predict?key={self.api_key}"
-            payload = {
-                "instances": [
-                    {"prompt": compiled_prompt}
-                ],
-                "parameters": {
-                    "sampleCount": 1,
-                    "aspectRatio": "16:9",
-                    "outputMimeType": "image/jpeg",
-                    "personGeneration": "ALLOW_ADULT",
-                    "negativePrompt": negative_prompt,
+            is_imagen_predict = self.model_name.startswith("imagen-")
+            if is_imagen_predict:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:predict?key={self.api_key}"
+                payload: Dict[str, Any] = {
+                    "instances": [{"prompt": compiled_prompt}],
+                    "parameters": {
+                        "sampleCount": 1,
+                        "aspectRatio": "16:9",
+                        "outputMimeType": "image/jpeg",
+                        "personGeneration": "ALLOW_ADULT",
+                        "negativePrompt": negative_prompt,
+                    },
                 }
-            }
+            else:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": compiled_prompt}]}],
+                    "generationConfig": {"responseModalities": ["image", "text"]},
+                }
 
             with httpx.Client(timeout=30.0) as client:
                 resp = client.post(url, json=payload)
@@ -319,9 +370,20 @@ class CloudImagenStoryboardProvider(StoryboardImageProvider):
 
                 if status_code == 200:
                     data = resp.json()
+                    raw_bytes = b""
                     predictions = data.get("predictions", [])
                     if predictions and "bytesBase64Encoded" in predictions[0]:
                         raw_bytes = base64.b64decode(predictions[0]["bytesBase64Encoded"])
+                    elif "candidates" in data:
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            for part in parts:
+                                if "inlineData" in part and "data" in part["inlineData"]:
+                                    raw_bytes = base64.b64decode(part["inlineData"]["data"])
+                                    break
+
+                    if raw_bytes:
                         mime_type, ext = self._detect_mime_and_ext(raw_bytes)
                         filename = f"{panel.panel_id or panel.id}_v{version}.{ext}"
                         project_id = panel.project_id or "default"
@@ -333,6 +395,8 @@ class CloudImagenStoryboardProvider(StoryboardImageProvider):
                         )
                         self._last_state = ProviderState.AVAILABLE
                         self._last_fallback_reason = None
+                        self._quota_status = "OK"
+                        self._last_safe_message = None
 
                         return StoryboardImageResult(
                             panel_id=panel.panel_id or panel.id,
@@ -357,97 +421,69 @@ class CloudImagenStoryboardProvider(StoryboardImageProvider):
                     else:
                         fallback_reason = FallbackReason.INVALID_RESPONSE
                         self._last_state = ProviderState.CONFIG_ERROR
+                        self._last_safe_message = "Google API response succeeded but contained no image data."
+
+                elif status_code == 429:
+                    # Explicit Quota Exhaustion handling — no loops or repeated retries
+                    fallback_reason = FallbackReason.QUOTA_EXCEEDED
+                    self._last_state = ProviderState.QUOTA_ERROR
+                    self._quota_status = "EXCEEDED"
+                    self._last_safe_message = (
+                        "Cloud image generation unavailable because this Google project currently "
+                        "has no usable quota for the selected image model."
+                    )
+                    try:
+                        err_json = resp.json().get("error", {})
+                        google_status = err_json.get("status", "RESOURCE_EXHAUSTED")
+                    except Exception:
+                        google_status = "RESOURCE_EXHAUSTED"
+
+                    self._last_error_details = {
+                        "http_status": 429,
+                        "google_status": google_status,
+                        "model": self.model_name,
+                    }
+
                 elif status_code in (400, 401, 403):
                     fallback_reason = FallbackReason.AUTHENTICATION_FAILED
                     self._last_state = ProviderState.AUTH_ERROR
+                    self._last_safe_message = "Google API authentication failed. Please verify your GEMINI_API_KEY."
                 elif status_code == 404:
-                    # Attempt multimodal Gemini image generation endpoint
-                    try:
-                        gc_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key={self.api_key}"
-                        gc_payload = {
-                            "contents": [{"parts": [{"text": compiled_prompt}]}],
-                            "generationConfig": {"responseModalities": ["image", "text"]},
-                        }
-                        gc_resp = client.post(gc_url, json=gc_payload, timeout=30.0)
-                        if gc_resp.status_code == 200:
-                            gc_data = gc_resp.json()
-                            for cand in gc_data.get("candidates", []):
-                                for part in cand.get("content", {}).get("parts", []):
-                                    if "inlineData" in part and "data" in part["inlineData"]:
-                                        raw_bytes = base64.b64decode(part["inlineData"]["data"])
-                                        mime_type, ext = self._detect_mime_and_ext(raw_bytes)
-                                        filename = f"{panel.panel_id or panel.id}_v{version}.{ext}"
-                                        project_id = panel.project_id or "default"
-                                        asset_url = self.asset_store.save_asset(
-                                            project_id=project_id,
-                                            category="panels",
-                                            filename=filename,
-                                            content=raw_bytes,
-                                        )
-                                        self._last_state = ProviderState.AVAILABLE
-                                        self._last_fallback_reason = None
-                                        return StoryboardImageResult(
-                                            panel_id=panel.panel_id or panel.id,
-                                            version=version,
-                                            image_url=asset_url,
-                                            provider="google_gemini_image",
-                                            mode="ai_image",
-                                            compiled_prompt=compiled_prompt,
-                                            negative_prompt=negative_prompt,
-                                            status=StoryboardImageStatus.READY,
-                                            fallback_reason=None,
-                                            provider_status=ProviderState.AVAILABLE.value,
-                                            continuity_mode="TEXTUAL CONTINUITY ONLY",
-                                            mime_type=mime_type,
-                                            render_metadata={
-                                                "model": "gemini-3.1-flash-image",
-                                                "label": "AI IMAGE",
-                                                "mime_type": mime_type,
-                                                "bytes_size": len(raw_bytes),
-                                            },
-                                        )
-                        status_code = gc_resp.status_code
-                    except Exception:
-                        pass
-
-                    if status_code == 429:
-                        fallback_reason = FallbackReason.QUOTA_EXCEEDED
-                        self._last_state = ProviderState.QUOTA_ERROR
-                    elif status_code in (400, 401, 403):
-                        fallback_reason = FallbackReason.AUTHENTICATION_FAILED
-                        self._last_state = ProviderState.AUTH_ERROR
-                    elif status_code == 404:
-                        fallback_reason = FallbackReason.UNSUPPORTED_MODEL
-                        self._last_state = ProviderState.CONFIG_ERROR
-                    else:
-                        fallback_reason = FallbackReason.REQUEST_FAILED
-                        self._last_state = ProviderState.UNAVAILABLE
-                elif status_code == 429:
-                    fallback_reason = FallbackReason.QUOTA_EXCEEDED
-                    self._last_state = ProviderState.QUOTA_ERROR
+                    fallback_reason = FallbackReason.UNSUPPORTED_MODEL
+                    self._last_state = ProviderState.CONFIG_ERROR
+                    self._last_safe_message = f"Selected model '{self.model_name}' is not supported on this Google API path."
                 else:
                     fallback_reason = FallbackReason.REQUEST_FAILED
                     self._last_state = ProviderState.UNAVAILABLE
+                    self._last_safe_message = f"Cloud image generation request failed with HTTP {status_code}."
 
             self._last_fallback_reason = fallback_reason
-            logger.warning(f"Imagen API request failed with status {status_code}: falling back with reason {fallback_reason.value}")
+            logger.warning(
+                f"Cloud image generation failed with HTTP {status_code} ({fallback_reason.value}): "
+                f"using procedural comic fallback. Message: {self._last_safe_message}"
+            )
             fallback_res = self.fallback.generate_panel(panel, bible, version)
             fallback_res.fallback_reason = fallback_reason.value
             fallback_res.provider_status = self._last_state.value
             fallback_res.render_metadata["fallback_reason"] = fallback_reason.value
             fallback_res.render_metadata["provider_status"] = self._last_state.value
+            fallback_res.render_metadata["status_message"] = self._last_safe_message
             fallback_res.render_metadata["model"] = self.model_name
             fallback_res.render_metadata["http_status"] = status_code
+            if self._quota_status == "EXCEEDED":
+                fallback_res.render_metadata["quota_status"] = "EXCEEDED"
             return fallback_res
 
         except Exception as err:
             logger.warning(f"Cloud image generation encountered error, falling back to procedural comic engine: {err}")
             self._last_state = ProviderState.UNAVAILABLE
             self._last_fallback_reason = FallbackReason.REQUEST_FAILED
+            self._last_safe_message = "Cloud image generation encountered network exception."
             fallback_res = self.fallback.generate_panel(panel, bible, version)
             fallback_res.fallback_reason = FallbackReason.REQUEST_FAILED.value
             fallback_res.provider_status = ProviderState.UNAVAILABLE.value
             fallback_res.render_metadata["fallback_reason"] = FallbackReason.REQUEST_FAILED.value
+            fallback_res.render_metadata["status_message"] = self._last_safe_message
             fallback_res.render_metadata["exception"] = str(err)
             return fallback_res
 

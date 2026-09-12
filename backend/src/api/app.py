@@ -145,8 +145,9 @@ def get_image_provider(
         return MockStoryboardImageProvider(asset_store=asset_store, simulate_ai_mode=True)
     if provider_type == "fallback":
         return FallbackComicSvgProvider(asset_store=asset_store)
+    model_name = os.environ.get("STORYBOARD_IMAGE_MODEL") or "gemini-3.1-flash-image"
     # Default to Cloud provider (handles live generation if key exists or transparent fallback with diagnostic reason)
-    return CloudImagenStoryboardProvider(api_key=api_key, asset_store=asset_store)
+    return CloudImagenStoryboardProvider(api_key=api_key, asset_store=asset_store, model_name=model_name)
 
 
 def create_app(store_dir: Optional[str] = None) -> FastAPI:
@@ -831,6 +832,14 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
     def get_storyboard_provider_status():
         """Expose image provider availability and diagnostic status without exposing secrets."""
         provider = get_image_provider()
+        return provider.get_status()
+
+    @app.get("/api/storyboard/capabilities")
+    def get_storyboard_capabilities():
+        """Expose image provider capability report without exposing secrets."""
+        provider = get_image_provider()
+        if hasattr(provider, "get_capabilities"):
+            return provider.get_capabilities()
         return provider.get_status()
 
     @app.get("/api/projects/{project_id}/storyboard/status")

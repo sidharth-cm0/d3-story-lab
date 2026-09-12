@@ -220,7 +220,8 @@ def test_cloud_provider_mocked_http_responses(tmp_path):
         mock_resp.status_code = 401
         mock_post.return_value = mock_resp
 
-        res = provider.generate_panel(panel)
+        provider_401 = CloudImagenStoryboardProvider(api_key="mock_key_12345", asset_store=store)
+        res = provider_401.generate_panel(panel)
         assert res.mode == "fallback_comic"
         assert res.fallback_reason == FallbackReason.AUTHENTICATION_FAILED.value
         assert res.provider_status == ProviderState.AUTH_ERROR.value
@@ -231,7 +232,8 @@ def test_cloud_provider_mocked_http_responses(tmp_path):
         mock_resp.status_code = 429
         mock_post.return_value = mock_resp
 
-        res = provider.generate_panel(panel)
+        provider_429 = CloudImagenStoryboardProvider(api_key="mock_key_12345", asset_store=store)
+        res = provider_429.generate_panel(panel)
         assert res.mode == "fallback_comic"
         assert res.fallback_reason == FallbackReason.QUOTA_EXCEEDED.value
         assert res.provider_status == ProviderState.QUOTA_ERROR.value
@@ -253,7 +255,8 @@ def test_cloud_provider_mocked_http_responses(tmp_path):
         }
         mock_post.return_value = mock_resp
 
-        res = provider.generate_panel(panel)
+        provider_200 = CloudImagenStoryboardProvider(api_key="mock_key_12345", asset_store=store)
+        res = provider_200.generate_panel(panel)
         assert res.mode == "ai_image"
         assert res.provider == "google_imagen"
         assert res.status == StoryboardImageStatus.READY
