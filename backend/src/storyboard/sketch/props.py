@@ -1,13 +1,17 @@
-"""Recognizable hand-drawn sketch props and object continuity.
+"""Recognizable hand-drawn sketch props as detailed mini-illustrations.
 
-Renders iconic storyboard props (dossier, flashlight, safe, phone, keys, gun, etc.)
-with canonical details derived from ObjectVisualReference.
+Implements physical props with perspective volume and material cues:
+- DOSSIER: 3D perspective folder volume, spine thickness, wax seal, brass clips, visible paper pages, TOP SECRET stamp
+- FLASHLIGHT: Cylindrical perspective, stepped barrel, knurled grip, lens bezel, volumetric particle cone
+- PHONE: Smartphone bezel, screen plane, camera module, hand grip clamp
+- GUN: Semi-automatic slide, frame, trigger guard, textured grip
+- SAFE / VAULT: 3D door recess, heavy locking bolts, multi-spoke wheel, dial
 """
 
 from __future__ import annotations
 import math
 from enum import Enum
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, List
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.storyboard.visual_bible import ObjectVisualReference
@@ -16,10 +20,25 @@ from src.storyboard.sketch.stroke import (
     SketchEllipse,
     SketchPolyline,
     SketchPolygon,
+    InkWashPolygon,
     CrossHatch,
     ScribbleShadow,
+    TextureRenderer,
     get_rng,
     get_seed_hash,
+    LINE_WEIGHT_CONSTRUCTION,
+    LINE_WEIGHT_INTERIOR,
+    LINE_WEIGHT_CHARACTER,
+    LINE_WEIGHT_FOREGROUND,
+    VALUE_0,
+    VALUE_1,
+    VALUE_2,
+    VALUE_3,
+    VALUE_4,
+    ACCENT_WARM_LAMP,
+    ACCENT_STORY_RED,
+    ACCENT_SEPIA,
+    ACCENT_BLUE_HAZE,
 )
 
 
@@ -52,68 +71,55 @@ class ObjectSketchIdentity(BaseModel):
     object_id: str
     name: str
     prop_type: PropType = PropType.DOSSIER
-    width: float = 60.0
-    height: float = 45.0
-    accent_color: str = "#f59e0b"
-    unique_marking: str = "seal"  # "seal", "stamp", "serial", "logo"
+    width: float = 65.0
+    height: float = 48.0
+    accent_color: str = ACCENT_STORY_RED
+    unique_marking: str = "TOP SECRET"
     material_tone: str = "#0f172a"
 
     @classmethod
     def from_reference(cls, ref: ObjectVisualReference) -> ObjectSketchIdentity:
         desc = (ref.name + " " + ref.form_factor + " " + ref.materials + " " + ref.unique_markings).lower()
 
-        # Classify prop type
         if "dossier" in desc or "folder" in desc or "file" in desc or "ledger" in desc:
             p_type = PropType.DOSSIER
-        elif "document" in desc or "paper" in desc or "sheet" in desc:
-            p_type = PropType.DOCUMENT
+            accent = ACCENT_STORY_RED
+            marking = "TOP SECRET"
         elif "flashlight" in desc or "torch" in desc:
             p_type = PropType.FLASHLIGHT
+            accent = ACCENT_WARM_LAMP
+            marking = "TACTICAL"
         elif "phone" in desc or "transceiver" in desc or "mobile" in desc:
             p_type = PropType.PHONE
-        elif "key" in desc:
-            p_type = PropType.KEY
+            accent = ACCENT_BLUE_HAZE
+            marking = "ENCRYPTED"
+        elif "gun" in desc or "pistol" in desc or "weapon" in desc:
+            p_type = PropType.GUN
+            accent = "#94a3b8"
+            marking = "9MM"
         elif "safe" in desc:
             p_type = PropType.SAFE
-        elif "vault" in desc:
-            p_type = PropType.VAULT_DOOR
-        elif "briefcase" in desc or "case" in desc:
-            p_type = PropType.BRIEFCASE
-        elif "gun" in desc or "pistol" in desc or "weapon" in desc or "revolver" in desc:
-            p_type = PropType.GUN
-        elif "knife" in desc or "blade" in desc:
-            p_type = PropType.KNIFE
-        elif "computer" in desc or "laptop" in desc:
-            p_type = PropType.COMPUTER
-        elif "radio" in desc:
-            p_type = PropType.RADIO
-        elif "table" in desc or "desk" in desc:
-            p_type = PropType.TABLE
-        elif "chair" in desc or "seat" in desc:
-            p_type = PropType.CHAIR
-        elif "door" in desc:
-            p_type = PropType.DOOR
-        elif "letter" in desc or "envelope" in desc:
-            p_type = PropType.LETTER
-        elif "monitor" in desc or "screen" in desc:
-            p_type = PropType.MONITOR
+            accent = "#cbd5e1"
+            marking = "VAULT"
         else:
             p_type = PropType.DOSSIER
-
-        # Check unique markings
-        marking = "seal" if ("seal" in desc or "wax" in desc) else ("stamp" if "stamp" in desc else "serial")
+            accent = ACCENT_STORY_RED
+            marking = "CLASSIFIED"
 
         return cls(
             object_id=ref.object_id,
             name=ref.name,
             prop_type=p_type,
+            width=70.0,
+            height=50.0,
+            accent_color=accent,
             unique_marking=marking,
-            accent_color="#f59e0b" if "gold" in desc or "brass" in desc or "amber" in desc else "#38bdf8",
+            material_tone="#0f172a",
         )
 
 
 class PropSketchRenderer:
-    """Renders canonical props into SVG using hand-drawn sketch strokes."""
+    """Renders physical props as mini-illustrations with perspective volume (Section 18)."""
 
     def __init__(self):
         self._identities: Dict[str, ObjectSketchIdentity] = {}
@@ -148,393 +154,428 @@ class PropSketchRenderer:
         rotation_deg: float = 0.0,
         seed: str = "prop",
         stroke_color: str = "#e2e8f0",
+        is_insert: bool = False,
     ) -> str:
-        """Render a specific prop template into SVG elements."""
+        """Render physical prop in 3D perspective as an authentic film storyboard illustration."""
         p_type = identity.prop_type
-        elements = []
+        eff_scale = scale * (1.65 if is_insert else 1.0)
+        w = identity.width * eff_scale
+        h = identity.height * eff_scale
+        elements: List[str] = []
 
-        if p_type == PropType.DOSSIER:
-            # Rectangular folio, corner brass clips, fold seam, red wax seal, label band
-            w = 54.0 * scale
-            h = 40.0 * scale
-            x = cx - w / 2
-            y = cy - h / 2
+        # Optional group rotation transform
+        wrap_start = f'<g id="prop_{identity.object_id}" transform="rotate({rotation_deg:.1f} {cx:.1f} {cy:.1f})">' if rotation_deg != 0 else f'<g id="prop_{identity.object_id}">'
 
-            # Folio cover
-            folio_pts = [
-                (x, y),
-                (x + w, y - 2),
-                (x + w + 2, y + h),
-                (x - 2, y + h + 2),
-            ]
-            folio_svg = SketchPolygon.render(
-                folio_pts,
-                seed=f"{seed}_folio",
-                fill_color="#18181b",
-                fill_opacity=0.92,
-                stroke_color=stroke_color,
-                stroke_width=2.0,
-            )
-            elements.append(f'<g id="dossier_folio">\n  {folio_svg}\n</g>')
+        # =========================================================================
+        # 1. DOSSIER (Section 18: Perspective folder, wax seal, brass clips, pages)
+        # =========================================================================
+        if p_type == PropType.DOSSIER or p_type == PropType.DOCUMENT:
+            # Perspective trapezoid folder resting at an angle on surface
+            f_tl = (cx - w * 0.48, cy - h * 0.45)
+            f_tr = (cx + w * 0.44, cy - h * 0.35)
+            f_br = (cx + w * 0.50, cy + h * 0.48)
+            f_bl = (cx - w * 0.42, cy + h * 0.42)
 
-            # Center fold seam
+            # Drop shadow under dossier on table
             elements.append(
-                SketchStroke.render_line(
-                    cx, y - 1, cx, y + h + 1,
-                    seed=f"{seed}_seam",
-                    stroke_color="#94a3b8",
-                    stroke_width=1.5,
-                )
-            )
-            # Corner clips
-            clip_len = 6.0 * scale
-            clip1 = SketchStroke.render_line(
-                x, y + clip_len, x + clip_len, y,
-                seed=f"{seed}_clip1",
-                stroke_color=identity.accent_color,
-                stroke_width=2.2,
-            )
-            clip2 = SketchStroke.render_line(
-                x + w - clip_len, y, x + w, y + clip_len,
-                seed=f"{seed}_clip2",
-                stroke_color=identity.accent_color,
-                stroke_width=2.2,
-            )
-            elements.append(f'<g id="dossier_clips">\n  {clip1}\n  {clip2}\n</g>')
-
-            # Label band across lower front
-            elements.append(
-                SketchStroke.render_line(
-                    x + 4, y + h * 0.65, x + w - 4, y + h * 0.65,
-                    seed=f"{seed}_band",
-                    stroke_color="#64748b",
-                    stroke_width=2.4,
-                )
-            )
-            # Circular wax seal
-            seal_svg = SketchEllipse.render(
-                cx, cy - 2, 7.0 * scale, 7.0 * scale,
-                seed=f"{seed}_seal",
-                stroke_color="#ef4444",
-                stroke_width=1.8,
-                fill_color="#7f1d1d",
-                fill_opacity=0.9,
-            )
-            elements.append(f'<g id="dossier_seal">\n  {seal_svg}\n</g>')
-
-        elif p_type == PropType.DOCUMENT:
-            # Paper sheet with text scribble lines and folded corner
-            w = 44.0 * scale
-            h = 58.0 * scale
-            x = cx - w / 2
-            y = cy - h / 2
-            corner = 10.0 * scale
-
-            doc_pts = [
-                (x, y),
-                (x + w - corner, y),
-                (x + w, y + corner),
-                (x + w, y + h),
-                (x, y + h),
-            ]
-            elements.append(
-                SketchPolygon.render(
-                    doc_pts,
-                    seed=f"{seed}_doc",
-                    fill_color="#f8fafc",
-                    fill_opacity=0.88,
-                    stroke_color="#0f172a",
-                    stroke_width=1.6,
-                )
-            )
-            # Folded dog-ear corner
-            elements.append(
-                SketchStroke.render_line(
-                    x + w - corner, y, x + w - corner, y + corner,
-                    seed=f"{seed}_fold1",
-                    stroke_color="#0f172a",
-                    stroke_width=1.4,
-                )
-            )
-            elements.append(
-                SketchStroke.render_line(
-                    x + w - corner, y + corner, x + w, y + corner,
-                    seed=f"{seed}_fold2",
-                    stroke_color="#0f172a",
-                    stroke_width=1.4,
-                )
-            )
-            # Text lines
-            for t in range(5):
-                ty = y + 14 * scale + (t * 8.0 * scale)
-                elements.append(
-                    SketchStroke.render_line(
-                        x + 6, ty, x + w - 8, ty,
-                        seed=f"{seed}_txt_{t}",
-                        stroke_color="#334155",
-                        stroke_width=1.2,
-                        passes=1,
-                    )
-                )
-
-        elif p_type == PropType.FLASHLIGHT:
-            # Cylindrical body, grip ribs, flared lens head, beam cone
-            len_b = 48.0 * scale
-            rad_b = 6.0 * scale
-            head_rad = 12.0 * scale
-
-            # Cylinder body
-            elements.append(
-                SketchStroke.render_line(
-                    cx - len_b / 2, cy - rad_b, cx + len_b * 0.25, cy - rad_b,
-                    seed=f"{seed}_fl_top",
-                    stroke_color=stroke_color,
-                    stroke_width=2.0,
-                )
-            )
-            elements.append(
-                SketchStroke.render_line(
-                    cx - len_b / 2, cy + rad_b, cx + len_b * 0.25, cy + rad_b,
-                    seed=f"{seed}_fl_bot",
-                    stroke_color=stroke_color,
-                    stroke_width=2.0,
-                )
-            )
-            elements.append(
-                SketchStroke.render_line(
-                    cx - len_b / 2, cy - rad_b, cx - len_b / 2, cy + rad_b,
-                    seed=f"{seed}_fl_cap",
-                    stroke_color=stroke_color,
-                    stroke_width=2.2,
-                )
-            )
-            # Grip ribs
-            for r in range(4):
-                rx = cx - len_b * 0.35 + (r * 6.0 * scale)
-                elements.append(
-                    SketchStroke.render_line(
-                        rx, cy - rad_b, rx, cy + rad_b,
-                        seed=f"{seed}_fl_rib_{r}",
-                        stroke_color="#94a3b8",
-                        stroke_width=1.4,
-                    )
-                )
-            # Flared head
-            flare_pts = [
-                (cx + len_b * 0.25, cy - rad_b),
-                (cx + len_b * 0.5, cy - head_rad),
-                (cx + len_b * 0.5, cy + head_rad),
-                (cx + len_b * 0.25, cy + rad_b),
-            ]
-            elements.append(
-                SketchPolygon.render(
-                    flare_pts,
-                    seed=f"{seed}_fl_head",
-                    fill_color="#1e293b",
-                    fill_opacity=0.9,
-                    stroke_color=stroke_color,
-                    stroke_width=2.0,
-                )
-            )
-            # Luminous beam cone
-            beam_pts = [
-                (cx + len_b * 0.5, cy - head_rad),
-                (cx + len_b * 0.5 + 160 * scale, cy - head_rad * 3.5),
-                (cx + len_b * 0.5 + 160 * scale, cy + head_rad * 3.5),
-                (cx + len_b * 0.5, cy + head_rad),
-            ]
-            elements.append(
-                f'<g id="flashlight_beam">\n'
-                f'  <polygon points="{" ".join(f"{p[0]:.1f},{p[1]:.1f}" for p in beam_pts)}" '
-                f'fill="#fbbf24" fill-opacity="0.18"/>\n'
-                f'</g>'
-            )
-
-        elif p_type == PropType.PHONE:
-            # Smartphone or radio transceiver
-            w = 22.0 * scale
-            h = 42.0 * scale
-            x = cx - w / 2
-            y = cy - h / 2
-            elements.append(
-                SketchPolygon.render(
-                    [(x, y), (x + w, y), (x + w, y + h), (x, y + h)],
-                    seed=f"{seed}_phone",
+                InkWashPolygon.render(
+                    [
+                        (f_bl[0] + 6, f_bl[1] + 6),
+                        (f_br[0] + 12, f_br[1] + 8),
+                        (f_br[0] + 18, f_br[1] + 18),
+                        (f_bl[0] + 4, f_bl[1] + 16),
+                    ],
+                    seed=f"{seed}_dossier_drop_sh",
                     fill_color="#020617",
-                    fill_opacity=0.95,
-                    stroke_color=stroke_color,
-                    stroke_width=1.8,
-                )
-            )
-            # Screen glow
-            elements.append(
-                SketchPolygon.render(
-                    [(x + 2, y + 4), (x + w - 2, y + 4), (x + w - 2, y + h - 6), (x + 2, y + h - 6)],
-                    seed=f"{seed}_screen",
-                    fill_color="#38bdf8",
-                    fill_opacity=0.35,
-                    stroke_color="#38bdf8",
-                    stroke_width=1.2,
+                    opacity=0.65,
                 )
             )
 
-        elif p_type == PropType.KEY:
-            # Key ring, serrated shaft, bow
-            ring_r = 8.0 * scale
-            shaft_len = 24.0 * scale
+            # Manila folder body wash
             elements.append(
-                SketchEllipse.render(
-                    cx - shaft_len / 2, cy, ring_r, ring_r,
-                    seed=f"{seed}_key_ring",
-                    stroke_color=identity.accent_color,
-                    stroke_width=2.0,
+                InkWashPolygon.render(
+                    [f_tl, f_tr, f_br, f_bl],
+                    seed=f"{seed}_dossier_manila",
+                    fill_color="#78350f",
+                    opacity=0.35,
+                )
+            )
+
+            # Main folder cover polygon
+            elements.append('<g id="dossier_folio">')
+            elements.append(
+                SketchPolygon.render(
+                    [f_tl, f_tr, f_br, f_bl],
+                    seed=f"{seed}_dossier_cover",
+                    stroke_color=stroke_color,
+                    stroke_width=LINE_WEIGHT_CHARACTER,
+                    fill_color="#0f172a",
+                    fill_opacity=0.94,
+                )
+            )
+            elements.append('</g>')
+
+            # Spine fold thickness line on left edge
+            elements.append(
+                SketchStroke.render_line(
+                    f_tl[0] + 5, f_tl[1] + 2,
+                    f_bl[0] + 5, f_bl[1] - 2,
+                    seed=f"{seed}_spine_fold",
+                    stroke_color=stroke_color,
+                    stroke_width=LINE_WEIGHT_INTERIOR,
+                    passes=1,
+                )
+            )
+
+            # Stepped file tab on top-right edge
+            tab_pts = [
+                (f_tr[0] - 22, f_tr[1] - 1),
+                (f_tr[0] - 20, f_tr[1] - 8),
+                (f_tr[0] - 4, f_tr[1] - 6),
+                (f_tr[0] - 2, f_tr[1]),
+            ]
+            elements.append(
+                SketchPolygon.render(
+                    tab_pts,
+                    seed=f"{seed}_tab",
+                    stroke_color=stroke_color,
+                    stroke_width=LINE_WEIGHT_INTERIOR,
+                    fill_color="#1e293b",
+                    fill_opacity=0.95,
+                )
+            )
+
+            # Visible white paper sheets protruding from right edge
+            page_pts = [
+                (f_tr[0] - 6, f_tr[1] + 2),
+                (f_tr[0] + 5, f_tr[1] + 4),
+                (f_br[0] + 4, f_br[1] - 4),
+                (f_br[0] - 6, f_br[1] - 4),
+            ]
+            elements.append(
+                SketchPolygon.render(
+                    page_pts,
+                    seed=f"{seed}_inner_pages",
+                    stroke_color="#cbd5e1",
+                    stroke_width=LINE_WEIGHT_CONSTRUCTION,
+                    fill_color=VALUE_0,
+                    fill_opacity=0.88,
+                )
+            )
+
+            # Brass binding fastener prongs on top-left corner
+            elements.append('<g id="dossier_clip">')
+            for b_idx in range(2):
+                bx = f_tl[0] + 12 + (b_idx * 16)
+                by = f_tl[1] + 10 + (b_idx * 4)
+                elements.append(
+                    SketchPolygon.render(
+                        [(bx - 3, by - 2), (bx + 3, by - 2), (bx + 2, by + 4), (bx - 2, by + 4)],
+                        seed=f"{seed}_brass_{b_idx}",
+                        stroke_color="#f59e0b",
+                        stroke_width=LINE_WEIGHT_CONSTRUCTION,
+                        fill_color="#d97706",
+                    )
+                )
+            elements.append('</g>')
+
+            # Stamped "TOP SECRET" / "CONFIDENTIAL" Stencil Text
+            stamp_cx = cx + 2
+            stamp_cy = cy - 4
+            stamp_w = w * 0.46
+            stamp_h = 14.0
+            # Stamp border box
+            elements.append(
+                SketchPolygon.render(
+                    [
+                        (stamp_cx - stamp_w * 0.5, stamp_cy - stamp_h * 0.5),
+                        (stamp_cx + stamp_w * 0.5, stamp_cy - stamp_h * 0.5),
+                        (stamp_cx + stamp_w * 0.5, stamp_cy + stamp_h * 0.5),
+                        (stamp_cx - stamp_w * 0.5, stamp_cy + stamp_h * 0.5),
+                    ],
+                    seed=f"{seed}_stamp_box",
+                    stroke_color=ACCENT_STORY_RED,
+                    stroke_width=LINE_WEIGHT_INTERIOR,
                     fill_color="none",
                 )
             )
-            # Shaft
+            # Bold stencil lettering
             elements.append(
-                SketchStroke.render_line(
-                    cx - shaft_len / 2 + ring_r, cy, cx + shaft_len / 2, cy,
-                    seed=f"{seed}_key_shaft",
-                    stroke_color=identity.accent_color,
-                    stroke_width=2.5,
-                )
-            )
-            # Teeth
-            elements.append(
-                SketchStroke.render_line(
-                    cx + shaft_len * 0.25, cy, cx + shaft_len * 0.25, cy + 6 * scale,
-                    seed=f"{seed}_tooth1",
-                    stroke_color=identity.accent_color,
-                    stroke_width=2.0,
-                )
-            )
-            elements.append(
-                SketchStroke.render_line(
-                    cx + shaft_len * 0.42, cy, cx + shaft_len * 0.42, cy + 8 * scale,
-                    seed=f"{seed}_tooth2",
-                    stroke_color=identity.accent_color,
-                    stroke_width=2.0,
-                )
+                f'<text x="{stamp_cx:.1f}" y="{stamp_cy + 4.0:.1f}" font-family="Courier New, monospace" '
+                f'font-size="9" font-weight="900" letter-spacing="1.5" fill="{ACCENT_STORY_RED}" text-anchor="middle">'
+                f'{identity.unique_marking}</text>'
             )
 
-        elif p_type == PropType.SAFE:
-            # Heavy beveled vault safe, combination wheel, hinge bolts
-            w = 80.0 * scale
-            h = 80.0 * scale
-            x = cx - w / 2
-            y = cy - h / 2
+            # Crimson Wax Seal with ribbon tails (Section 18)
+            elements.append('<g id="wax_seal">')
+            seal_x = cx + w * 0.15
+            seal_y = cy + h * 0.16
+            seal_r = 10.0 * (1.3 if is_insert else 1.0)
+            # Ribbon tails
             elements.append(
-                SketchPolygon.render(
-                    [(x, y), (x + w, y), (x + w, y + h), (x, y + h)],
-                    seed=f"{seed}_safe_body",
-                    fill_color="#0f172a",
-                    fill_opacity=0.95,
-                    stroke_color=stroke_color,
-                    stroke_width=2.5,
+                SketchPolyline.render(
+                    [(seal_x - 3, seal_y + 4), (seal_x - 8, seal_y + 16), (seal_x - 4, seal_y + 18)],
+                    seed=f"{seed}_ribbon1",
+                    stroke_color=ACCENT_STORY_RED,
+                    stroke_width=LINE_WEIGHT_INTERIOR,
                 )
             )
-            # Inner door seam
             elements.append(
-                SketchPolygon.render(
-                    [(x + 8, y + 8), (x + w - 8, y + 8), (x + w - 8, y + h - 8), (x + 8, y + h - 8)],
-                    seed=f"{seed}_safe_door",
-                    stroke_color="#94a3b8",
-                    stroke_width=1.6,
+                SketchPolyline.render(
+                    [(seal_x + 2, seal_y + 4), (seal_x + 6, seal_y + 17), (seal_x + 2, seal_y + 19)],
+                    seed=f"{seed}_ribbon2",
+                    stroke_color=ACCENT_STORY_RED,
+                    stroke_width=LINE_WEIGHT_INTERIOR,
                 )
             )
-            # Combination wheel
+            # Wax seal disc
             elements.append(
                 SketchEllipse.render(
-                    cx, cy, 14.0 * scale, 14.0 * scale,
-                    seed=f"{seed}_safe_wheel",
-                    stroke_color="#f8fafc",
-                    stroke_width=2.2,
-                    fill_color="#334155",
-                    fill_opacity=0.8,
+                    seal_x, seal_y, seal_r, seal_r * 0.9,
+                    seed=f"{seed}_wax_seal",
+                    stroke_color="#991b1b",
+                    stroke_width=LINE_WEIGHT_CHARACTER,
+                    fill_color=ACCENT_STORY_RED,
+                    fill_opacity=0.95,
+                    loops=2,
                 )
             )
-            # Dial spokes
-            for s in range(4):
-                a = math.radians(s * 45)
-                dx = math.cos(a) * 14 * scale
-                dy = math.sin(a) * 14 * scale
+            # Embossed inner emblem
+            elements.append(
+                SketchEllipse.render(
+                    seal_x, seal_y, seal_r * 0.45, seal_r * 0.45,
+                    seed=f"{seed}_wax_inner",
+                    stroke_color="#fca5a5",
+                    stroke_width=LINE_WEIGHT_CONSTRUCTION,
+                    fill_color="#7f1d1d",
+                )
+            )
+            elements.append('</g>')
+
+            if is_insert:
+                # Interacting hand gripping / opening the dossier flap (Section 9 & 18)
+                elements.append('<g id="insert_hand_interaction">')
+                # Hand forearm coming in from bottom-left
+                hx = f_bl[0] + 18.0
+                hy = f_bl[1] - 12.0
+                # Palm wedge
+                palm = [
+                    (hx - 28, hy + 38),
+                    (hx + 12, hy + 22),
+                    (hx + 26, hy - 4),
+                    (hx - 16, hy + 12),
+                ]
+                elements.append(
+                    SketchPolygon.render(
+                        palm,
+                        seed=f"{seed}_hand_palm",
+                        stroke_color=stroke_color,
+                        stroke_width=LINE_WEIGHT_INTERIOR,
+                        fill_color="#090d16",
+                        fill_opacity=0.96,
+                    )
+                )
+                # Grouped fingers grasping edge of folder
+                for f_idx in range(4):
+                    fy = hy - 6 + (f_idx * 7)
+                    fx1 = hx + 14
+                    fx2 = fx1 + 22
+                    elements.append(
+                        SketchStroke.render_line(
+                            fx1, fy, fx2, fy - 3,
+                            seed=f"{seed}_hand_fin_{f_idx}",
+                            stroke_color=stroke_color,
+                            stroke_width=LINE_WEIGHT_INTERIOR * 1.15,
+                            passes=2,
+                        )
+                    )
+                # Opposing thumb pressed on folder cover
                 elements.append(
                     SketchStroke.render_line(
-                        cx - dx, cy - dy, cx + dx, cy + dy,
-                        seed=f"{seed}_spoke_{s}",
-                        stroke_color="#cbd5e1",
-                        stroke_width=1.5,
+                        hx - 6, hy + 20, hx + 12, hy + 6,
+                        seed=f"{seed}_hand_thumb",
+                        stroke_color=stroke_color,
+                        stroke_width=LINE_WEIGHT_INTERIOR * 1.3,
+                        passes=2,
+                    )
+                )
+                # Tapered wrist / forearm entering frame
+                elements.append(
+                    SketchStroke.render_line(
+                        hx - 28, hy + 38, hx - 85, hy + 110,
+                        seed=f"{seed}_arm_l",
+                        stroke_color=stroke_color,
+                        stroke_width=LINE_WEIGHT_CHARACTER,
+                    )
+                )
+                elements.append(
+                    SketchStroke.render_line(
+                        hx - 12, hy + 60, hx - 60, hy + 130,
+                        seed=f"{seed}_arm_r",
+                        stroke_color=stroke_color,
+                        stroke_width=LINE_WEIGHT_CHARACTER,
+                    )
+                )
+                elements.append('</g>')
+
+        # =========================================================================
+        # 2. TACTICAL FLASHLIGHT (Section 18: Stepped cylinder, bezel, beam cone)
+        # =========================================================================
+        elif p_type == PropType.FLASHLIGHT:
+            fl_w = w * 0.95
+            fl_h = 16.0 * eff_scale
+
+            # Volumetric light cone expanding forward from lens head
+            elements.append('<g id="flashlight_beam">')
+            beam_origin_x = cx + fl_w * 0.5
+            beam_origin_y = cy
+            cone_pts = [
+                (beam_origin_x, beam_origin_y - 8),
+                (beam_origin_x + 360.0, beam_origin_y - 120),
+                (beam_origin_x + 360.0, beam_origin_y + 120),
+                (beam_origin_x, beam_origin_y + 8),
+            ]
+            elements.append(
+                InkWashPolygon.render(
+                    cone_pts,
+                    seed=f"{seed}_beam_cone",
+                    fill_color=ACCENT_WARM_LAMP,
+                    opacity=0.20,
+                )
+            )
+            # Core bright beam center
+            core_pts = [
+                (beam_origin_x, beam_origin_y - 3),
+                (beam_origin_x + 240.0, beam_origin_y - 45),
+                (beam_origin_x + 240.0, beam_origin_y + 45),
+                (beam_origin_x, beam_origin_y + 3),
+            ]
+            elements.append(
+                InkWashPolygon.render(
+                    core_pts,
+                    seed=f"{seed}_beam_core",
+                    fill_color="#ffffff",
+                    opacity=0.35,
+                )
+            )
+            elements.append('</g>')
+
+            # Flashlight cylindrical barrel body
+            bx1 = cx - fl_w * 0.48
+            bx2 = cx + fl_w * 0.28
+            elements.append(
+                SketchPolygon.render(
+                    [(bx1, cy - fl_h * 0.35), (bx2, cy - fl_h * 0.35), (bx2, cy + fl_h * 0.35), (bx1, cy + fl_h * 0.35)],
+                    seed=f"{seed}_fl_body",
+                    stroke_color=stroke_color,
+                    stroke_width=LINE_WEIGHT_CHARACTER,
+                    fill_color="#090d16",
+                    fill_opacity=0.98,
+                )
+            )
+            # Knurled grip texture bands on barrel
+            for k in range(5):
+                kx = bx1 + 10 + (k * 7)
+                elements.append(
+                    SketchStroke.render_line(
+                        kx, cy - fl_h * 0.32, kx, cy + fl_h * 0.32,
+                        seed=f"{seed}_knurl_{k}",
+                        stroke_color="#475569",
+                        stroke_width=LINE_WEIGHT_INTERIOR,
                     )
                 )
 
-        elif p_type == PropType.GUN:
-            # Semi-auto pistol silhouette
-            elements.append(
-                SketchStroke.render_line(
-                    cx - 16 * scale, cy - 6 * scale, cx + 18 * scale, cy - 6 * scale,
-                    seed=f"{seed}_barrel",
-                    stroke_color=stroke_color,
-                    stroke_width=4.0,
-                )
-            )
-            elements.append(
-                SketchStroke.render_line(
-                    cx - 12 * scale, cy - 6 * scale, cx - 18 * scale, cy + 16 * scale,
-                    seed=f"{seed}_grip",
-                    stroke_color=stroke_color,
-                    stroke_width=5.0,
-                )
-            )
-            elements.append(
-                SketchEllipse.render(
-                    cx - 6 * scale, cy + 2 * scale, 5 * scale, 5 * scale,
-                    seed=f"{seed}_guard",
-                    stroke_color=stroke_color,
-                    stroke_width=1.6,
-                )
-            )
-
-        elif p_type == PropType.TABLE:
-            # Wooden / steel desk surface in perspective
-            w = 120.0 * scale
-            d = 30.0 * scale
-            h_leg = 45.0 * scale
-            top_pts = [
-                (cx - w / 2, cy),
-                (cx + w / 2, cy),
-                (cx + w * 0.42, cy - d),
-                (cx - w * 0.42, cy - d),
+            # Beveled flared head / lens reflector
+            elements.append('<g id="fl_head">')
+            head_x1 = bx2
+            head_x2 = bx2 + fl_w * 0.20
+            head_pts = [
+                (head_x1, cy - fl_h * 0.35),
+                (head_x2, cy - fl_h * 0.58),
+                (head_x2, cy + fl_h * 0.58),
+                (head_x1, cy + fl_h * 0.35),
             ]
             elements.append(
                 SketchPolygon.render(
-                    top_pts,
-                    seed=f"{seed}_tbl_top",
-                    fill_color="#1e293b",
-                    fill_opacity=0.9,
+                    head_pts,
+                    seed=f"{seed}_fl_head",
                     stroke_color=stroke_color,
-                    stroke_width=2.0,
+                    stroke_width=LINE_WEIGHT_CHARACTER,
+                    fill_color="#0f172a",
+                    fill_opacity=0.98,
                 )
             )
-            # Legs
-            elements.append(SketchStroke.render_line(cx - w / 2 + 4, cy, cx - w / 2 + 4, cy + h_leg, seed=f"{seed}_leg1", stroke_color=stroke_color, stroke_width=2.2))
-            elements.append(SketchStroke.render_line(cx + w / 2 - 4, cy, cx + w / 2 - 4, cy + h_leg, seed=f"{seed}_leg2", stroke_color=stroke_color, stroke_width=2.2))
-            elements.append(SketchStroke.render_line(cx - w * 0.42 + 4, cy - d, cx - w * 0.42 + 4, cy + h_leg - d, seed=f"{seed}_leg3", stroke_color="#64748b", stroke_width=1.6))
-            elements.append(SketchStroke.render_line(cx + w * 0.42 - 4, cy - d, cx + w * 0.42 - 4, cy + h_leg - d, seed=f"{seed}_leg4", stroke_color="#64748b", stroke_width=1.6))
-
-        else:
-            # Generic recognizable prop box
-            w = 36.0 * scale
-            h = 28.0 * scale
+            elements.append('</g>')
+            # Front lens bezel rim ring
+            elements.append(
+                SketchStroke.render_line(
+                    head_x2, cy - fl_h * 0.58, head_x2, cy + fl_h * 0.58,
+                    seed=f"{seed}_lens_rim",
+                    stroke_color="#ffffff",
+                    stroke_width=LINE_WEIGHT_CHARACTER * 1.3,
+                )
+            )
+            # Rubberized thumb switch on top of barrel
             elements.append(
                 SketchPolygon.render(
-                    [(cx - w / 2, cy - h / 2), (cx + w / 2, cy - h / 2), (cx + w / 2, cy + h / 2), (cx - w / 2, cy + h / 2)],
-                    seed=f"{seed}_box",
-                    fill_color="#18181b",
-                    fill_opacity=0.9,
+                    [(bx1 + 18, cy - fl_h * 0.35 - 3), (bx1 + 28, cy - fl_h * 0.35 - 3), (bx1 + 28, cy - fl_h * 0.35), (bx1 + 18, cy - fl_h * 0.35)],
+                    seed=f"{seed}_switch",
                     stroke_color=stroke_color,
-                    stroke_width=2.0,
+                    stroke_width=LINE_WEIGHT_CONSTRUCTION,
+                    fill_color="#475569",
                 )
             )
 
-        return "\n  ".join(elements)
+        # =========================================================================
+        # 3. OTHER PROPS (GUN, PHONE, SAFE, ETC.)
+        # =========================================================================
+        elif p_type == PropType.GUN:
+            # Semi-auto pistol silhouette: slide, frame, trigger guard, textured grip
+            g_slide = [
+                (cx - w * 0.45, cy - h * 0.3), (cx + w * 0.45, cy - h * 0.3),
+                (cx + w * 0.45, cy - h * 0.05), (cx - w * 0.45, cy - h * 0.05)
+            ]
+            elements.append(
+                SketchPolygon.render(
+                    g_slide, seed=f"{seed}_gun_slide",
+                    stroke_color=stroke_color, stroke_width=LINE_WEIGHT_CHARACTER,
+                    fill_color="#090d16", fill_opacity=0.98,
+                )
+            )
+            # Angled Grip
+            g_grip = [
+                (cx - w * 0.40, cy - h * 0.05), (cx - w * 0.15, cy - h * 0.05),
+                (cx - w * 0.25, cy + h * 0.45), (cx - w * 0.48, cy + h * 0.42)
+            ]
+            elements.append(
+                SketchPolygon.render(
+                    g_grip, seed=f"{seed}_gun_grip",
+                    stroke_color=stroke_color, stroke_width=LINE_WEIGHT_CHARACTER,
+                    fill_color="#090d16", fill_opacity=0.98,
+                )
+            )
+            # Trigger Guard
+            elements.append(
+                SketchPolyline.render(
+                    [(cx - w * 0.15, cy), (cx - w * 0.05, cy + h * 0.18), (cx - w * 0.22, cy + h * 0.18)],
+                    seed=f"{seed}_trigger_guard",
+                    stroke_color=stroke_color,
+                    stroke_width=LINE_WEIGHT_INTERIOR,
+                )
+            )
+
+        else:
+            # Default generic prop block with perspective drop shadow
+            elements.append(
+                SketchPolygon.render(
+                    [(cx - w * 0.45, cy - h * 0.4), (cx + w * 0.45, cy - h * 0.4), (cx + w * 0.45, cy + h * 0.4), (cx - w * 0.45, cy + h * 0.4)],
+                    seed=f"{seed}_generic_prop",
+                    stroke_color=stroke_color,
+                    stroke_width=LINE_WEIGHT_CHARACTER,
+                    fill_color="#0f172a",
+                    fill_opacity=0.95,
+                )
+            )
+
+        elements.append("</g>")
+        return wrap_start + "\n  " + "\n  ".join(elements)

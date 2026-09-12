@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 import uuid
+import logging
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field
+
+logger = logging.getLogger(__name__)
 
 from src.domain.world import WorldState
 from src.domain.action import ActionProposal, ActionType
@@ -90,7 +93,16 @@ class ActorAgent:
         if isinstance(self.provider, MockLLMProvider) and ActorDecision not in self.provider._structured_handlers:
             decision = self._build_deterministic_mock_decision(world)
         else:
-            decision = self.provider.generate_structured(ActorDecision, prompt, system_prompt=system_prompt)
+            try:
+                decision = self.provider.generate_structured(ActorDecision, prompt, system_prompt=system_prompt)
+            except Exception as e:
+                logger.warning(
+                    f"Actor {self.character_id} LLM decision failed ({e}), falling back to deterministic decision."
+                )
+                decision = self._build_deterministic_mock_decision(world)
+
+        if not decision or not hasattr(decision, "action_type") or not decision.action_type:
+            decision = self._build_deterministic_mock_decision(world)
 
         proposal = self._decision_to_proposal(decision, world.current_tick)
 
@@ -102,12 +114,15 @@ class ActorAgent:
                     f"{prompt}\n\nATTENTION: Your previous proposed action '{proposal.action_type.value}' was rejected "
                     f"because: {err_msg}. Please choose a valid alternative action."
                 )
-                retry_decision = self.provider.generate_structured(ActorDecision, retry_prompt, system_prompt=system_prompt)
-                retry_proposal = self._decision_to_proposal(retry_decision, world.current_tick)
-                is_valid_retry, _ = ActionValidator.validate(world, retry_proposal)
-                if is_valid_retry:
-                    proposal = retry_proposal
-                else:
+                try:
+                    retry_decision = self.provider.generate_structured(ActorDecision, retry_prompt, system_prompt=system_prompt)
+                    retry_proposal = self._decision_to_proposal(retry_decision, world.current_tick)
+                    is_valid_retry, _ = ActionValidator.validate(world, retry_proposal)
+                    if is_valid_retry:
+                        proposal = retry_proposal
+                    else:
+                        proposal = self._build_fallback_action(world)
+                except Exception:
                     proposal = self._build_fallback_action(world)
             else:
                 proposal = self._build_fallback_action(world)

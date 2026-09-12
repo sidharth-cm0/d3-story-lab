@@ -1,4 +1,13 @@
-import { ProjectMetadata, ProjectData, Event, StoryboardResponse, StoryOutline, StorySynopsis, ProviderStatusResponse } from './types';
+import {
+  ProjectMetadata,
+  ProjectData,
+  Event,
+  StoryboardResponse,
+  StoryboardPanel,
+  StoryOutline,
+  StorySynopsis,
+  ProviderStatusResponse,
+} from './types';
 
 const BASE_URL = '/api';
 
@@ -80,9 +89,21 @@ export async function runSimulation(projectId: string, num_ticks: number = 5): P
   return res.json();
 }
 
-export async function generateScreenplay(projectId: string): Promise<{ fountain_text: string; total_scenes: number; total_beats: number; total_panels?: number }> {
+export async function generateScreenplay(
+  projectId: string,
+  framingMode: string = 'chronological'
+): Promise<{
+  fountain_text: string;
+  total_scenes: number;
+  total_beats: number;
+  total_panels?: number;
+  screenplay_quality?: any;
+  storyboard_quality?: any;
+}> {
   const res = await fetch(`${BASE_URL}/projects/${projectId}/generate-screenplay`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ framing_mode: framingMode }),
   });
   if (!res.ok) throw new Error('Failed to generate screenplay');
   return res.json();
@@ -208,6 +229,42 @@ export async function fetchProviderStatus(): Promise<ProviderStatusResponse> {
   const res = await fetch(`${BASE_URL}/storyboard/provider-status`);
   if (!res.ok) {
     throw new Error('Failed to fetch provider status');
+  }
+  return res.json();
+}
+
+export async function externalRenderPanel(
+  projectId: string,
+  panelId: string,
+  provider: string = 'huggingface',
+  model?: string,
+): Promise<{ panel_id: string; panel_index: number; version: number; panel: StoryboardPanel; rendered_panel: any }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/storyboard/panels/${panelId}/external-render`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, model }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'External render failed');
+  }
+  return res.json();
+}
+
+export async function externalRenderPage(
+  projectId: string,
+  pageNumber: number,
+  provider: string = 'huggingface',
+  model?: string,
+): Promise<{ project_id: string; page_number: number; panels_rendered: number; shot_plan: any; rendered_panels: any[] }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/storyboard/pages/${pageNumber}/external-render`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, model }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'External render for page failed');
   }
   return res.json();
 }

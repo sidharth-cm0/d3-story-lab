@@ -19,6 +19,10 @@ from src.storyboard.models import (
 from src.storyboard.visual_bible import VisualBible
 from src.storyboard.compiler import StoryboardPromptCompiler
 from src.storyboard.prop_resolver import PropResolver
+from src.storyboard.psychological_camera import PsychologicalCameraPlanner, PsychologicalState
+from src.storyboard.lighting_profile import resolve_lighting_profile, LightingProfileType
+from src.storyboard.transitions import TransitionPlanner
+from src.storyboard.focal_depth import FocalDepthPlane
 
 
 SFX_PATTERNS = [
@@ -43,6 +47,8 @@ class StoryboardPlanner:
         self.panels_per_page = panels_per_page
         self.density_mode = density_mode  # "quick", "standard", "detailed"
         self.compiler = StoryboardPromptCompiler()
+        self.camera_planner = PsychologicalCameraPlanner()
+        self.transition_planner = TransitionPlanner()
 
     def plan_shots(
         self,
@@ -155,6 +161,9 @@ class StoryboardPlanner:
                 continuity_notes=f"Maintains {loc_name} environmental layout and lighting palette.",
                 caption=est_action,
                 dialogue_bubble_type="caption",
+                camera_movement="STATIC",
+                focal_depth_plane="background",
+                lighting_profile_id="MOONLIT_INDUSTRIAL" if "dock" in loc_name.lower() or "night" in loc_name.lower() else "NOIR_HARD",
                 aspect_ratio=aspect_ratio,
                 source_event_ids=list(scene.source_event_ids[:2]),
                 source_screenplay_block_ids=[scene.blocks[0].id] if scene.blocks else [],
@@ -194,36 +203,42 @@ class StoryboardPlanner:
                     page_num = ((panel_counter - 1) // self.panels_per_page) + 1
                     desc = block.text.lower()
 
-                    # Determine narrative purpose and framing
+                    # Determine narrative purpose
                     purpose = ShotPurpose.ACTION
-                    shot_type = ShotType.MEDIUM
-                    camera_angle = CameraAngle.EYE_LEVEL
-                    lens = "35mm cinematic standard, sharp edge contrast"
-                    comp = "Dynamic diagonal axis, high contrast figure-ground separation"
-
                     if any(w in desc for w in ["open", "unlock", "examine", "clue", "seal", "key", "dossier", "ledger", "transceiver", "drive", "safe", "drawer"]):
-                        shot_type = ShotType.INSERT
                         purpose = ShotPurpose.CLUE
-                        lens = "85mm macro lens, ultra shallow depth of field"
-                        comp = "Tight focus on hands and prop, background thrown into soft shadow blur"
                     elif any(w in desc for w in ["gasps", "freezes", "spotted", "discovered", "stares", "shock", "alarm", "hears"]):
-                        shot_type = ShotType.REACTION
                         purpose = ShotPurpose.REACTION
-                        camera_angle = CameraAngle.DUTCH_ANGLE
-                        lens = "50mm portrait lens, visceral focal tension"
-                        comp = "Canted dutch tilt framing, stark rim light catching eyes"
-                    elif any(w in desc for w in ["knock", "gun", "document", "grab", "phone", "hand", "inspect"]):
-                        shot_type = ShotType.CLOSE_UP
-                        purpose = ShotPurpose.THREAT if "gun" in desc or "threat" in desc else ShotPurpose.ACTION
-                        lens = "50mm prime, crisp focal plane"
+                    elif any(w in desc for w in ["knock", "gun", "threat", "intimidate", "standoff", "shadow"]):
+                        purpose = ShotPurpose.THREAT
                     elif any(w in desc for w in ["enter", "walk", "retreat", "leaves", "moved", "steps", "flee", "escapes", "runs"]):
-                        shot_type = ShotType.WIDE
                         purpose = ShotPurpose.TRANSITION
-                        lens = "28mm wide perspective, high motion blur"
-                    elif any(w in desc for w in ["face", "eyes", "whisper", "glance"]):
-                        shot_type = ShotType.EXTREME_CLOSE_UP
+                    elif any(w in desc for w in ["face", "eyes", "whisper", "glance", "secret", "truth"]):
                         purpose = ShotPurpose.REVELATION
-                        lens = "100mm telephoto macro, razor-thin focal slice"
+
+                    char_id = block.character_id
+                    char = world.characters.get(char_id) if (world and char_id) else None
+                    char_name = char.name if char else "Protagonist"
+                    char_names = [char_name] if char else []
+                    char_ref = {char_name: char_profiles.get(char_id, char_name)} if char_id else {}
+
+                    # Psychological Camera Planning
+                    psych_state = self.camera_planner.derive_psychological_state(char)
+                    cam_rec = self.camera_planner.plan_camera(
+                        psych_state=psych_state,
+                        action_text=block.text,
+                        shot_purpose=purpose,
+                        last_shot_type=last_shot_type,
+                    )
+                    lighting_prof = resolve_lighting_profile(mood=scene.heading, action=block.text)
+
+                    shot_type = cam_rec.shot_type
+                    camera_angle = cam_rec.camera_angle
+                    camera_movement = cam_rec.camera_movement
+                    lens = cam_rec.lens_feel
+                    comp = cam_rec.composition_guide
+                    lighting_desc = lighting_prof.description
+                    lighting_id = lighting_prof.id.value
 
                     # Visual rhythm pacing: prevent consecutive identical framing
                     if shot_type == last_shot_type:
@@ -232,18 +247,6 @@ class StoryboardPlanner:
                         elif shot_type == ShotType.WIDE:
                             shot_type = ShotType.MEDIUM
                     last_shot_type = shot_type
-
-                    if camera_angle == CameraAngle.EYE_LEVEL:
-                        if any(w in desc for w in ["threat", "towering", "gun", "intimidate", "standoff", "shadow"]):
-                            camera_angle = CameraAngle.LOW_ANGLE
-                        elif any(w in desc for w in ["desk", "hidden", "drawer", "below", "floor", "beneath"]):
-                            camera_angle = CameraAngle.HIGH_ANGLE
-
-                    char_id = block.character_id
-                    char = world.characters.get(char_id) if (world and char_id) else None
-                    char_name = char.name if char else "Protagonist"
-                    char_names = [char_name] if char else []
-                    char_ref = {char_name: char_profiles.get(char_id, char_name)} if char_id else {}
 
                     # Detect character introduction
                     if char_id and char_id not in introduced_characters:
@@ -334,7 +337,9 @@ class StoryboardPlanner:
                         action=block.text,
                         action_description=block.text,
                         visual_description=f"{char_name} in {loc_name}. Chiaroscuro key illumination.",
-                        lighting="High-contrast low-key key light, stark shadows",
+                        lighting=lighting_desc,
+                        lighting_profile_id=lighting_id,
+                        camera_movement=camera_movement,
                         mood="Suspenseful and deliberate",
                         prompt=act_prompt_text,
                         image_prompt=act_prompt_text,
@@ -380,24 +385,34 @@ class StoryboardPlanner:
                     panel_counter += 1
                     page_num = ((panel_counter - 1) // self.panels_per_page) + 1
 
-                    purpose = ShotPurpose.DIALOGUE
-                    shot_type = ShotType.CLOSE_UP if len(dialogue_text) < 60 else ShotType.MEDIUM
-                    camera_angle = CameraAngle.EYE_LEVEL
-                    lens = "50mm portrait lens, razor-sharp eye focus"
-                    comp = "Over-shoulder perspective or clean single profile, deep black negative space"
-
                     dia_lower = dialogue_text.lower()
                     bubble_type = "speech"
                     if any(w in dia_lower for w in ["listen", "warn", "threat", "kill", "die", "watch out"]):
-                        camera_angle = CameraAngle.LOW_ANGLE
                         purpose = ShotPurpose.THREAT
                     elif any(w in dia_lower for w in ["know", "secret", "truth", "confess", "evidence", "lying"]):
                         purpose = ShotPurpose.REVELATION
-                        shot_type = ShotType.CLOSE_UP
                     elif any(w in dia_lower for w in ["shh", "quiet", "whisper", "softly"]):
                         bubble_type = "whisper"
                     elif any(w in dia_lower for w in ["stop!", "freeze!", "no!", "get back!"]):
                         bubble_type = "shout"
+
+                    speaker_char = world.characters.get(char_id) if (world and char_id) else None
+                    psych_state = self.camera_planner.derive_psychological_state(speaker_char)
+                    cam_rec = self.camera_planner.plan_camera(
+                        psych_state=psych_state,
+                        action_text=dialogue_text,
+                        shot_purpose=purpose,
+                        last_shot_type=last_shot_type,
+                    )
+                    lighting_prof = resolve_lighting_profile(mood="Tense", action=dialogue_text)
+
+                    shot_type = cam_rec.shot_type
+                    camera_angle = cam_rec.camera_angle
+                    camera_movement = cam_rec.camera_movement
+                    lens = cam_rec.lens_feel
+                    comp = cam_rec.composition_guide
+                    lighting_desc = lighting_prof.description
+                    lighting_id = lighting_prof.id.value
 
                     # Rhythm check
                     if shot_type == last_shot_type and shot_type == ShotType.MEDIUM:
@@ -473,7 +488,9 @@ class StoryboardPlanner:
                         action=f"{speaker_name}: \"{dialogue_text}\"",
                         action_description=f"{speaker_name} delivering dialogue with calculated intensity.",
                         visual_description=f"{speaker_name} speaking. Razor-sharp lighting across features.",
-                        lighting="Dramatic side key light, velvety dark background",
+                        lighting=lighting_desc,
+                        lighting_profile_id=lighting_id,
+                        camera_movement=camera_movement,
                         mood="Emotionally charged, guarded confrontation",
                         prompt=dia_prompt_text,
                         image_prompt=dia_prompt_text,
@@ -500,6 +517,9 @@ class StoryboardPlanner:
                     i = j
                 else:
                     i += 1
+
+        # Apply Transition Planning across panels
+        self.transition_planner.plan_transitions(panels)
 
         # Organize into Storyboard Pages with Layout Templates and Slot Assignments
         total_pages = max(1, math.ceil(len(panels) / self.panels_per_page)) if panels else 1
@@ -554,6 +574,11 @@ class StoryboardPlanner:
             purpose_dist[p.narrative_purpose.value] = purpose_dist.get(p.narrative_purpose.value, 0) + 1
             all_chars.update(p.character_names)
 
+        trans_types: Dict[str, int] = {}
+        for p in panels:
+            if p.transition_type:
+                trans_types[p.transition_type] = trans_types.get(p.transition_type, 0) + 1
+
         coverage_data = {
             "density_mode": self.density_mode,
             "total_scenes": len(screenplay.scenes),
@@ -562,6 +587,8 @@ class StoryboardPlanner:
             "characters_depicted": sorted(list(all_chars)),
             "shot_type_distribution": shot_type_dist,
             "purpose_distribution": purpose_dist,
+            "transition_distribution": trans_types,
+            "total_transitions_planned": sum(trans_types.values()),
         }
 
         return ShotPlan(

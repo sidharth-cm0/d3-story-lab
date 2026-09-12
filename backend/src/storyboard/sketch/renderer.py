@@ -7,7 +7,7 @@ distinct character identities, recognizable props, and architectural environment
 from __future__ import annotations
 import html
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 from src.storyboard.models import (
     StoryboardPanel,
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 class HandDrawnStoryboardProvider(StoryboardImageProvider):
     """Offline deterministic storyboard engine producing authentic hand-drawn sketches.
-    
+
     Requires:
     - NO API KEY
     - NO NETWORK
@@ -56,7 +56,7 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
     def __init__(
         self,
         asset_store: Optional[StoryboardAssetStore] = None,
-        style: SketchStyle = SketchStyle.PENCIL_NOIR,
+        style: SketchStyle = SketchStyle.GRAPHITE_PRODUCTION_BOARD,
     ):
         self.asset_store = asset_store or StoryboardAssetStore()
         self.compiler = StoryboardPromptCompiler()
@@ -66,15 +66,16 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
         self.style = style
 
     def get_capabilities(self) -> Dict[str, Any]:
+        palette = STYLE_PALETTES.get(self.style, STYLE_PALETTES[SketchStyle.GRAPHITE_PRODUCTION_BOARD])
         return {
             "provider": "hand_drawn_storyboard",
-            "selected_model": "deterministic_sketch_v1",
-            "style": "Pencil Noir",
+            "selected_model": "deterministic_sketch_v2_cinematic",
+            "style": palette.name,
             "available": True,
             "quota_status": "NOT_REQUIRED",
             "last_error_category": None,
             "continuity_mode": "Deterministic Visual Bible",
-            "status_message": "Hand-drawn offline sketch engine active (100% deterministic SVG).",
+            "status_message": f"Hand-drawn offline sketch engine active ({palette.name}, 100% deterministic SVG).",
             "supports_image_conditioning": False,
             "fallback_enabled": False,
         }
@@ -84,7 +85,7 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
         caps["storyboard_image_provider"] = "hand_drawn_storyboard"
         caps["mode"] = "local"
         caps["status"] = ProviderState.AVAILABLE.value
-        caps["model"] = "deterministic_sketch_v1"
+        caps["model"] = "deterministic_sketch_v2_cinematic"
         caps["fallback_reason"] = None
         return caps
 
@@ -102,7 +103,7 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
         seed_base = f"{panel.project_id}_{panel.panel_id or panel.id}"
         seed_v = f"{seed_base}_v{version}"
 
-        palette = STYLE_PALETTES.get(self.style, STYLE_PALETTES[SketchStyle.PENCIL_NOIR])
+        palette = STYLE_PALETTES.get(self.style, STYLE_PALETTES[SketchStyle.CINEMATIC_INK_WASH])
 
         # 1. Resolve Location Identity
         loc_id = panel.location_id or "loc_default"
@@ -113,11 +114,11 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
             ref=loc_ref,
         )
 
-        # 2. Stage Scene (Actors, Props, Camera)
+        # 2. Stage Scene (Actors, Props, Camera, LOD, Dutch Angle)
         staged: StagedScene = SceneStager.stage_panel(panel, version=version, seed=seed_base)
 
         # 3. Render Layers
-        # A. Background Gradients & Vignette
+        # A. Background Gradients & Vignette with Graphite Edge Filters & Paper Grain
         defs_svg = f"""
   <defs>
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -126,8 +127,48 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
     </linearGradient>
     <radialGradient id="vignette" cx="50%" cy="50%" r="70%">
       <stop offset="50%" stop-color="#000000" stop-opacity="0"/>
-      <stop offset="100%" stop-color="#000000" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.65"/>
     </radialGradient>
+
+    <!-- Restrained Graphite Edge Displacement (Section 18) -->
+    <filter id="graphite_bg" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.7" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="graphite_subject" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.4" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="graphite_fg" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+
+    <!-- Lightweight Paper Grain Filter (Section 21) -->
+    <filter id="paper_grain" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" result="grain"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.9  0 0 0 0 0.9  0 0 0 0 0.9  0 0 0 0.04 0"/>
+    </filter>
+
+    <!-- Procedural Graphite Cross-Hatching Patterns (Section 20) -->
+    <pattern id="hatch_light" width="12" height="12" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="12" stroke="#94a3b8" stroke-width="0.8" opacity="0.4"/>
+    </pattern>
+    <pattern id="hatch_mid" width="8" height="8" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#64748b" stroke-width="1.0" opacity="0.6"/>
+    </pattern>
+    <pattern id="hatch_dark" width="6" height="6" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#334155" stroke-width="1.2" opacity="0.75"/>
+      <line x1="0" y1="0" x2="6" y2="0" stroke="#334155" stroke-width="1.2" opacity="0.75"/>
+    </pattern>
+
+    <!-- Cinematic Depth of Field Filters (Section 22) -->
+    <filter id="blur_foreground" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="1.8"/>
+    </filter>
+    <filter id="blur_background" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="0.7"/>
+    </filter>
   </defs>"""
 
         bg_rect = f'<rect width="{w:.1f}" height="{h:.1f}" fill="url(#bgGrad)"/>'
@@ -171,6 +212,7 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
                 rotation_deg=p.rotation_deg,
                 seed=f"{seed_base}_prop_{p.prop_id}",
                 stroke_color=palette.stroke_color,
+                is_insert=(staged.shot_type == ShotType.INSERT),
             )
             rendered_elements.append((p.z_index, p_svg))
             props_rendered_names.append(p.name)
@@ -209,11 +251,18 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
             seed=f"{seed_v}_motion",
         )
 
-        # F. Traditional Storyboard Framing & Film Header Overlay
+        # F. Traditional Storyboard Framing & Letterboxed Production Header
         shot_tag = panel.shot_type.value.replace("_", " ").upper()
         angle_tag = panel.camera_angle.value.replace("_", " ").upper()
-        loc_tag = html.escape((panel.location_name or "SCENE").upper())
-        shot_num_str = f"SHOT {panel.shot_number:02d} • SCENE {panel.scene_number:02d}"
+        shot_num = panel.shot_number or panel.panel_number or 1
+        shot_num_str = f"SHOT {shot_num:02d}"
+
+        # Optional lens / movement tags
+        lens_tag = f" • {panel.lens_feel}" if panel.lens_feel else ""
+        if staged.is_over_shoulder:
+            shot_tag = f"{shot_tag} / OTS"
+        if staged.dutch_rotation_deg != 0.0:
+            angle_tag = f"DUTCH {staged.dutch_rotation_deg:+.0f}°"
 
         # Sketched outer frame border
         frame_border = SketchPolygon.render(
@@ -224,17 +273,36 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
             stroke_opacity=0.7,
         )
 
-        # Technical production header bar
+        # Minimal sleek header bar (artwork-first)
         header_bar = f"""
-  <g opacity="0.9">
-    <rect x="14" y="14" width="260" height="24" rx="3" fill="#090d16" fill-opacity="0.85" stroke="#334155" stroke-width="1"/>
-    <text x="24" y="30" fill="#cbd5e1" font-family="monospace" font-size="11" font-weight="700" letter-spacing="1">
-      {shot_num_str}
+  <g id="production_header" opacity="0.9">
+    <rect x="14" y="12" width="160" height="22" rx="3" fill="#090d16" fill-opacity="0.85" stroke="#334155" stroke-width="1"/>
+    <text x="22" y="27" fill="#cbd5e1" font-family="monospace" font-size="10" font-weight="700" letter-spacing="1">
+      {shot_num_str} • SCENE {panel.scene_number or 1:02d}
     </text>
-    <rect x="{w - 234:.1f}" y="14" width="220" height="24" rx="3" fill="#090d16" fill-opacity="0.85" stroke="#334155" stroke-width="1"/>
-    <text x="{w - 224:.1f}" y="30" fill="#f59e0b" font-family="monospace" font-size="11" font-weight="700" letter-spacing="1">
+    <rect x="{w - 220:.1f}" y="12" width="206" height="22" rx="3" fill="#090d16" fill-opacity="0.85" stroke="#334155" stroke-width="1"/>
+    <text x="{w - 212:.1f}" y="27" fill="#f59e0b" font-family="monospace" font-size="10" font-weight="700" letter-spacing="1">
       {shot_tag} | {angle_tag}
     </text>
+  </g>"""
+
+        # Dutch angle camera rotation wrapper
+        camera_transform_open = ""
+        camera_transform_close = ""
+        if abs(staged.dutch_rotation_deg) > 0.01:
+            camera_transform_open = f'<g id="dutch_camera_tilt" transform="rotate({staged.dutch_rotation_deg:.1f} {w/2:.1f} {h/2:.1f})">'
+            camera_transform_close = "</g>"
+
+        # Sound effect typography overlay (Section 30)
+        sfx_label = panel.sfx_label or ""
+        sfx_typography = ""
+        if sfx_label:
+            sfx_clean = sfx_label.upper()
+            sfx_typography = f"""
+  <!-- Sound Effect Typography (Section 30) -->
+  <g id="sfx_typography" transform="rotate(-6 480 270)" pointer-events="none">
+    <text x="482" y="272" text-anchor="middle" fill="#000000" font-family="impact, sans-serif" font-size="34" font-weight="900" letter-spacing="3" opacity="0.65">{html.escape(sfx_clean)}</text>
+    <text x="480" y="270" text-anchor="middle" fill="#ef4444" font-family="impact, sans-serif" font-size="34" font-weight="900" letter-spacing="3">{html.escape(sfx_clean)}</text>
   </g>"""
 
         # Assemble full SVG
@@ -242,9 +310,10 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
   <!-- D3 Story Lab: Hand-Drawn Storyboard Engine (Offline Deterministic SVG) -->
   {defs_svg}
   {bg_rect}
-  
-  <!-- Architectural Environment -->
-  <g id="environment_layer">
+
+  {camera_transform_open}
+  <!-- Architectural Environment with Graphite Contours -->
+  <g id="environment_layer" filter="url(#graphite_bg)">
   {env_svg}
   </g>
 
@@ -253,8 +322,8 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
   {lighting_svg}
   </g>
 
-  <!-- Actors & Key Props -->
-  <g id="subjects_layer">
+  <!-- Actors & Key Props with Graphite Subject Contours -->
+  <g id="subjects_layer" filter="url(#graphite_subject)">
   {actors_and_props_svg}
   </g>
 
@@ -262,6 +331,12 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
   <g id="motion_layer">
   {motion_svg}
   </g>
+  {camera_transform_close}
+
+  {sfx_typography}
+
+  <!-- Subtle Paper Grain Texture (Section 21) -->
+  <rect width="{w:.1f}" height="{h:.1f}" filter="url(#paper_grain)" opacity="0.22" pointer-events="none"/>
 
   <!-- Vignette -->
   <rect width="{w:.1f}" height="{h:.1f}" fill="url(#vignette)"/>
@@ -288,7 +363,7 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
         metadata = {
             "label": "HAND-DRAWN STORYBOARD",
             "renderer": "HandDrawnStoryboardProvider",
-            "style": "Pencil Noir",
+            "style": palette.name,
             "continuity": "Deterministic Visual Bible",
             "seed": seed_v,
             "actors_rendered": actors_rendered_names,
@@ -297,6 +372,7 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
             "version": version,
             "byte_size": len(full_svg.encode("utf-8")),
             "no_cloud_api": True,
+            "dutch_angle_deg": staged.dutch_rotation_deg,
         }
 
         return StoryboardImageResult(

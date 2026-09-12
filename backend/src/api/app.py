@@ -33,7 +33,7 @@ def _load_env_file() -> None:
 _load_env_file()
 from fastapi import FastAPI, HTTPException, Response, Body
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from src.domain.world import WorldState
 from src.generator.initializer import WorldInitializerService
@@ -43,17 +43,22 @@ from src.agents.director import DirectorAgent
 from src.narrative.observer import Observer, NarrativeEventSelection
 from src.narrative.scribe import Scribe
 from src.narrative.fountain import ScreenplayDocument
+from src.narrative.framer import FramingMode
+from src.narrative.screenplay_validator import ScreenplayQualityValidator
 from src.narrative.completion import StoryCompletionEngine, StoryOutline, StoryInputType
 from src.narrative.synopsis import SynopsisGenerator, StorySynopsis
 from src.storage.project_store import ProjectStore, ProjectData, ProjectMetadata
 from src.storyboard.models import ShotPlan, StoryboardPanel, StoryboardImageVersion, StoryboardImageStatus
 from src.storyboard.planner import StoryboardPlanner
+from src.storyboard.storyboard_validator import StoryboardQualityValidator
 from src.storyboard.visual_bible import VisualBible, StoryboardStyleProfile
 from src.storyboard.compiler import StoryboardPromptCompiler, ContinuityValidator
 from src.storyboard.asset_store import StoryboardAssetStore
 from src.storyboard.image_provider import (
     StoryboardImageProvider,
     StoryboardImageResult,
+    ExternalStoryboardImageProvider,
+    HuggingFaceStoryboardProvider,
     FallbackComicSvgProvider,
     CloudImagenStoryboardProvider,
     MockStoryboardImageProvider,
@@ -84,6 +89,10 @@ class RunRequest(BaseModel):
     num_ticks: int = Field(default=5, ge=1, le=100)
 
 
+class GenerateScreenplayRequest(BaseModel):
+    framing_mode: Optional[str] = "chronological"
+
+
 class PlanStoryboardRequest(BaseModel):
     density_mode: str = Field(default="standard")  # "quick" | "standard" | "detailed"
     panels_per_page: int = Field(default=4, ge=1, le=8)
@@ -105,6 +114,12 @@ class RegeneratePanelRequest(BaseModel):
 class RegeneratePageRequest(BaseModel):
     page_number: int = Field(default=1, ge=1)
     provider: Optional[str] = None
+
+
+class ExternalRenderRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    provider: str = "huggingface"
+    model: Optional[str] = None
 
 
 def get_llm_provider() -> LLMProvider:
@@ -132,13 +147,15 @@ def get_image_provider(
     provider_type: Optional[str] = None,
     asset_store: Optional[StoryboardAssetStore] = None,
 ) -> StoryboardImageProvider:
-    """Instantiate storyboard renderer. Defaults to offline HandDrawnStoryboardProvider."""
+    """Instantiate storyboard renderer. Defaults strictly to offline HandDrawnStoryboardProvider."""
     asset_store = asset_store or StoryboardAssetStore()
-    provider_type = provider_type or os.environ.get("STORYBOARD_PROVIDER", "hand_drawn")
+    provider_type = (provider_type or os.environ.get("STORYBOARD_PROVIDER", "hand_drawn")).lower()
 
-    if provider_type in ("hand_drawn", "hand_drawn_storyboard", "sketch"):
+    if provider_type in ("hand_drawn", "hand_drawn_storyboard", "sketch", "local", "offline"):
         from src.storyboard.sketch.renderer import HandDrawnStoryboardProvider
         return HandDrawnStoryboardProvider(asset_store=asset_store)
+    if provider_type in ("huggingface", "hf", "experimental_ai"):
+        return HuggingFaceStoryboardProvider(asset_store=asset_store)
     if provider_type == "mock":
         return MockStoryboardImageProvider(asset_store=asset_store)
     if provider_type == "mock_ai":
@@ -146,13 +163,17 @@ def get_image_provider(
     if provider_type == "fallback":
         return FallbackComicSvgProvider(asset_store=asset_store)
 
-    api_key = (
-        os.environ.get("GEMINI_API_KEY")
-        or os.environ.get("GOOGLE_API_KEY")
-        or os.environ.get("IMAGEN_API_KEY")
-    )
-    model_name = os.environ.get("STORYBOARD_IMAGE_MODEL") or "gemini-3.1-flash-image"
-    return CloudImagenStoryboardProvider(api_key=api_key, asset_store=asset_store, model_name=model_name)
+    if provider_type in ("google_imagen", "imagen", "gemini"):
+        api_key = (
+            os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+            or os.environ.get("IMAGEN_API_KEY")
+        )
+        model_name = os.environ.get("STORYBOARD_IMAGE_MODEL") or "gemini-3.1-flash-image"
+        return CloudImagenStoryboardProvider(api_key=api_key, asset_store=asset_store, model_name=model_name)
+
+    from src.storyboard.sketch.renderer import HandDrawnStoryboardProvider
+    return HandDrawnStoryboardProvider(asset_store=asset_store)
 
 
 def create_app(store_dir: Optional[str] = None) -> FastAPI:
@@ -208,12 +229,21 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         provider = get_llm_provider()
         init_service = WorldInitializerService(provider=provider)
 
-        # Generate world initialization plan with story outline
-        plan = init_service.generate_plan(
-            req.seed_prompt,
-            declared_type=req.input_type,
-            target_duration_minutes=req.target_duration_minutes,
-        )
+        try:
+            # Generate world initialization plan with story outline
+            plan = init_service.generate_plan(
+                req.seed_prompt,
+                declared_type=req.input_type,
+                target_duration_minutes=req.target_duration_minutes,
+            )
+        except Exception:
+            fallback_init = WorldInitializerService(provider=MockLLMProvider())
+            plan = fallback_init.generate_plan(
+                req.seed_prompt,
+                declared_type=req.input_type,
+                target_duration_minutes=req.target_duration_minutes,
+            )
+
         world = init_service.instantiate_world(plan)
 
         outline = plan.story_outline or init_service.completion_engine.complete_story(
@@ -354,10 +384,17 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         }
 
     @app.post("/api/projects/{project_id}/generate-screenplay")
-    def generate_screenplay(project_id: str):
+    def generate_screenplay(project_id: str, req: Optional[GenerateScreenplayRequest] = None):
         proj = store.load_project(project_id)
         if not proj:
             raise HTTPException(status_code=404, detail="Project not found")
+
+        framing_mode = FramingMode.CHRONOLOGICAL
+        if req and req.framing_mode:
+            try:
+                framing_mode = FramingMode(req.framing_mode.lower())
+            except Exception:
+                framing_mode = FramingMode.CHRONOLOGICAL
 
         provider = get_llm_provider()
         events = sorted(proj.world.events.values(), key=lambda e: (e.tick, e.id))
@@ -366,7 +403,7 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         selection = observer.observe_events(events, proj.world)
 
         scribe = Scribe(provider=provider)
-        doc = scribe.compose_screenplay(selection, proj.world, title=proj.metadata.title)
+        doc = scribe.compose_screenplay(selection, proj.world, title=proj.metadata.title, framing_mode=framing_mode)
         fountain_text = doc.to_fountain()
 
         proj.selection = selection
@@ -422,6 +459,16 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
 
         proj.shot_plan = shot_plan
         proj.rendered_panels = rendered_panels
+
+        # Validate screenplay and storyboard quality
+        screenplay_validator = ScreenplayQualityValidator()
+        screenplay_report = screenplay_validator.validate_screenplay(doc, proj.world)
+        proj.screenplay_quality = screenplay_report.to_dict()
+
+        storyboard_validator = StoryboardQualityValidator()
+        storyboard_report = storyboard_validator.validate_storyboard(shot_plan, proj.world)
+        proj.storyboard_quality = storyboard_report.to_dict()
+
         store.save_project(proj)
 
         return {
@@ -432,7 +479,31 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             "fountain_text": fountain_text,
             "screenplay": doc.model_dump(mode="json"),
             "synopsis": proj.synopsis.model_dump(mode="json") if proj.synopsis else None,
+            "screenplay_quality": proj.screenplay_quality,
+            "storyboard_quality": proj.storyboard_quality,
         }
+
+    @app.get("/api/projects/{project_id}/screenplay/quality")
+    def get_screenplay_quality(project_id: str):
+        proj = store.load_project(project_id)
+        if not proj or not proj.screenplay:
+            raise HTTPException(status_code=404, detail="Screenplay not found")
+        if proj.screenplay_quality:
+            return proj.screenplay_quality
+        val = ScreenplayQualityValidator()
+        report = val.validate_screenplay(proj.screenplay, proj.world)
+        return report.to_dict()
+
+    @app.get("/api/projects/{project_id}/storyboard/quality")
+    def get_storyboard_quality(project_id: str):
+        proj = store.load_project(project_id)
+        if not proj or not proj.shot_plan:
+            raise HTTPException(status_code=404, detail="Shot plan not found")
+        if proj.storyboard_quality:
+            return proj.storyboard_quality
+        val = StoryboardQualityValidator()
+        report = val.validate_storyboard(proj.shot_plan, proj.world)
+        return report.to_dict()
 
     @app.get("/api/projects/{project_id}/screenplay")
     def get_screenplay(project_id: str):
@@ -830,6 +901,163 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         return {
             "page_number": req.page_number,
             "panels_count": len([p for p in proj.shot_plan.panels if p.page_number == req.page_number]),
+            "rendered_panels": updated_renders,
+        }
+
+    @app.post("/api/projects/{project_id}/storyboard/panels/{panel_id}/external-render")
+    def external_render_panel(
+        project_id: str,
+        panel_id: str,
+        req: Optional[ExternalRenderRequest] = None,
+    ):
+        """Explicitly request external AI image render for a single storyboard panel."""
+        proj = store.load_project(project_id)
+        if not proj or not proj.shot_plan:
+            raise HTTPException(status_code=404, detail="Project or shot plan not found")
+
+        target_panel = None
+        target_idx = -1
+        for idx, p in enumerate(proj.shot_plan.panels):
+            if p.id == panel_id or p.panel_id == panel_id:
+                target_panel = p
+                target_idx = idx
+                break
+
+        if not target_panel:
+            raise HTTPException(status_code=404, detail=f"Panel '{panel_id}' not found")
+
+        asset_store = StoryboardAssetStore(store.base_dir)
+        bible = proj.visual_bible or asset_store.load_visual_bible(project_id)
+        if not bible:
+            bible = VisualBible.from_world(proj.world)
+            proj.visual_bible = bible
+
+        model_name = req.model if req else None
+        engine = HuggingFaceStoryboardProvider(
+            asset_store=asset_store,
+            model_name=model_name,
+        )
+
+        next_ver = len(target_panel.versions) + 1
+        res = engine.generate_panel(target_panel, bible=bible, version=next_ver)
+
+        target_panel.image_url = res.image_url
+        target_panel.rendered_image_url = res.image_url
+        target_panel.rendered_svg = res.svg_content
+        target_panel.image_status = res.status
+        target_panel.provider = res.provider
+        target_panel.fallback_reason = res.fallback_reason
+        target_panel.continuity_mode = res.continuity_mode
+        target_panel.generation_version = next_ver
+        target_panel.selected_version = next_ver
+
+        for v in target_panel.versions:
+            v.is_selected = False
+
+        new_version = StoryboardImageVersion(
+            version=next_ver,
+            image_url=res.image_url,
+            prompt_used=res.compiled_prompt,
+            negative_prompt=res.negative_prompt,
+            provider=res.provider,
+            mode=res.mode,
+            fallback_reason=res.fallback_reason,
+            mime_type=res.mime_type,
+            continuity_mode=res.continuity_mode,
+            is_selected=True,
+            render_metadata=res.render_metadata,
+        )
+        target_panel.versions.append(new_version)
+
+        rendered_dict = engine.render_panel(target_panel, bible=bible, version=next_ver)
+        if proj.rendered_panels and 0 <= target_idx < len(proj.rendered_panels):
+            proj.rendered_panels[target_idx] = rendered_dict
+
+        store.save_project(proj)
+
+        return {
+            "panel_id": panel_id,
+            "panel_index": target_idx,
+            "version": next_ver,
+            "panel": target_panel.model_dump(mode="json"),
+            "rendered_panel": rendered_dict,
+        }
+
+    @app.post("/api/projects/{project_id}/storyboard/pages/{page_number}/external-render")
+    def external_render_page(
+        project_id: str,
+        page_number: int,
+        req: Optional[ExternalRenderRequest] = None,
+    ):
+        """Explicitly request external AI render for panels on a single page only."""
+        proj = store.load_project(project_id)
+        if not proj or not proj.shot_plan:
+            raise HTTPException(status_code=404, detail="Project or shot plan not found")
+
+        page_panels = [p for p in proj.shot_plan.panels if p.page_number == page_number]
+        if not page_panels:
+            raise HTTPException(status_code=404, detail=f"No panels found for page {page_number}")
+
+        asset_store = StoryboardAssetStore(store.base_dir)
+        bible = proj.visual_bible or asset_store.load_visual_bible(project_id)
+        if not bible:
+            bible = VisualBible.from_world(proj.world)
+            proj.visual_bible = bible
+
+        model_name = req.model if req else None
+        engine = HuggingFaceStoryboardProvider(
+            asset_store=asset_store,
+            model_name=model_name,
+        )
+
+        updated_renders = list(proj.rendered_panels or [])
+        for target_panel in page_panels:
+            target_idx = proj.shot_plan.panels.index(target_panel)
+            next_ver = len(target_panel.versions) + 1
+            res = engine.generate_panel(target_panel, bible=bible, version=next_ver)
+
+            target_panel.image_url = res.image_url
+            target_panel.rendered_image_url = res.image_url
+            target_panel.rendered_svg = res.svg_content
+            target_panel.image_status = res.status
+            target_panel.provider = res.provider
+            target_panel.fallback_reason = res.fallback_reason
+            target_panel.continuity_mode = res.continuity_mode
+            target_panel.generation_version = next_ver
+            target_panel.selected_version = next_ver
+
+            for v in target_panel.versions:
+                v.is_selected = False
+
+            new_version = StoryboardImageVersion(
+                version=next_ver,
+                image_url=res.image_url,
+                prompt_used=res.compiled_prompt,
+                negative_prompt=res.negative_prompt,
+                provider=res.provider,
+                mode=res.mode,
+                fallback_reason=res.fallback_reason,
+                mime_type=res.mime_type,
+                continuity_mode=res.continuity_mode,
+                is_selected=True,
+                render_metadata=res.render_metadata,
+            )
+            target_panel.versions.append(new_version)
+
+            rendered_dict = engine.render_panel(target_panel, bible=bible, version=next_ver)
+            if target_idx < len(updated_renders):
+                updated_renders[target_idx] = rendered_dict
+            else:
+                updated_renders.append(rendered_dict)
+
+        proj.rendered_panels = updated_renders
+        store.save_project(proj)
+
+        return {
+            "project_id": project_id,
+            "page_number": page_number,
+            "panels_rendered": len(page_panels),
+            "shot_plan": proj.shot_plan.model_dump(mode="json"),
             "rendered_panels": updated_renders,
         }
 

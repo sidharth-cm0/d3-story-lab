@@ -215,6 +215,10 @@ export interface ScreenplayBlock {
   text: string;
   source_event_ids: string[];
   character_id?: string;
+  cue_type?: string;
+  is_performance_cue?: boolean;
+  derived_from_event_id?: string;
+  derived_from_actor_state_ids?: string[];
 }
 
 export interface ScreenplayScene {
@@ -223,6 +227,10 @@ export interface ScreenplayScene {
   heading: string;
   blocks: ScreenplayBlock[];
   source_event_ids: string[];
+  chronological_position?: number;
+  presentation_position?: number;
+  framing_type?: string;
+  dramatic_purpose?: string;
 }
 
 export interface ScreenplayDocument {
@@ -240,6 +248,9 @@ export type ShotPurpose =
   | 'dialogue'
   | 'reaction'
   | 'revelation'
+  | 'reveal'
+  | 'discovery'
+  | 'power_shift'
   | 'clue'
   | 'threat'
   | 'transition'
@@ -366,6 +377,12 @@ export interface StoryboardPanel {
   lens_feel?: string;
   composition?: string;
   subject_focus?: string;
+  camera_movement?: string;
+  focal_depth_plane?: string;
+  lighting_profile_id?: string;
+  transition_type?: string;
+  visual_link?: string;
+  subtext_context?: string;
   layout_slot?: string;
   location_id: string;
   location_name?: string;
@@ -504,4 +521,6 @@ export interface ProjectData {
   shot_plan?: ShotPlan;
   rendered_panels?: any[];
   storyboard?: StoryboardResponse;
+  screenplay_quality?: any;
+  storyboard_quality?: any;
 }

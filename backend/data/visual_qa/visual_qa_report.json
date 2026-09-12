@@ -1,0 +1,96 @@
+{
+  "visual_qa_version": "2.0_graphite_production_board",
+  "style": "GRAPHITE_PRODUCTION_BOARD",
+  "panels": [
+    {
+      "filename": "wide.svg",
+      "filepath": "/workspaces/d3-story-lab/backend/data/visual_qa/wide.svg",
+      "shot_type": "wide",
+      "camera_angle": "eye_level",
+      "characters": [
+        "Vincent Cross"
+      ],
+      "props": [],
+      "environment": "WAREHOUSE",
+      "style": "Graphite Production Board",
+      "file_size_bytes": 146077,
+      "file_size_kb": 142.7,
+      "path_count": 725,
+      "polygon_count": 66,
+      "total_drawn_elements": 791,
+      "dutch_angle_deg": 0.0
+    },
+    {
+      "filename": "closeup_vincent.svg",
+      "filepath": "/workspaces/d3-story-lab/backend/data/visual_qa/closeup_vincent.svg",
+      "shot_type": "close_up",
+      "camera_angle": "eye_level",
+      "characters": [
+        "Vincent Cross"
+      ],
+      "props": [],
+      "environment": "WAREHOUSE",
+      "style": "Graphite Production Board",
+      "file_size_bytes": 139414,
+      "file_size_kb": 136.1,
+      "path_count": 691,
+      "polygon_count": 59,
+      "total_drawn_elements": 750,
+      "dutch_angle_deg": 0.0
+    },
+    {
+      "filename": "closeup_evelyn.svg",
+      "filepath": "/workspaces/d3-story-lab/backend/data/visual_qa/closeup_evelyn.svg",
+      "shot_type": "close_up",
+      "camera_angle": "eye_level",
+      "characters": [
+        "Evelyn Vance"
+      ],
+      "props": [],
+      "environment": "WAREHOUSE",
+      "style": "Graphite Production Board",
+      "file_size_bytes": 134179,
+      "file_size_kb": 131.0,
+      "path_count": 663,
+      "polygon_count": 57,
+      "total_drawn_elements": 720,
+      "dutch_angle_deg": 0.0
+    },
+    {
+      "filename": "insert_dossier.svg",
+      "filepath": "/workspaces/d3-story-lab/backend/data/visual_qa/insert_dossier.svg",
+      "shot_type": "insert",
+      "camera_angle": "high_angle",
+      "characters": [],
+      "props": [
+        "Classified Dossier"
+      ],
+      "environment": "WAREHOUSE",
+      "style": "Graphite Production Board",
+      "file_size_bytes": 115912,
+      "file_size_kb": 113.2,
+      "path_count": 568,
+      "polygon_count": 49,
+      "total_drawn_elements": 617,
+      "dutch_angle_deg": 0.0
+    },
+    {
+      "filename": "action.svg",
+      "filepath": "/workspaces/d3-story-lab/backend/data/visual_qa/action.svg",
+      "shot_type": "wide",
+      "camera_angle": "dutch_angle",
+      "characters": [
+        "Vincent Cross"
+      ],
+      "props": [],
+      "environment": "WAREHOUSE",
+      "style": "Graphite Production Board",
+      "file_size_bytes": 147402,
+      "file_size_kb": 143.9,
+      "path_count": 732,
+      "polygon_count": 66,
+      "total_drawn_elements": 798,
+      "dutch_angle_deg": -6.5
+    }
+  ]
+}

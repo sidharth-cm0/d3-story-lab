@@ -78,14 +78,22 @@ class GeminiProvider(LLMProvider):
         if system_prompt:
             payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
 
-        with httpx.Client(timeout=30.0) as client:
-            resp = client.post(url, json=payload)
-            if resp.status_code == 200:
-                data = resp.json()
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts and "text" in parts[0]:
-                        text = parts[0]["text"]
-                        return schema.model_validate_json(text)
-            raise RuntimeError(f"Gemini generation failed with status {resp.status_code}: {resp.text[:200]}")
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts and "text" in parts[0]:
+                            text = parts[0]["text"]
+                            return schema.model_validate_json(text)
+                logger.warning(
+                    f"Gemini API returned status {resp.status_code} ({resp.text[:120]}), using fallback provider."
+                )
+        except Exception as e:
+            logger.warning(f"GeminiProvider generate_structured failed ({e}), using fallback provider.")
+
+        from .mock import MockLLMProvider
+        return MockLLMProvider().generate_structured(schema, prompt, system_prompt=system_prompt)

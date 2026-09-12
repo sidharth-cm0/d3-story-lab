@@ -32,6 +32,18 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
     }
   };
 
+  const getActiveBlock = () => {
+    if (!selectedBlockId || !doc) return null;
+    for (const scene of doc.scenes) {
+      for (const block of scene.blocks) {
+        if (block.id === selectedBlockId) {
+          return block;
+        }
+      }
+    }
+    return null;
+  };
+
   const getActiveBlockSources = () => {
     if (!selectedBlockId || !doc) return [];
     for (const scene of doc.scenes) {
@@ -44,6 +56,7 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
     return [];
   };
 
+  const activeBlock = getActiveBlock();
   const activeSources = getActiveBlockSources();
 
   return (
@@ -186,9 +199,23 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
 
                 {doc?.scenes.map((scene) => (
                   <section key={`scene-${scene.scene_number}`} className="screenplay-scene-section">
-                    <div className="scene-slugline">
-                      <span className="scene-num-prefix">{scene.scene_number}.</span>
-                      <span>{scene.heading}</span>
+                    <div className="scene-slugline" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                      <div>
+                        <span className="scene-num-prefix">{scene.scene_number}.</span>
+                        <span>{scene.heading}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        {scene.framing_type && scene.framing_type !== 'chronological' && (
+                          <span className="panel-badge text-amber" style={{ fontSize: '10px' }}>
+                            FRAMING: {scene.framing_type.replace(/_/g, ' ').toUpperCase()}
+                          </span>
+                        )}
+                        {scene.dramatic_purpose && (
+                          <span className="panel-badge" style={{ fontSize: '10px' }}>
+                            {scene.dramatic_purpose.replace(/_/g, ' ').toUpperCase()}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="scene-blocks-flow">
@@ -225,8 +252,14 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
                               key={block.id}
                               className={`screenplay-parenthetical ${isSelected ? 'selected' : ''}`}
                               onClick={() => setSelectedBlockId(block.id)}
+                              title={block.is_performance_cue ? `Performance Cue (${block.cue_type || 'micro-expression'})` : undefined}
                             >
                               ({block.text})
+                              {block.is_performance_cue && (
+                                <span className="perf-cue-dot" title={`Grounded behavioral tell: ${block.cue_type}`} style={{ marginLeft: '5px', color: '#f59e0b', fontSize: '10px' }}>
+                                  ●
+                                </span>
+                              )}
                             </div>
                           );
                         }
@@ -275,6 +308,20 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
                 ) : (
                   <div className="drawer-empty-hint">
                     Click any dialogue cue or action line to inspect its provable simulation events.
+                  </div>
+                )}
+
+                {activeBlock && (activeBlock.is_performance_cue || activeBlock.cue_type) && (
+                  <div style={{ marginTop: '16px', padding: '10px 12px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', letterSpacing: '0.06em' }}>
+                      🎭 PERFORMANCE CUE PROVENANCE
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '6px' }}>
+                      <strong>CUE TYPE:</strong> <span className="panel-badge text-amber" style={{ fontSize: '10px' }}>{activeBlock.cue_type || 'BEHAVIORAL TELL'}</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px', lineHeight: 1.4 }}>
+                      Deterministically grounded in actor emotional subtext without exposing confidential secrets or internal knowledge.
+                    </div>
                   </div>
                 )}
               </aside>

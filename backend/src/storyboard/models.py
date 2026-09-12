@@ -37,8 +37,11 @@ class ShotPurpose(str, Enum):
     DIALOGUE = "dialogue"
     REACTION = "reaction"
     REVELATION = "revelation"
+    REVEAL = "reveal"
+    DISCOVERY = "discovery"
     CLUE = "clue"
     THREAT = "threat"
+    POWER_SHIFT = "power_shift"
     TRANSITION = "transition"
     CLIMAX = "climax"
     RESOLUTION = "resolution"
@@ -138,6 +141,13 @@ class StoryboardPanel(BaseModel):
     dialogue_bubble_type: Optional[str] = None  # "speech" | "whisper" | "shout" | "thought" | "caption"
     sfx_label: Optional[str] = None
     continuity_notes: str = ""
+    camera_movement: str = "STATIC"  # "STATIC" | "PUSH IN" | "DOLLY OUT" | "TRACK ->" | "PAN ->" | "DUTCH TILT" | "HANDHELD" | "RACK FOCUS"
+    focal_depth_plane: str = "focal_plane"  # "foreground" | "focal_plane" | "background"
+    lighting_profile_id: str = "NOIR_HARD"
+    transition_type: Optional[str] = None  # "MATCH_CUT" | "GRAPHIC_MATCH" | "ACTION_MATCH" | "EYELINE_CUT" | "TRACKING_CONTINUATION" | "WHIP_PAN" | "RACK_FOCUS" | "INSERT_TO_REACTION" | "REVEAL"
+    transition_source_shot: Optional[int] = None
+    transition_target_shot: Optional[int] = None
+    visual_link: Optional[str] = None
 
     image_asset_id: Optional[str] = None
     image_url: Optional[str] = None

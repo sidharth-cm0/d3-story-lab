@@ -9,10 +9,11 @@ import {
 import {
   fetchVisualBible,
   planStoryboard,
-  generateStoryboard,
   regeneratePanelVersion,
   selectPanelVersion,
   regeneratePage,
+  externalRenderPanel,
+  externalRenderPage,
 } from '../api';
 import { formatDisplayValue, safeExtractSvg } from '../utils/format';
 
@@ -21,20 +22,22 @@ interface StoryboardViewerProps {
   loading?: boolean;
 }
 
-type SubTab = 'comic' | 'grid' | 'bible' | 'continuity';
+type SubTab = 'comic' | 'grid' | 'presentation' | 'bible' | 'continuity';
 
 export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) => {
   const [storyboardData, setStoryboardData] = useState<StoryboardResponse | null>(null);
   const [visualBible, setVisualBible] = useState<VisualBible | null>(null);
   const [activeTab, setActiveTab] = useState<SubTab>('grid');
   const [activePage, setActivePage] = useState<number>(1);
+  const [presentationIndex, setPresentationIndex] = useState<number>(0);
   const [densityMode, setDensityMode] = useState<string>('standard');
   const [selectedPanel, setSelectedPanel] = useState<StoryboardPanel | null>(null);
 
   const [fetching, setFetching] = useState(false);
-  const [generatingAll, setGeneratingAll] = useState(false);
   const [regeneratingPanelId, setRegeneratingPanelId] = useState<string | null>(null);
   const [regeneratingPage, setRegeneratingPage] = useState(false);
+  const [renderingExternalPanelId, setRenderingExternalPanelId] = useState<string | null>(null);
+  const [renderingExternalPage, setRenderingExternalPage] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,6 +45,21 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
       setStoryboardData(project.storyboard);
     }
   }, [project.storyboard]);
+
+  useEffect(() => {
+    if (activeTab !== 'presentation') return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const totalPanels = storyboardData?.shot_plan?.panels?.length || 0;
+      if (totalPanels === 0) return;
+      if (e.key === 'ArrowLeft') {
+        setPresentationIndex((prev) => Math.max(0, prev - 1));
+      } else if (e.key === 'ArrowRight') {
+        setPresentationIndex((prev) => Math.min(totalPanels - 1, prev + 1));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, storyboardData?.shot_plan?.panels?.length]);
 
   useEffect(() => {
     if (project.metadata?.id) {
@@ -68,23 +86,6 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
       setError(err.message || 'Failed to prepare storyboard shot plan');
     } finally {
       setFetching(false);
-    }
-  };
-
-  const handleGenerateAllAI = async (providerType?: string) => {
-    if (!storyboardData?.shot_plan) {
-      setError('Plan shots before generating images.');
-      return;
-    }
-    setGeneratingAll(true);
-    setError(null);
-    try {
-      const data = await generateStoryboard(project.metadata.id, providerType);
-      setStoryboardData(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to generate visual frames');
-    } finally {
-      setGeneratingAll(false);
     }
   };
 
@@ -154,6 +155,55 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
     }
   };
 
+  const handleExternalRenderPanel = async (panelId: string) => {
+    setRenderingExternalPanelId(panelId);
+    setError(null);
+    try {
+      const res = await externalRenderPanel(project.metadata.id, panelId);
+      if (storyboardData) {
+        const newPanels = storyboardData.shot_plan.panels.map((p) =>
+          p.id === panelId || p.panel_id === panelId ? res.panel : p
+        );
+        const newRenders = [...storyboardData.rendered_panels];
+        if (res.panel_index >= 0 && res.panel_index < newRenders.length) {
+          newRenders[res.panel_index] = res.rendered_panel;
+        }
+        const updated = {
+          ...storyboardData,
+          shot_plan: { ...storyboardData.shot_plan, panels: newPanels },
+          rendered_panels: newRenders,
+        };
+        setStoryboardData(updated);
+        if (selectedPanel && (selectedPanel.id === panelId || selectedPanel.panel_id === panelId)) {
+          setSelectedPanel(res.panel);
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to render panel externally');
+    } finally {
+      setRenderingExternalPanelId(null);
+    }
+  };
+
+  const handleExternalRenderPage = async (pageNumber: number) => {
+    setRenderingExternalPage(true);
+    setError(null);
+    try {
+      const res = await externalRenderPage(project.metadata.id, pageNumber);
+      if (storyboardData) {
+        setStoryboardData({
+          ...storyboardData,
+          shot_plan: res.shot_plan,
+          rendered_panels: res.rendered_panels,
+        });
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to render page externally');
+    } finally {
+      setRenderingExternalPage(false);
+    }
+  };
+
   const panels: StoryboardPanel[] = storyboardData?.shot_plan?.panels || [];
   const renderedPanels = storyboardData?.rendered_panels || [];
   const continuityReport: ContinuityReport | undefined = storyboardData?.continuity_report;
@@ -183,7 +233,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
             <select
               value={densityMode}
               onChange={(e) => setDensityMode(e.target.value)}
-              disabled={fetching || generatingAll}
+              disabled={fetching || regeneratingPage || renderingExternalPage}
             >
               <option value="quick">QUICK (2 / scene)</option>
               <option value="standard">STANDARD (4 / scene)</option>
@@ -195,20 +245,20 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
             <>
               <button
                 className="btn-cinematic-secondary"
-                onClick={() => handleGenerateAllAI()}
-                disabled={generatingAll || fetching}
-                title="Generate illustration artwork for all panels across the episode"
+                onClick={() => handleRegeneratePage(activePage)}
+                disabled={regeneratingPage || fetching}
+                title={`Regenerate all visual frames on Page ${activePage} (Offline Hand-Drawn)`}
               >
-                {generatingAll ? 'GENERATING ARTWORK...' : '★ GENERATE ALL ART'}
+                {regeneratingPage ? 'REGENERATING PAGE...' : `↻ REGENERATE PAGE ${activePage}`}
               </button>
 
               <button
                 className="btn-cinematic-secondary"
-                onClick={() => handleRegeneratePage(activePage)}
-                disabled={regeneratingPage || fetching}
-                title={`Regenerate all visual frames on Page ${activePage}`}
+                onClick={() => handleExternalRenderPage(activePage)}
+                disabled={renderingExternalPage || fetching}
+                title="Optional external provider. Availability, quotas and pricing depend on the provider/account."
               >
-                {regeneratingPage ? 'REGENERATING PAGE...' : `↻ REGENERATE PAGE ${activePage}`}
+                {renderingExternalPage ? 'RENDERING EXTERNALLY...' : `⚡ RENDER PAGE EXTERNALLY`}
               </button>
             </>
           )}
@@ -237,6 +287,12 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
             onClick={() => setActiveTab('grid')}
           >
             ▦ SHOT GRID
+          </button>
+          <button
+            className={`subtab-btn ${activeTab === 'presentation' ? 'active' : ''}`}
+            onClick={() => setActiveTab('presentation')}
+          >
+            🎬 PRESENTATION VIEW
           </button>
           <button
             className={`subtab-btn ${activeTab === 'bible' ? 'active' : ''}`}
@@ -341,7 +397,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                           panel.provider === 'hand_drawn_storyboard' ||
                           panel.mode === 'hand_drawn' ||
                           !panel.fallback_reason);
-                      const badgeLabel = isAi ? 'AI IMAGE' : (isHandDrawn ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC');
+                      const badgeLabel = isAi ? 'EXTERNAL AI IMAGE' : (isHandDrawn ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC');
                       const badgeClass = isAi ? 'badge-ai-image' : (isHandDrawn ? 'badge-hand-drawn' : 'badge-fallback-comic');
 
                       const activeVer =
@@ -517,7 +573,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                       panel.provider === 'hand_drawn_storyboard' ||
                       panel.mode === 'hand_drawn' ||
                       !panel.fallback_reason);
-                  const badgeLabel = isAi ? 'AI IMAGE' : (isHandDrawn ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC');
+                  const badgeLabel = isAi ? 'EXTERNAL AI IMAGE' : (isHandDrawn ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC');
                   const badgeClass = isAi ? 'badge-ai-image' : (isHandDrawn ? 'badge-hand-drawn' : 'badge-fallback-comic');
 
                   const activeVer =
@@ -545,10 +601,6 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                   }
 
                   const actionText = formatDisplayValue(panel.action || panel.action_description || 'Scene unfolds');
-                  const visualText = formatDisplayValue(
-                    panel.visual_description ||
-                    (panel.lighting && panel.mood ? `${panel.lighting} • ${panel.mood}` : '')
-                  );
                   const dialogueText = panel.dialogue_excerpt ? formatDisplayValue(panel.dialogue_excerpt) : null;
                   const promptText = formatDisplayValue(panel.image_prompt || panel.prompt || panel.visual_prompt || '');
                   const sourceBlocks = panel.source_screenplay_block_ids || [];
@@ -557,18 +609,31 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                     panel.image_url ||
                     (typeof renderData === 'object' ? renderData?.image_url : null);
 
-                  return (
+                    return (
                     <div
                       key={panel.id || `grid-${shotNum}`}
-                      className="noir-storyboard-panel"
+                      className="noir-storyboard-panel artwork-first-card"
                       onClick={() => setSelectedPanel(panel)}
+                      title="Click to open Panel Inspector, view version history, or inspect continuity"
                     >
-                      <div className="panel-card-topbar">
-                        <span className="frame-number-badge">
-                          SHOT {String(shotNum).padStart(2, '0')} • SCENE {panel.scene_number || 1}
+                      <div className="panel-card-topbar-clean">
+                        <span className="frame-number-badge" style={{ position: 'static' }}>
+                          SHOT {String(shotNum).padStart(2, '0')} • {shotType}{cameraAngle ? ` / ${cameraAngle}` : ''}
                         </span>
 
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          {panel.transition_type && (
+                            <span className="panel-badge text-amber" title={panel.visual_link ? `Visual link: ${panel.visual_link}` : undefined}>
+                              ⤹ {panel.transition_type.replace(/_/g, ' ').toUpperCase()}
+                            </span>
+                          )}
+                          {panel.camera_movement && (
+                            <span className="panel-badge" title="Camera Movement">
+                              🎥 {panel.camera_movement.replace(/_/g, ' ').toUpperCase()}
+                            </span>
+                          )}
+                          <span className="panel-badge text-amber">{shotType}</span>
+                          <span className="panel-badge">{cameraAngle}</span>
                           <span className="badge-pill badge-version">v{activeVer}</span>
                           <span className={`badge-pill ${badgeClass}`}>
                             {badgeLabel}
@@ -587,12 +652,13 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                             disabled={isRegenerating}
                             title="Regenerate this specific visual panel"
                           >
-                            {isRegenerating ? '↻ REGENERATING...' : '↻ REGENERATE'}
+                            {isRegenerating ? '↻...' : '↻'}
                           </button>
                         </div>
                       </div>
 
-                      <div className="storyboard-frame-container">
+                      {/* 16:9 Cinematic Artwork Frame (75-80% card prominence) */}
+                      <div className="storyboard-frame-container artwork-first-frame">
                         {imageUrl && !imageUrl.endsWith('.svg') ? (
                           <img
                             src={imageUrl}
@@ -613,39 +679,25 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                         )}
                       </div>
 
-                      <div className="storyboard-panel-info">
-                        <div className="panel-tags-row">
-                          <span className="panel-badge text-amber">{shotType}</span>
-                          <span className="panel-badge">{cameraAngle}</span>
-                          <span className="panel-badge">{panel.narrative_purpose || 'ACTION'}</span>
+                      {/* Clean Artwork-First Action & Subject Bar */}
+                      <div className="panel-info-compact">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div className="panel-chars-chips">
+                            {panel.character_names && panel.character_names.length > 0
+                              ? panel.character_names.map((cName) => (
+                                  <span key={cName} className="char-chip">👤 {cName}</span>
+                                ))
+                              : actorNames ? <span className="char-chip">👤 {actorNames}</span> : null}
+                            {panel.objects_in_frame && panel.objects_in_frame.length > 0 && (
+                              <span className="prop-chip">📦 {panel.objects_in_frame.join(', ')}</span>
+                            )}
+                          </div>
                           <span className="panel-location-tag">📍 {locName}</span>
                         </div>
 
-                        {actorNames ? (
-                          <div className="panel-chars-line">
-                            <span className="text-muted">ACTORS: </span>
-                            <span>{actorNames}</span>
-                          </div>
-                        ) : null}
-
-                        {panel.objects_in_frame && panel.objects_in_frame.length > 0 && (
-                          <div className="panel-chars-line">
-                            <span className="text-muted">PROPS: </span>
-                            <span className="text-amber">{panel.objects_in_frame.join(', ')}</span>
-                          </div>
-                        )}
-
-                        <p className="panel-action-desc">
-                          <span className="text-muted">ACTION: </span>
-                          <span>{actionText}</span>
+                        <p className="panel-action-desc-clean">
+                          {actionText}
                         </p>
-
-                        {visualText && visualText !== '—' ? (
-                          <div className="panel-visual-desc">
-                            <span className="text-muted">VISUAL: </span>
-                            <span>{visualText}</span>
-                          </div>
-                        ) : null}
 
                         {dialogueText && (
                           <div className="panel-dialogue-excerpt">
@@ -653,14 +705,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                           </div>
                         )}
 
-                        {panel.continuity_notes && (
-                          <div className="panel-continuity-note">
-                            <span className="continuity-icon">🔗 CONTINUITY: </span>
-                            <span>{panel.continuity_notes}</span>
-                          </div>
-                        )}
-
-                        <details className="panel-prompt-details">
+                        <details className="panel-prompt-details" onClick={(e) => e.stopPropagation()}>
                           <summary className="panel-prompt-summary">PROMPT &amp; DETAILS</summary>
                           <div className="panel-prompt-mono">
                             <div className="mono-kicker">IMAGE GENERATION PROMPT PACKAGE</div>
@@ -683,6 +728,180 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* 3. PRESENTATION / DIRECTOR VIEW MODE */}
+            {activeTab === 'presentation' && panels.length > 0 && (
+              <div className="presentation-view-container">
+                {(() => {
+                  const currentIdx = Math.max(0, Math.min(panels.length - 1, presentationIndex));
+                  const panel = panels[currentIdx];
+                  const renderData = currentIdx < renderedPanels.length ? renderedPanels[currentIdx] : null;
+                  const svgContent = safeExtractSvg(renderData) || panel.rendered_svg;
+                  const shotNum = panel.shot_number ?? panel.panel_number ?? currentIdx + 1;
+                  const imageUrl = panel.image_url || (typeof renderData === 'object' ? renderData?.image_url : null);
+                  const isRegenerating = regeneratingPanelId === panel.id;
+
+                  const shotType = (panel.shot_type || 'medium').replace(/_/g, ' ').toUpperCase();
+                  const cameraAngle = (panel.camera_angle || 'eye_level').replace(/_/g, ' ').toUpperCase();
+                  const locName = formatDisplayValue(
+                    panel.location_name ||
+                    project.world?.locations?.[panel.location_id]?.name ||
+                    panel.location_id ||
+                    'Scene Setting'
+                  );
+                  const actionText = formatDisplayValue(panel.action || panel.action_description || 'Scene unfolds');
+                  const dialogueText = panel.dialogue_excerpt ? formatDisplayValue(panel.dialogue_excerpt) : null;
+
+                  return (
+                    <>
+                      {/* Presentation Controls Bar */}
+                      <div className="presentation-controls-bar">
+                        <button
+                          className="page-nav-btn"
+                          onClick={() => setPresentationIndex((prev) => Math.max(0, prev - 1))}
+                          disabled={currentIdx <= 0}
+                          title="Previous shot (Left Arrow)"
+                        >
+                          ◀ PREV SHOT
+                        </button>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <span className="page-indicator" style={{ fontSize: '13px', fontWeight: 800 }}>
+                            SHOT {String(shotNum).padStart(2, '0')} OF {panels.length} • SCENE {panel.scene_number || 1}
+                          </span>
+                          <span className="panel-badge text-amber">{shotType}</span>
+                          <span className="panel-badge">{cameraAngle}</span>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            className="btn-cinematic-secondary"
+                            onClick={() => setSelectedPanel(panel)}
+                          >
+                            🔍 INSPECT PANEL
+                          </button>
+                          <button
+                            className="btn-cinematic-secondary"
+                            onClick={() => handleRegenerateSinglePanel(panel.id)}
+                            disabled={isRegenerating}
+                          >
+                            {isRegenerating ? '↻...' : '↻ REGENERATE'}
+                          </button>
+                          <button
+                            className="page-nav-btn"
+                            onClick={() => setPresentationIndex((prev) => Math.min(panels.length - 1, prev + 1))}
+                            disabled={currentIdx >= panels.length - 1}
+                            title="Next shot (Right Arrow)"
+                          >
+                            NEXT SHOT ▶
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Large 16:9 Cinematic Stage */}
+                      <div className="presentation-stage" onClick={() => setSelectedPanel(panel)}>
+                        {imageUrl && !imageUrl.endsWith('.svg') ? (
+                          <img
+                            src={imageUrl}
+                            alt={panel.caption || `Shot ${shotNum}`}
+                            className="comic-panel-artwork"
+                            loading="lazy"
+                          />
+                        ) : svgContent ? (
+                          <div
+                            className="storyboard-svg-wrapper"
+                            dangerouslySetInnerHTML={{ __html: svgContent }}
+                          />
+                        ) : (
+                          <div className="storyboard-placeholder-sketch">
+                            <span className="sketch-crosshair">✛</span>
+                            <span className="sketch-label">SHOT {shotNum}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Director's Notes Block */}
+                      <div className="presentation-director-notes">
+                        <div className="presentation-shot-title">
+                          <div>
+                            <span className="pane-kicker">DIRECTOR'S NOTEBOOK</span>
+                            <h3 style={{ margin: '4px 0 0 0', color: '#f8fafc', fontSize: '16px' }}>
+                              SHOT {String(shotNum).padStart(2, '0')} // {panel.narrative_purpose?.toUpperCase() || 'ACTION'}
+                            </h3>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <span className="panel-location-tag" style={{ fontSize: '12px' }}>
+                              📍 {locName}
+                            </span>
+                            <span className="text-muted" style={{ fontSize: '11px' }}>
+                              Use ◀ / ▶ keys to navigate
+                            </span>
+                          </div>
+                        </div>
+
+                        {panel.transition_type && (
+                          <div className="presentation-transition-banner" style={{ background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '4px', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 800, color: '#f59e0b' }}>
+                              ⤹ TRANSITION: {panel.transition_type.replace(/_/g, ' ').toUpperCase()}
+                            </span>
+                            {panel.visual_link && (
+                              <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                                • Visual link: <em style={{ color: '#fde68a' }}>{panel.visual_link}</em>
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="presentation-action-hero">
+                          {actionText}
+                        </div>
+
+                        {dialogueText && (
+                          <div className="panel-dialogue-excerpt" style={{ fontSize: '13px', padding: '6px 12px' }}>
+                            "{dialogueText}"
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                          <span className="panel-badge text-amber">{shotType}</span>
+                          <span className="panel-badge">{cameraAngle}</span>
+                          {panel.camera_movement && (
+                            <span className="panel-badge text-amber">🎥 {panel.camera_movement.replace(/_/g, ' ').toUpperCase()}</span>
+                          )}
+                          {panel.focal_depth_plane && (
+                            <span className="panel-badge">Depth: {panel.focal_depth_plane.replace(/_/g, ' ').toUpperCase()}</span>
+                          )}
+                          {panel.lighting_profile_id && (
+                            <span className="panel-badge">Light: {panel.lighting_profile_id.replace(/_/g, ' ').toUpperCase()}</span>
+                          )}
+                          {panel.lens_feel && <span className="panel-badge">{panel.lens_feel}</span>}
+                          {panel.composition && (
+                            <span className="panel-badge">Framing: {panel.composition}</span>
+                          )}
+                          {panel.lighting && !panel.lighting_profile_id && (
+                            <span className="panel-badge">Light: {panel.lighting}</span>
+                          )}
+                        </div>
+
+                        {panel.objects_in_frame && panel.objects_in_frame.length > 0 && (
+                          <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                            <strong style={{ color: '#cbd5e1' }}>Props in Frame:</strong>{' '}
+                            <span className="text-amber">{panel.objects_in_frame.join(', ')}</span>
+                          </div>
+                        )}
+
+                        {panel.continuity_notes && (
+                          <div className="panel-continuity-note" style={{ fontSize: '11px' }}>
+                            <span className="continuity-icon">🔗 CONTINUITY: </span>
+                            <span>{panel.continuity_notes}</span>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
 
@@ -958,6 +1177,29 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                   <div className="pane-kicker" style={{ marginBottom: '8px' }}>
                     GENERATION VERSIONS ({selectedPanel.versions?.length || 1})
                   </div>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      className="btn-cinematic-secondary"
+                      onClick={() => handleRegenerateSinglePanel(selectedPanel.id)}
+                      disabled={regeneratingPanelId === selectedPanel.id}
+                      title="Regenerate hand-drawn sketch (offline)"
+                      style={{ padding: '6px 12px', fontSize: '11px' }}
+                    >
+                      {regeneratingPanelId === selectedPanel.id ? 'REGENERATING...' : '↻ REGENERATE HAND-DRAWN'}
+                    </button>
+                    <button
+                      className="btn-cinematic-secondary"
+                      onClick={() => handleExternalRenderPanel(selectedPanel.id)}
+                      disabled={renderingExternalPanelId === selectedPanel.id}
+                      title="Optional external provider. Availability, quotas and pricing depend on the provider/account."
+                      style={{ padding: '6px 12px', fontSize: '11px', borderColor: '#7c3aed', color: '#c4b5fd' }}
+                    >
+                      {renderingExternalPanelId === selectedPanel.id ? 'RENDERING EXTERNALLY...' : '⚡ RENDER THIS PANEL EXTERNALLY'}
+                    </button>
+                  </div>
+                  <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '10px', fontStyle: 'italic' }}>
+                    Optional external provider. Availability, quotas and pricing depend on the provider/account.
+                  </div>
                   <div className="inspector-versions-list">
                     {(selectedPanel.versions && selectedPanel.versions.length > 0
                       ? selectedPanel.versions
@@ -981,7 +1223,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                         </div>
                         <div style={{ fontWeight: 800 }}>VERSION {ver.version}</div>
                         <div style={{ fontSize: '9px', color: ver.mode === 'ai_image' ? '#a78bfa' : (ver.mode === 'hand_drawn' ? '#38bdf8' : '#f59e0b') }}>
-                          {ver.mode === 'ai_image' ? 'AI IMAGE' : (ver.mode === 'hand_drawn' ? 'HAND-DRAWN' : 'FALLBACK')}
+                          {ver.mode === 'ai_image' ? 'EXTERNAL AI' : (ver.mode === 'hand_drawn' ? 'HAND-DRAWN' : 'FALLBACK')}
                         </div>
                       </div>
                     ))}
@@ -1048,7 +1290,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                                 : 'badge-fallback-comic'
                             }`}
                           >
-                            SOURCE: {isAiMode ? 'AI IMAGE' : isHandDrawnMode ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC'}
+                            SOURCE: {isAiMode ? 'EXTERNAL AI IMAGE' : isHandDrawnMode ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC'}
                           </span>
                           {currentReason && (
                             <span className="badge-pill badge-fallback-reason">
@@ -1111,11 +1353,33 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
                         <span className="panel-badge text-amber">{selectedPanel.shot_type.toUpperCase()}</span>
                         <span className="panel-badge">{selectedPanel.camera_angle.toUpperCase()}</span>
+                        {selectedPanel.camera_movement && (
+                          <span className="panel-badge text-amber">🎥 {selectedPanel.camera_movement.replace(/_/g, ' ').toUpperCase()}</span>
+                        )}
+                        {selectedPanel.focal_depth_plane && (
+                          <span className="panel-badge">Depth: {selectedPanel.focal_depth_plane.replace(/_/g, ' ').toUpperCase()}</span>
+                        )}
+                        {selectedPanel.lighting_profile_id && (
+                          <span className="panel-badge">Light: {selectedPanel.lighting_profile_id.replace(/_/g, ' ').toUpperCase()}</span>
+                        )}
                         <span className="panel-badge">{selectedPanel.lens_feel}</span>
                       </div>
                       <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>
                         <strong>Composition:</strong> {selectedPanel.composition}
                       </div>
+                      {selectedPanel.transition_type && (
+                        <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '6px' }}>
+                          <strong>Transition:</strong> {selectedPanel.transition_type.replace(/_/g, ' ').toUpperCase()}
+                          {selectedPanel.visual_link && (
+                            <span style={{ color: '#cbd5e1' }}> (Visual Link: <em>{selectedPanel.visual_link}</em>)</span>
+                          )}
+                        </div>
+                      )}
+                      {selectedPanel.subtext_context && (
+                        <div style={{ fontSize: '12px', color: '#38bdf8', marginTop: '4px' }}>
+                          <strong>Subtext Context:</strong> {selectedPanel.subtext_context}
+                        </div>
+                      )}
                     </div>
 
                     <div>

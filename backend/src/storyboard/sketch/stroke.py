@@ -21,9 +21,38 @@ def get_rng(seed_str: str) -> random.Random:
     return random.Random(get_seed_hash(seed_str))
 
 
+# =============================================================================
+# CINEMATIC STORYBOARD LINE WEIGHT HIERARCHY (Section 13)
+# =============================================================================
+LINE_WEIGHT_CONSTRUCTION = 0.5   # Very light layout guides (< 0.12 opacity)
+LINE_WEIGHT_BACKGROUND = 0.9     # Distant architecture, high trusses, windows
+LINE_WEIGHT_INTERIOR = 1.3       # Facial features, clothing seams, folds
+LINE_WEIGHT_CHARACTER = 1.9      # Main actor silhouette, anatomical contours
+LINE_WEIGHT_FOREGROUND = 2.8     # Foreground framing elements, close-up silhouettes
+LINE_WEIGHT_SHADOW = 2.4         # Deep shadow boundary edges
+
+# =============================================================================
+# 5-VALUE GRAYSCALE TONAL HIERARCHY (Section 14)
+# =============================================================================
+VALUE_0 = "#ffffff"              # Pure highlight / paper white
+VALUE_1 = "#cbd5e1"              # Light gray wash
+VALUE_2 = "#64748b"              # Midtone gray
+VALUE_3 = "#334155"              # Dark shadow gray
+VALUE_4 = "#090d16"              # Near black / deep ink
+
+# =============================================================================
+# RESTRAINED SELECTIVE COLOR ACCENTS (Section 16)
+# =============================================================================
+ACCENT_COOL_WASH = "#1e293b"     # 20% environmental cool wash
+ACCENT_BLUE_HAZE = "#38bdf8"     # Moonbeam window tint
+ACCENT_WARM_LAMP = "#f59e0b"     # Practical lamp / flashlight tint
+ACCENT_STORY_RED = "#dc2626"     # Critical narrative cue (wax seal, warning)
+ACCENT_SEPIA = "#78350f"         # Weathered paper/dossier tone
+
+
 class SketchStroke:
     """Hand-drawn stroke generator that creates 1-3 organic, slightly offset lines.
-    
+
     Simulates a storyboard artist's graphite pencil or ink brush with variable jitter,
     curving control points, and overlapping passes.
     """
@@ -77,7 +106,7 @@ class SketchStroke:
             c2y = y1 + (dy * 0.66) + ny * c2_j
 
             p_width = max(0.5, stroke_width + (p_rng.random() - 0.5) * 0.5)
-            p_opacity = max(0.2, min(1.0, opacity * (0.8 + p_rng.random() * 0.3)))
+            p_opacity = max(0.005, min(1.0, opacity * (0.8 + p_rng.random() * 0.3)))
 
             d = f"M {sx:.1f} {sy:.1f} C {c1x:.1f} {c1y:.1f}, {c2x:.1f} {c2y:.1f}, {ex:.1f} {ey:.1f}"
             paths.append(
@@ -86,6 +115,173 @@ class SketchStroke:
             )
 
         return "\n  ".join(paths)
+
+
+class SketchCurve:
+    """Organic Bézier curve renderer simulating hand-drawn anatomical contours and gestures."""
+
+    @staticmethod
+    def render_quad(
+        x1: float, y1: float,
+        cx: float, cy: float,
+        x2: float, y2: float,
+        seed: str,
+        stroke_color: str = "#202020",
+        stroke_width: float = 1.6,
+        opacity: float = 0.85,
+        passes: int = 2,
+        jitter_amount: float = 1.0,
+    ) -> str:
+        """Render a hand-drawn quadratic Bézier curve with organic artist tremor."""
+        dx = x2 - x1
+        dy = y2 - y1
+        dist = math.hypot(dx, dy)
+        if dist < 0.5:
+            return ""
+        nx = -dy / dist
+        ny = dx / dist
+
+        paths = []
+        for p in range(passes):
+            p_seed = f"{seed}_qpass{p}"
+            rng = get_rng(p_seed)
+
+            sj = (rng.random() - 0.5) * jitter_amount * 0.7
+            ej = (rng.random() - 0.5) * jitter_amount * 0.7
+            cj = (rng.random() - 0.5) * jitter_amount * 1.5
+
+            sx = x1 + nx * sj
+            sy = y1 + ny * sj
+            ex = x2 + nx * ej
+            ey = y2 + ny * ej
+            mcx = cx + nx * cj
+            mcy = cy + ny * cj
+
+            pw = max(0.5, stroke_width + (rng.random() - 0.5) * 0.4)
+            pop = max(0.005, min(1.0, opacity * (0.85 + rng.random() * 0.25)))
+
+            d = f"M {sx:.1f} {sy:.1f} Q {mcx:.1f} {mcy:.1f}, {ex:.1f} {ey:.1f}"
+            paths.append(
+                f'<path d="{d}" fill="none" stroke="{stroke_color}" stroke-width="{pw:.2f}" '
+                f'stroke-linecap="round" stroke-linejoin="round" opacity="{pop:.2f}"/>'
+            )
+        return "\n  ".join(paths)
+
+    @staticmethod
+    def render_cubic(
+        x1: float, y1: float,
+        c1x: float, c1y: float,
+        c2x: float, c2y: float,
+        x2: float, y2: float,
+        seed: str,
+        stroke_color: str = "#202020",
+        stroke_width: float = 1.6,
+        opacity: float = 0.85,
+        passes: int = 2,
+        jitter_amount: float = 1.0,
+    ) -> str:
+        """Render a hand-drawn cubic Bézier curve with organic artist tremor."""
+        dx = x2 - x1
+        dy = y2 - y1
+        dist = math.hypot(dx, dy)
+        if dist < 0.5:
+            return ""
+        nx = -dy / dist
+        ny = dx / dist
+
+        paths = []
+        for p in range(passes):
+            p_seed = f"{seed}_cpass{p}"
+            rng = get_rng(p_seed)
+
+            sj = (rng.random() - 0.5) * jitter_amount * 0.6
+            ej = (rng.random() - 0.5) * jitter_amount * 0.6
+            cj1 = (rng.random() - 0.5) * jitter_amount * 1.4
+            cj2 = (rng.random() - 0.5) * jitter_amount * 1.4
+
+            sx = x1 + nx * sj
+            sy = y1 + ny * sj
+            ex = x2 + nx * ej
+            ey = y2 + ny * ej
+            mc1x = c1x + nx * cj1
+            mc1y = c1y + ny * cj1
+            mc2x = c2x + nx * cj2
+            mc2y = c2y + ny * cj2
+
+            pw = max(0.5, stroke_width + (rng.random() - 0.5) * 0.4)
+            pop = max(0.005, min(1.0, opacity * (0.85 + rng.random() * 0.25)))
+
+            d = f"M {sx:.1f} {sy:.1f} C {mc1x:.1f} {mc1y:.1f}, {mc2x:.1f} {mc2y:.1f}, {ex:.1f} {ey:.1f}"
+            paths.append(
+                f'<path d="{d}" fill="none" stroke="{stroke_color}" stroke-width="{pw:.2f}" '
+                f'stroke-linecap="round" stroke-linejoin="round" opacity="{pop:.2f}"/>'
+            )
+        return "\n  ".join(paths)
+
+
+class GraphiteStrokeTier:
+    """Three-tier stroke hierarchy per Section 10:
+    1. PRIMARY CONTOUR: darkest, confident outline
+    2. SECONDARY DETAIL: lighter interior form / fold
+    3. GRAPHITE SCRATCH: thin broken marks simulating pencil rough
+    """
+
+    @staticmethod
+    def render_stroke(
+        x1: float, y1: float, x2: float, y2: float,
+        seed: str,
+        primary_color: str = "#202020",
+        base_width: float = 1.8,
+        include_scratch: bool = True,
+    ) -> str:
+        elements = []
+        # 1. Primary contour (dark, confident, 2 passes)
+        elements.append(
+            SketchStroke.render_line(
+                x1, y1, x2, y2,
+                seed=f"{seed}_prim",
+                stroke_color=primary_color,
+                stroke_width=base_width,
+                opacity=0.90,
+                passes=2,
+                jitter_amount=0.8,
+            )
+        )
+        # 2. Secondary softer pencil tone
+        elements.append(
+            SketchStroke.render_line(
+                x1, y1, x2, y2,
+                seed=f"{seed}_sec",
+                stroke_color="#55514B",
+                stroke_width=base_width * 0.65,
+                opacity=0.55,
+                passes=1,
+                jitter_amount=1.2,
+            )
+        )
+        # 3. Graphite scratch: thin broken marks
+        if include_scratch:
+            rng = get_rng(f"{seed}_scratch")
+            if rng.random() > 0.35:
+                # Overshoot scratch tick
+                dx = x2 - x1
+                dy = y2 - y1
+                dist = max(1.0, math.hypot(dx, dy))
+                ux = dx / dist
+                uy = dy / dist
+                tick_len = min(18.0, dist * 0.25)
+                elements.append(
+                    SketchStroke.render_line(
+                        x2, y2, x2 + ux * tick_len + (rng.random() - 0.5) * 4.0, y2 + uy * tick_len + (rng.random() - 0.5) * 4.0,
+                        seed=f"{seed}_tick",
+                        stroke_color="#77736A",
+                        stroke_width=0.6,
+                        opacity=0.35,
+                        passes=1,
+                        jitter_amount=1.4,
+                    )
+                )
+        return "\n  ".join(elements)
 
 
 class SketchPolyline:
@@ -375,9 +571,11 @@ class PerspectiveGrid:
         num_radials: int = 9,
         num_horizontals: int = 5,
         stroke_color: str = "#475569",
-        stroke_width: float = 1.0,
-        opacity: float = 0.5,
+        stroke_width: float = 0.8,
+        opacity: float = 0.025,
     ) -> str:
+        # Strict enforcement: Perspective guides must never exceed 0.03 opacity in final SVG (Section 1)
+        eff_opacity = min(opacity, 0.03)
         lines = []
         step_x = width / max(1, (num_radials - 1))
         for i in range(num_radials):
@@ -389,7 +587,7 @@ class PerspectiveGrid:
                     seed=line_seed,
                     stroke_color=stroke_color,
                     stroke_width=stroke_width,
-                    opacity=opacity,
+                    opacity=eff_opacity,
                     passes=1,
                     jitter_amount=0.9,
                 )
@@ -409,7 +607,7 @@ class PerspectiveGrid:
                     seed=line_seed,
                     stroke_color=stroke_color,
                     stroke_width=stroke_width * (0.6 + 0.4 * t),
-                    opacity=opacity * (0.4 + 0.6 * t),
+                    opacity=eff_opacity * (0.4 + 0.6 * t),
                     passes=1,
                     jitter_amount=0.8,
                 )
@@ -575,3 +773,245 @@ class SpeedLines:
             )
 
         return "\n  ".join(lines)
+
+
+class InkWashPolygon:
+    """Semi-transparent ink-wash shading polygon with organic edge variation (Section 15).
+
+    Mixes with linework and cross-hatching to create genuine film storyboard tone.
+    """
+
+    @staticmethod
+    def render(
+        points: List[Tuple[float, float]],
+        seed: str,
+        fill_color: str = "#0f172a",
+        opacity: float = 0.22,
+        blend_mode: str = "normal",
+        wash_color: Optional[str] = None,
+    ) -> str:
+        if len(points) < 3:
+            return ""
+        color = wash_color or fill_color
+        rng = get_rng(seed)
+        jittered = []
+        for px, py in points:
+            jx = (rng.random() - 0.5) * 1.8
+            jy = (rng.random() - 0.5) * 1.8
+            jittered.append(f"{px + jx:.1f},{py + jy:.1f}")
+        pts_str = " ".join(jittered)
+        mix = f'style="mix-blend-mode: {blend_mode};"' if blend_mode != "normal" else ""
+        return (
+            f'<polygon points="{pts_str}" fill="{color}" fill-opacity="{opacity:.3f}" '
+            f'stroke="none" {mix}/>'
+        )
+
+
+class TextureRenderer:
+    """Procedural material texture generator (Section 17: Concrete, Wood, Metal, Rain)."""
+
+    @staticmethod
+    def concrete_cracks(
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        seed: str,
+        stroke_color: str = "#334155",
+        num_cracks: int = 3,
+    ) -> str:
+        """Render irregular hairline concrete stress fractures and expansion cuts."""
+        rng = get_rng(seed)
+        paths = []
+        for c in range(num_cracks):
+            cx_start = x + (rng.random() * w * 0.8)
+            cy_start = y + (rng.random() * h * 0.8)
+            cur_x, cur_y = cx_start, cy_start
+            segs = []
+            for s in range(4):
+                next_x = cur_x + (rng.random() - 0.3) * (w * 0.15)
+                next_y = cur_y + (rng.random() - 0.4) * (h * 0.12)
+                segs.append(f"L {next_x:.1f} {next_y:.1f}")
+                cur_x, cur_y = next_x, next_y
+            d_str = f"M {cx_start:.1f} {cy_start:.1f} " + " ".join(segs)
+            paths.append(
+                f'<path d="{d_str}" fill="none" stroke="{stroke_color}" stroke-width="{LINE_WEIGHT_CONSTRUCTION:.2f}" '
+                f'stroke-linecap="round" opacity="0.45"/>'
+            )
+        return "\n  ".join(paths)
+
+    @staticmethod
+    def wood_grain(
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        seed: str,
+        stroke_color: str = "#475569",
+        num_planks: int = 3,
+    ) -> str:
+        """Render wood grain lines and plank borders for wooden crates or workbenches."""
+        rng = get_rng(seed)
+        elements = []
+        plank_h = h / max(1, num_planks)
+        for p in range(num_planks):
+            py = y + p * plank_h
+            # Plank seam
+            elements.append(
+                SketchStroke.render_line(
+                    x, py, x + w, py,
+                    seed=f"{seed}_plank_{p}",
+                    stroke_color=stroke_color,
+                    stroke_width=LINE_WEIGHT_INTERIOR,
+                    opacity=0.6,
+                    passes=1,
+                )
+            )
+            # Subtle interior grain lines
+            gy = py + (plank_h * 0.45) + (rng.random() - 0.5) * 4
+            elements.append(
+                SketchStroke.render_line(
+                    x + 4, gy, x + w - 4, gy + (rng.random() - 0.5) * 3,
+                    seed=f"{seed}_grain_{p}",
+                    stroke_color=stroke_color,
+                    stroke_width=LINE_WEIGHT_CONSTRUCTION,
+                    opacity=0.35,
+                    passes=1,
+                )
+            )
+        return "\n  ".join(elements)
+
+    @staticmethod
+    def metal_highlights(
+        x: float,
+        y: float,
+        length: float,
+        seed: str,
+        stroke_color: str = "#ffffff",
+        angle_deg: float = -45.0,
+    ) -> str:
+        """Render sharp specular reflection slashes on metallic edges or flashlights."""
+        rad = math.radians(angle_deg)
+        ex = x + length * math.cos(rad)
+        ey = y + length * math.sin(rad)
+        return SketchStroke.render_line(
+            x, y, ex, ey,
+            seed=f"{seed}_metal_spec",
+            stroke_color=stroke_color,
+            stroke_width=1.1,
+            opacity=0.85,
+            passes=1,
+        )
+
+    @staticmethod
+    def rain_streaks(
+        width: float,
+        height: float,
+        seed: str,
+        num_streaks: int = 24,
+        stroke_color: str = "#94a3b8",
+    ) -> str:
+        """Render atmospheric angled rain streaks."""
+        rng = get_rng(seed)
+        lines = []
+        angle_rad = math.radians(72.0)  # Slight slant
+        dx = math.cos(angle_rad) * 45.0
+        dy = math.sin(angle_rad) * 45.0
+        for i in range(num_streaks):
+            sx = rng.random() * width
+            sy = rng.random() * height
+            lines.append(
+                SketchStroke.render_line(
+                    sx, sy, sx + dx, sy + dy,
+                    seed=f"{seed}_rain_{i}",
+                    stroke_color=stroke_color,
+                    stroke_width=0.7,
+                    opacity=0.3 + rng.random() * 0.25,
+                    passes=1,
+                )
+            )
+        return "\n  ".join(lines)
+
+    @staticmethod
+    def glass_reflections(
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        seed: str,
+        stroke_color: str = "#ffffff",
+        num_streaks: int = 3,
+    ) -> str:
+        """Render diagonal semi-transparent gloss reflection glares across glass panes."""
+        rng = get_rng(seed)
+        elements = []
+        for g_idx in range(num_streaks):
+            gx1 = x + (w * 0.2) + (g_idx * w * 0.25)
+            gy1 = y + 4.0
+            gx2 = gx1 - (w * 0.22)
+            gy2 = y + h - 4.0
+            elements.append(
+                SketchStroke.render_line(
+                    gx1, gy1, gx2, gy2,
+                    seed=f"{seed}_glass_refl_{g_idx}",
+                    stroke_color=stroke_color,
+                    stroke_width=0.9,
+                    opacity=0.45 + (rng.random() * 0.2),
+                    passes=1,
+                )
+            )
+        return "\n  ".join(elements)
+
+    @staticmethod
+    def fabric_folds(
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        seed: str,
+        stroke_color: str = "#334155",
+        num_folds: int = 3,
+    ) -> str:
+        """Render compression folds and stretch crease lines on garments."""
+        rng = get_rng(seed)
+        lines = []
+        step_y = h / max(1, num_folds)
+        for i in range(num_folds):
+            fy = y + i * step_y + (rng.random() - 0.5) * 4.0
+            fx1 = x + (rng.random() - 0.5) * 3.0
+            fx2 = x + w + (rng.random() - 0.5) * 3.0
+            lines.append(
+                SketchStroke.render_line(
+                    fx1, fy, fx2, fy + (rng.random() - 0.5) * 6.0,
+                    seed=f"{seed}_fabric_fold_{i}",
+                    stroke_color=stroke_color,
+                    stroke_width=LINE_WEIGHT_INTERIOR,
+                    opacity=0.65,
+                    passes=1,
+                )
+            )
+        return "\n  ".join(lines)
+
+    @staticmethod
+    def paper_creases(
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        seed: str,
+        stroke_color: str = "#94a3b8",
+    ) -> str:
+        """Render subtle dog-eared corner and surface creases on paper dossiers."""
+        elements = []
+        # Diagonal corner crease
+        elements.append(
+            SketchStroke.render_line(
+                x + w - 12, y, x + w, y + 12,
+                seed=f"{seed}_dogear",
+                stroke_color=stroke_color,
+                stroke_width=LINE_WEIGHT_CONSTRUCTION,
+                opacity=0.6,
+                passes=1,
+            )
+        )
+        return "\n  ".join(elements)

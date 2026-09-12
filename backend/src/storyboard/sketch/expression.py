@@ -31,7 +31,8 @@ class FacialFeatures(BaseModel):
 
     eyebrow_angle_deg: float = 0.0  # Positive = inner brow down (angry), negative = inner brow up (worried/sad)
     eyebrow_raise: float = 0.0      # Vertical shift
-    eye_openness: float = 1.0       # 0.4 squint, 1.0 normal, 1.4 wide shock
+    brow_asymmetry: float = 0.0     # One brow raised higher than the other (suspicious / confused)
+    eye_openness: float = 1.0       # 0.4 squint, 1.0 normal, 1.5 wide shock
     pupil_offset_x: float = 0.0     # Look direction (-1.0 to 1.0)
     pupil_offset_y: float = 0.0
     mouth_curve: float = 0.0        # Negative = frown, 0 = neutral, positive = smirk/smile
@@ -39,6 +40,7 @@ class FacialFeatures(BaseModel):
     mouth_width_factor: float = 1.0
     jaw_tension_lines: bool = False
     sweat_drop: bool = False
+    head_tilt_deg: float = 0.0      # Expressive head tilt
 
 
 EXPRESSION_PROFILES: Dict[ExpressionType, FacialFeatures] = {
@@ -48,68 +50,84 @@ EXPRESSION_PROFILES: Dict[ExpressionType, FacialFeatures] = {
         mouth_curve=0.0,
     ),
     ExpressionType.SUSPICIOUS: FacialFeatures(
-        eyebrow_angle_deg=12.0,  # One brow down, one cocked
-        eye_openness=0.65,       # Narrowed, guarded squint
-        pupil_offset_x=-0.5,     # Side-eye glance
-        mouth_curve=-0.1,
+        eyebrow_angle_deg=14.0,  # One brow down, other cocked high
+        eyebrow_raise=1.0,
+        brow_asymmetry=9.0,      # Suspicious arched brow
+        eye_openness=0.60,       # Narrowed, guarded squint
+        pupil_offset_x=-0.55,    # Sharp side glance
+        mouth_curve=-0.2,        # Compressed firm mouth
+        mouth_width_factor=0.92,
         jaw_tension_lines=True,
+        head_tilt_deg=3.5,       # Suspicious slight tilt
     ),
     ExpressionType.AFRAID: FacialFeatures(
-        eyebrow_angle_deg=-16.0, # Brows arched high with worry
-        eyebrow_raise=-2.5,
-        eye_openness=1.35,       # Wide dilated eyes
-        mouth_curve=-0.4,
-        mouth_openness=0.35,
+        eyebrow_angle_deg=-18.0, # High worried brow arch
+        eyebrow_raise=-3.5,
+        brow_asymmetry=0.0,
+        eye_openness=1.42,       # Wide dilated eyes
+        pupil_offset_y=-0.2,
+        mouth_curve=-0.45,
+        mouth_openness=0.40,     # Trembling parted mouth
         sweat_drop=True,
+        head_tilt_deg=-3.0,      # Head pulled back defensively
     ),
     ExpressionType.ANGRY: FacialFeatures(
-        eyebrow_angle_deg=22.0,  # Deep fierce furrow
-        eyebrow_raise=1.5,
-        eye_openness=0.85,
-        mouth_curve=-0.5,
-        mouth_openness=0.4,      # Gritted teeth / shout
+        eyebrow_angle_deg=24.0,  # Deep fierce furrow
+        eyebrow_raise=2.2,
+        brow_asymmetry=0.0,
+        eye_openness=0.80,       # Glaring tense eyelids
+        mouth_curve=-0.55,
+        mouth_openness=0.45,     # Gritted teeth / aggressive yell
+        mouth_width_factor=1.10,
         jaw_tension_lines=True,
+        head_tilt_deg=2.0,       # Head jutting forward
     ),
     ExpressionType.SHOCKED: FacialFeatures(
-        eyebrow_angle_deg=-8.0,  # High raised brows
-        eyebrow_raise=-4.0,
-        eye_openness=1.5,        # Maximum aperture
-        mouth_openness=0.8,      # Dropped jaw / gasp
-        mouth_width_factor=0.8,
+        eyebrow_angle_deg=-10.0, # High raised brows
+        eyebrow_raise=-5.2,
+        eye_openness=1.55,       # Maximum shock aperture
+        mouth_openness=0.85,     # Dropped open jaw
+        mouth_width_factor=0.85,
+        head_tilt_deg=-2.5,      # Recoiling head
     ),
     ExpressionType.SAD: FacialFeatures(
-        eyebrow_angle_deg=-18.0,
-        eyebrow_raise=-1.0,
-        eye_openness=0.8,
-        pupil_offset_y=0.4,      # Looking down
-        mouth_curve=-0.6,
+        eyebrow_angle_deg=-20.0,
+        eyebrow_raise=-1.5,
+        eye_openness=0.75,
+        pupil_offset_y=0.45,     # Cast downward
+        mouth_curve=-0.65,
         mouth_openness=0.0,
     ),
     ExpressionType.CONFIDENT: FacialFeatures(
-        eyebrow_angle_deg=4.0,
+        eyebrow_angle_deg=5.0,
         eye_openness=0.95,
-        mouth_curve=0.45,        # Slight knowing smirk
-        mouth_width_factor=1.1,
+        mouth_curve=0.48,        # Knowing smirk
+        mouth_width_factor=1.12,
+        head_tilt_deg=1.5,
     ),
     ExpressionType.CONFUSED: FacialFeatures(
-        eyebrow_angle_deg=-10.0, # Asymmetric brows
-        eye_openness=0.9,
-        pupil_offset_x=0.4,
-        mouth_curve=-0.2,
+        eyebrow_angle_deg=-10.0,
+        brow_asymmetry=12.0,     # Strong asymmetric brow
+        eye_openness=0.88,
+        pupil_offset_x=0.45,
+        mouth_curve=-0.25,
+        head_tilt_deg=-4.5,      # Puzzled head cock
     ),
     ExpressionType.DETERMINED: FacialFeatures(
-        eyebrow_angle_deg=16.0,  # Strong focused brow
-        eye_openness=0.9,
+        eyebrow_angle_deg=18.0,  # Lowered focused brow
+        eyebrow_raise=1.2,
+        eye_openness=0.88,       # Sharp piercing gaze
         pupil_offset_x=0.0,
-        mouth_curve=0.0,
-        mouth_width_factor=1.15,
+        mouth_curve=0.0,         # Set firm jaw
+        mouth_width_factor=1.18,
         jaw_tension_lines=True,
+        head_tilt_deg=1.0,       # Chin forward
     ),
 }
 
 
 class ExpressionRenderer:
-    """Renders sketch facial features (eyes, brows, nose, mouth) inside a head."""
+    """Renders sketch facial features (eyes, brows, nose, mouth) with anatomical planes."""
 
     @staticmethod
     def render(
@@ -121,189 +139,27 @@ class ExpressionRenderer:
         facing_dir: float,  # -1 (left), 0 (front), 1 (right)
         seed: str,
         stroke_color: str = "#e2e8f0",
+        is_close_up: bool = False,
     ) -> str:
-        prof = EXPRESSION_PROFILES.get(expression, EXPRESSION_PROFILES[ExpressionType.NEUTRAL])
-        rng = get_rng(seed)
-        elements = []
-
-        # Perspective shift according to facing direction
-        face_center_x = cx + (facing_dir * head_w * 0.18)
-
-        # 1. Eyebrows
-        brow_y = cy - head_h * 0.12 + prof.eyebrow_raise
-        brow_span = head_w * 0.22
-        brow_rad = math.radians(prof.eyebrow_angle_deg)
-
-        # Left eyebrow
-        lb_x1 = face_center_x - brow_span - (head_w * 0.05)
-        lb_x2 = face_center_x - (head_w * 0.04)
-        lb_y1 = brow_y - (math.sin(brow_rad) * (brow_span / 2) if facing_dir >= 0 else 0)
-        lb_y2 = brow_y + (math.sin(brow_rad) * (brow_span / 2))
-        elements.append(
-            SketchStroke.render_line(
-                lb_x1, lb_y1, lb_x2, lb_y2,
-                seed=f"{seed}_lbrow",
-                stroke_color=stroke_color,
-                stroke_width=2.2,
-                opacity=0.9,
-                passes=2,
-                jitter_amount=0.8,
-            )
-        )
-
-        # Right eyebrow
-        rb_x1 = face_center_x + (head_w * 0.04)
-        rb_x2 = face_center_x + brow_span + (head_w * 0.05)
-        rb_y1 = brow_y + (math.sin(brow_rad) * (brow_span / 2))
-        rb_y2 = brow_y - (math.sin(brow_rad) * (brow_span / 2) if facing_dir <= 0 else 0)
-        elements.append(
-            SketchStroke.render_line(
-                rb_x1, rb_y1, rb_x2, rb_y2,
-                seed=f"{seed}_rbrow",
-                stroke_color=stroke_color,
-                stroke_width=2.2,
-                opacity=0.9,
-                passes=2,
-                jitter_amount=0.8,
-            )
-        )
-
-        # 2. Eyes
-        eye_y = cy - head_h * 0.02
-        eye_rx = head_w * 0.09 * (1.1 if prof.eye_openness > 1.2 else 1.0)
-        eye_ry = head_h * 0.06 * prof.eye_openness
-
-        # Left eye
-        le_cx = face_center_x - brow_span * 0.65
-        elements.append(
-            SketchEllipse.render(
-                le_cx, eye_y, eye_rx, eye_ry,
-                seed=f"{seed}_leye",
-                stroke_color=stroke_color,
-                stroke_width=1.5,
-                opacity=0.85,
-                fill_color="#0f172a",
-                fill_opacity=0.5,
-                loops=2,
-            )
-        )
-        # Left pupil
-        pupil_r = max(1.5, eye_ry * 0.55)
-        lp_x = le_cx + prof.pupil_offset_x * eye_rx * 0.5
-        lp_y = eye_y + prof.pupil_offset_y * eye_ry * 0.5
-        elements.append(
-            f'<circle cx="{lp_x:.1f}" cy="{lp_y:.1f}" r="{pupil_r:.1f}" fill="#f8fafc" opacity="0.95"/>'
-        )
-
-        # Right eye
-        re_cx = face_center_x + brow_span * 0.65
-        elements.append(
-            SketchEllipse.render(
-                re_cx, eye_y, eye_rx, eye_ry,
-                seed=f"{seed}_reye",
-                stroke_color=stroke_color,
-                stroke_width=1.5,
-                opacity=0.85,
-                fill_color="#0f172a",
-                fill_opacity=0.5,
-                loops=2,
-            )
-        )
-        # Right pupil
-        rp_x = re_cx + prof.pupil_offset_x * eye_rx * 0.5
-        rp_y = eye_y + prof.pupil_offset_y * eye_ry * 0.5
-        elements.append(
-            f'<circle cx="{rp_x:.1f}" cy="{rp_y:.1f}" r="{pupil_r:.1f}" fill="#f8fafc" opacity="0.95"/>'
-        )
-
-        # 3. Nose indication (storyboard quick angle)
-        nose_top_y = eye_y + eye_ry * 0.6
-        nose_bot_y = nose_top_y + head_h * 0.14
-        nose_x = face_center_x + (facing_dir * head_w * 0.08)
-        elements.append(
-            SketchStroke.render_line(
-                face_center_x, nose_top_y, nose_x, nose_bot_y,
-                seed=f"{seed}_nose1",
-                stroke_color=stroke_color,
-                stroke_width=1.4,
-                opacity=0.8,
-                passes=1,
-            )
-        )
-        elements.append(
-            SketchStroke.render_line(
-                nose_x, nose_bot_y, face_center_x, nose_bot_y + 1.5,
-                seed=f"{seed}_nose2",
-                stroke_color=stroke_color,
-                stroke_width=1.4,
-                opacity=0.8,
-                passes=1,
-            )
-        )
-
-        # 4. Mouth
-        mouth_y = cy + head_h * 0.22
-        mouth_w = head_w * 0.20 * prof.mouth_width_factor
-        m_x1 = face_center_x - mouth_w / 2
-        m_x2 = face_center_x + mouth_w / 2
-
-        if prof.mouth_openness > 0.2:
-            # Open mouth (shout/gasp)
-            open_h = head_h * 0.12 * prof.mouth_openness
-            elements.append(
-                SketchEllipse.render(
-                    face_center_x, mouth_y + open_h / 2, mouth_w / 2, open_h / 2,
-                    seed=f"{seed}_mouth_open",
-                    stroke_color=stroke_color,
-                    stroke_width=1.6,
-                    opacity=0.9,
-                    fill_color="#020617",
-                    fill_opacity=0.7,
-                )
-            )
+        from src.storyboard.sketch.face import FaceSketchRenderer, FaceOrientation
+        if facing_dir < -0.3:
+            orient = FaceOrientation.THREE_QUARTER_LEFT
+        elif facing_dir > 0.3:
+            orient = FaceOrientation.THREE_QUARTER_RIGHT
         else:
-            # Closed or smirking line
-            curve_dy = -prof.mouth_curve * 5.0
-            mid_x = face_center_x
-            mid_y = mouth_y + curve_dy
-            d = f"M {m_x1:.1f} {mouth_y:.1f} Q {mid_x:.1f} {mid_y:.1f}, {m_x2:.1f} {mouth_y + (0.5 if prof.mouth_curve > 0 else 0):.1f}"
-            elements.append(
-                f'<path d="{d}" fill="none" stroke="{stroke_color}" stroke-width="1.8" stroke-linecap="round" opacity="0.9"/>'
-            )
-
-        # 5. Jaw tension lines
-        if prof.jaw_tension_lines:
-            elements.append(
-                SketchStroke.render_line(
-                    m_x1 - 4, mouth_y - 2, m_x1 - 6, mouth_y + 5,
-                    seed=f"{seed}_jaw_l",
-                    stroke_color="#94a3b8",
-                    stroke_width=1.0,
-                    opacity=0.6,
-                    passes=1,
-                )
-            )
-            elements.append(
-                SketchStroke.render_line(
-                    m_x2 + 4, mouth_y - 2, m_x2 + 6, mouth_y + 5,
-                    seed=f"{seed}_jaw_r",
-                    stroke_color="#94a3b8",
-                    stroke_width=1.0,
-                    opacity=0.6,
-                    passes=1,
-                )
-            )
-
-        # 6. Sweat drop for fear/shock
-        if prof.sweat_drop:
-            sx = face_center_x + head_w * 0.42
-            sy = brow_y - 4
-            elements.append(
-                f'<path d="M {sx:.1f} {sy:.1f} C {sx-3:.1f} {sy+5:.1f}, {sx+3:.1f} {sy+5:.1f}, {sx:.1f} {sy:.1f}" '
-                f'fill="#38bdf8" opacity="0.75"/>'
-            )
-
-        return "\n  ".join(elements)
+            orient = FaceOrientation.FRONT
+        return FaceSketchRenderer.render_face(
+            cx=cx,
+            cy=cy,
+            head_w=head_w,
+            head_h=head_h,
+            expression=expression,
+            orientation=orient,
+            intensity=0.85,
+            is_close_up=is_close_up,
+            seed=seed,
+            stroke_color=stroke_color,
+        )
 
 
 def map_emotion_to_expression(

@@ -50,6 +50,8 @@ class ProjectData(BaseModel):
     shot_plan: Optional[ShotPlan] = None
     rendered_panels: Optional[List[Dict[str, Any]]] = None
     visual_bible: Optional[VisualBible] = None
+    screenplay_quality: Optional[Dict[str, Any]] = None
+    storyboard_quality: Optional[Dict[str, Any]] = None
 
 
 class ProjectStore:
@@ -100,6 +102,9 @@ class ProjectStore:
             synopsis=project.synopsis,
             shot_plan=project.shot_plan,
             rendered_panels=project.rendered_panels,
+            visual_bible=project.visual_bible,
+            screenplay_quality=project.screenplay_quality,
+            storyboard_quality=project.storyboard_quality,
         )
 
         data_dict = project_to_save.model_dump(mode="json")

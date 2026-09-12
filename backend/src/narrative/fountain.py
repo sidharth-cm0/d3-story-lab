@@ -27,6 +27,13 @@ class ScreenplayBlock(BaseModel):
     source_event_ids: List[str] = Field(default_factory=list)
     character_id: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    chronological_position: Optional[int] = None
+    presentation_position: Optional[int] = None
+    framing_type: str = "CHRONOLOGICAL"
+    derived_from_event_id: Optional[str] = None
+    derived_from_actor_state_ids: List[str] = Field(default_factory=list)
+    cue_type: Optional[str] = None
+    is_performance_cue: bool = False
 
 
 class ScreenplayScene(BaseModel):
@@ -38,6 +45,9 @@ class ScreenplayScene(BaseModel):
     heading: str
     blocks: List[ScreenplayBlock] = Field(default_factory=list)
     source_event_ids: List[str] = Field(default_factory=list)
+    framing_type: str = "CHRONOLOGICAL"
+    presentation_order: Optional[int] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ScreenplayDocument(BaseModel):

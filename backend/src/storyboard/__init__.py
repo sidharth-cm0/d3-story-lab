@@ -25,6 +25,8 @@ from .prop_resolver import PropResolver, COMMON_PROP_ALIASES
 from .image_provider import (
     StoryboardImageProvider,
     StoryboardImageResult,
+    ExternalStoryboardImageProvider,
+    HuggingFaceStoryboardProvider,
     FallbackComicSvgProvider,
     CloudImagenStoryboardProvider,
     MockStoryboardImageProvider,
@@ -60,6 +62,8 @@ __all__ = [
     "StoryboardAssetStore",
     "StoryboardImageProvider",
     "StoryboardImageResult",
+    "ExternalStoryboardImageProvider",
+    "HuggingFaceStoryboardProvider",
     "FallbackComicSvgProvider",
     "CloudImagenStoryboardProvider",
     "MockStoryboardImageProvider",

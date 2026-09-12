@@ -67,9 +67,20 @@ class WorldInitializerService:
         if isinstance(self.provider, MockLLMProvider) and WorldInitializationPlan not in self.provider._structured_handlers:
             return self._build_deterministic_mock_plan(seed_text, outline)
 
-        plan = self.provider.generate_structured(
-            WorldInitializationPlan, prompt, system_prompt=system_prompt
-        )
+        try:
+            plan = self.provider.generate_structured(
+                WorldInitializationPlan, prompt, system_prompt=system_prompt
+            )
+        except Exception as e:
+            logger.warning(
+                f"Structured plan generation with provider failed ({e}), falling back to deterministic plan."
+            )
+            plan = self._build_deterministic_mock_plan(seed_text, outline)
+
+        if not plan or not plan.characters or not plan.locations:
+            logger.warning("Provider returned incomplete plan, falling back to deterministic plan.")
+            plan = self._build_deterministic_mock_plan(seed_text, outline)
+
         # Ensure story_outline is bound to plan
         if not plan.story_outline:
             object.__setattr__(plan, "story_outline", outline)

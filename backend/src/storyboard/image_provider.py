@@ -13,7 +13,7 @@ import logging
 import base64
 from enum import Enum
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -225,7 +225,31 @@ class FallbackComicSvgProvider(StoryboardImageProvider):
         )
 
 
-class CloudImagenStoryboardProvider(StoryboardImageProvider):
+class ExternalStoryboardImageProvider(StoryboardImageProvider):
+    """Abstract base class for external cloud and generative AI image providers.
+
+    Guarantees:
+    - Never exposes confidential API keys or access tokens in status or payloads
+    - Standardizes the provider disclaimer for quotas and pricing
+    - Preserves deterministic offline fallback
+    """
+
+    PRICING_DISCLAIMER: str = (
+        "Optional external provider. Availability, quotas and pricing depend on the provider/account."
+    )
+
+    @abstractmethod
+    def generate_panel(
+        self,
+        panel: StoryboardPanel,
+        bible: Optional[VisualBible] = None,
+        version: int = 1,
+    ) -> StoryboardImageResult:
+        """Generate panel using external service with graceful fallback."""
+        pass
+
+
+class CloudImagenStoryboardProvider(ExternalStoryboardImageProvider):
     """Cloud AI image generator using Google Gemini / Imagen API with transparent fallback."""
 
     def __init__(
@@ -486,6 +510,235 @@ class CloudImagenStoryboardProvider(StoryboardImageProvider):
             fallback_res.render_metadata["status_message"] = self._last_safe_message
             fallback_res.render_metadata["exception"] = str(err)
             return fallback_res
+
+
+class HuggingFaceStoryboardProvider(ExternalStoryboardImageProvider):
+    """Hugging Face Inference API provider for generating storyboard panels.
+
+    Uses server-side HF_TOKEN environment variable.
+    Preserves transparent offline fallback to HandDrawnStoryboardProvider on 401, 429, 503,
+    missing token, or network failure.
+    """
+
+    MANDATORY_STYLE_TAGS = (
+        "professional storyboard panel, graphite pencil sketch, rough cross-hatching, "
+        "highly detailed, high contrast, grayscale cinematic composition, masterpiece."
+    )
+
+    DEFAULT_NEGATIVE_PROMPT = (
+        "color, saturation, 3d render, cgi, photorealistic skin, digital gloss, "
+        "anime, cartoon, deformed hands, extra fingers, missing fingers, distorted face, "
+        "blurry, text, watermark, signature, speech bubbles, low resolution, poorly drawn."
+    )
+
+    def __init__(
+        self,
+        token: Optional[str] = None,
+        asset_store: Optional[StoryboardAssetStore] = None,
+        model_name: Optional[str] = None,
+    ):
+        self.token = token if token is not None else os.environ.get("HF_TOKEN")
+        self.model_name = (
+            model_name
+            or os.environ.get("HF_MODEL")
+            or "stabilityai/stable-diffusion-xl-base-1.0"
+        )
+        self.asset_store = asset_store or StoryboardAssetStore()
+        self.compiler = StoryboardPromptCompiler()
+        from src.storyboard.sketch.renderer import HandDrawnStoryboardProvider
+        self.fallback = HandDrawnStoryboardProvider(asset_store=self.asset_store)
+        self._last_state: ProviderState = (
+            ProviderState.AVAILABLE if self.token else ProviderState.UNAVAILABLE
+        )
+        self._last_fallback_reason: Optional[FallbackReason] = (
+            None if self.token else FallbackReason.NO_API_KEY
+        )
+        self._last_safe_message: Optional[str] = None
+
+    def get_capabilities(self) -> Dict[str, Any]:
+        """Expose capabilities without exposing credentials."""
+        return {
+            "provider": "huggingface",
+            "selected_model": self.model_name,
+            "available": bool(self.token),
+            "pricing_disclaimer": self.PRICING_DISCLAIMER,
+            "status_message": (
+                self._last_safe_message
+                or (
+                    "Hugging Face external provider is configured."
+                    if self.token
+                    else "No HF_TOKEN configured on server."
+                )
+            ),
+            "fallback_enabled": True,
+        }
+
+    def get_status(self) -> Dict[str, Any]:
+        caps = self.get_capabilities()
+        caps["storyboard_image_provider"] = "huggingface"
+        caps["mode"] = "cloud"
+        caps["status"] = self._last_state.value
+        caps["model"] = self.model_name
+        caps["fallback_reason"] = (
+            self._last_fallback_reason.value if self._last_fallback_reason else None
+        )
+        return caps
+
+    def generate_panel(
+        self,
+        panel: StoryboardPanel,
+        bible: Optional[VisualBible] = None,
+        version: int = 1,
+    ) -> StoryboardImageResult:
+        base_prompt = self.compiler.compile_panel_prompt(panel, bible)
+        full_prompt = f"{base_prompt} {self.MANDATORY_STYLE_TAGS}"
+        negative_prompt = self.DEFAULT_NEGATIVE_PROMPT
+
+        if not self.token:
+            self._last_state = ProviderState.UNAVAILABLE
+            self._last_fallback_reason = FallbackReason.NO_API_KEY
+            self._last_safe_message = "No HF_TOKEN configured on server."
+            res = self.fallback.generate_panel(panel, bible, version)
+            res.fallback_reason = FallbackReason.NO_API_KEY.value
+            res.provider_status = ProviderState.UNAVAILABLE.value
+            res.render_metadata["fallback_reason"] = FallbackReason.NO_API_KEY.value
+            res.render_metadata["pricing_disclaimer"] = self.PRICING_DISCLAIMER
+            res.render_metadata["label"] = "HAND-DRAWN STORYBOARD"
+            return res
+
+        import httpx
+        import time
+
+        url = f"https://api-inference.huggingface.co/models/{self.model_name}"
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "inputs": full_prompt,
+            "parameters": {
+                "negative_prompt": negative_prompt,
+            },
+        }
+
+        max_retries = 3
+        attempt = 0
+        last_status = None
+
+        while attempt < max_retries:
+            attempt += 1
+            try:
+                with httpx.Client(timeout=60.0) as client:
+                    resp = client.post(url, json=payload, headers=headers)
+                    last_status = resp.status_code
+
+                    if resp.status_code == 200:
+                        content_type = resp.headers.get("content-type", "")
+                        raw_bytes = resp.content
+
+                        if (
+                            "image" in content_type
+                            or raw_bytes.startswith(b"\x89PNG")
+                            or raw_bytes.startswith(b"\xff\xd8")
+                            or raw_bytes.startswith(b"RIFF")
+                        ):
+                            ext = "png" if raw_bytes.startswith(b"\x89PNG") else "jpg"
+                            mime = "image/png" if ext == "png" else "image/jpeg"
+                            filename = f"{panel.panel_id or panel.id}_v{version}.{ext}"
+                            project_id = panel.project_id or "default"
+
+                            asset_url = self.asset_store.save_asset(
+                                project_id=project_id,
+                                category="panels",
+                                filename=filename,
+                                content=raw_bytes,
+                            )
+
+                            self._last_state = ProviderState.AVAILABLE
+                            self._last_fallback_reason = None
+                            return StoryboardImageResult(
+                                panel_id=panel.panel_id or panel.id,
+                                version=version,
+                                image_url=asset_url,
+                                provider="huggingface",
+                                mode="ai_image",
+                                compiled_prompt=full_prompt,
+                                negative_prompt=negative_prompt,
+                                status=StoryboardImageStatus.READY,
+                                fallback_reason=None,
+                                provider_status=ProviderState.AVAILABLE.value,
+                                continuity_mode="TEXTUAL CONTINUITY ONLY",
+                                mime_type=mime,
+                                render_metadata={
+                                    "provider": "huggingface",
+                                    "model": self.model_name,
+                                    "label": "EXTERNAL AI IMAGE",
+                                    "version": version,
+                                    "pricing_disclaimer": self.PRICING_DISCLAIMER,
+                                },
+                            )
+
+                    # Handle 401/403 Authentication Error (fail immediately without retry)
+                    if resp.status_code in (401, 403):
+                        self._last_state = ProviderState.AUTH_ERROR
+                        self._last_fallback_reason = FallbackReason.AUTHENTICATION_FAILED
+                        self._last_safe_message = "Hugging Face authentication failed. Check HF_TOKEN on server."
+                        break
+
+                    # Handle 503 Model Loading or 429 Rate Throttled
+                    if resp.status_code in (503, 429, 504):
+                        wait_sec = 2.0 * attempt
+                        try:
+                            err_json = resp.json()
+                            if isinstance(err_json, dict) and "estimated_time" in err_json:
+                                est = float(err_json["estimated_time"])
+                                wait_sec = min(max(wait_sec, est), 30.0)
+                        except Exception:
+                            pass
+
+                        if attempt < max_retries:
+                            time.sleep(min(wait_sec, 2.0))
+                            continue
+                        else:
+                            if resp.status_code == 429:
+                                self._last_state = ProviderState.QUOTA_ERROR
+                                self._last_fallback_reason = FallbackReason.QUOTA_EXCEEDED
+                                self._last_safe_message = "Hugging Face rate limit / quota exceeded."
+                            else:
+                                self._last_state = ProviderState.UNAVAILABLE
+                                self._last_fallback_reason = FallbackReason.REQUEST_FAILED
+                                self._last_safe_message = "Hugging Face model warmup timed out."
+                            break
+
+                    self._last_state = ProviderState.UNAVAILABLE
+                    self._last_fallback_reason = FallbackReason.REQUEST_FAILED
+                    self._last_safe_message = f"Hugging Face request returned status {resp.status_code}."
+                    break
+
+            except Exception as e:
+                logger.warning(f"Hugging Face request exception on attempt {attempt}: {e}")
+                if attempt >= max_retries:
+                    self._last_state = ProviderState.UNAVAILABLE
+                    self._last_fallback_reason = FallbackReason.REQUEST_FAILED
+                    self._last_safe_message = "Hugging Face network request failed."
+                    break
+                time.sleep(1.0)
+
+        # Fallback to deterministic hand-drawn SVG
+        fallback_res = self.fallback.generate_panel(panel, bible, version)
+        fb_reason = (
+            self._last_fallback_reason.value
+            if self._last_fallback_reason
+            else FallbackReason.REQUEST_FAILED.value
+        )
+        fallback_res.fallback_reason = fb_reason
+        fallback_res.provider_status = self._last_state.value
+        fallback_res.render_metadata["fallback_reason"] = fb_reason
+        fallback_res.render_metadata["status_message"] = self._last_safe_message
+        fallback_res.render_metadata["pricing_disclaimer"] = self.PRICING_DISCLAIMER
+        fallback_res.render_metadata["label"] = "HAND-DRAWN STORYBOARD"
+        fallback_res.render_metadata["http_status"] = last_status
+        return fallback_res
 
 
 class MockStoryboardImageProvider(StoryboardImageProvider):

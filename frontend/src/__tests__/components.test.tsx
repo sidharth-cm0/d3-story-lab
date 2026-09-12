@@ -1036,6 +1036,101 @@ describe('Frontend Workstation Components', () => {
     expect(screen.getByText('Pencil Noir')).toBeDefined();
     expect(screen.getByText('NO CLOUD API (100% Offline SVG)')).toBeDefined();
   });
+
+  it('renders transitions, camera movements, and presentation mode with arrow keys', () => {
+    const mockCinematicProject: ProjectData = {
+      metadata: {
+        id: 'p_cine',
+        title: 'Warehouse Infiltration',
+        seed_prompt: 'Detective infiltrates warehouse',
+        created_at: '',
+        updated_at: '',
+        current_tick: 5,
+        total_events: 5,
+        total_scenes: 1,
+      },
+      world: mockWorld,
+      screenplay: {
+        title: 'WAREHOUSE INFILTRATION',
+        credit: 'By',
+        author: 'D3 Story Lab',
+        draft_date: '2026',
+        scenes: [],
+      },
+      storyboard: {
+        shot_plan: {
+          project_title: 'Warehouse Infiltration',
+          total_panels: 2,
+          aspect_ratio: '16:9',
+          panels: [
+            {
+              id: 'pnl_cine_1',
+              scene_number: 1,
+              panel_number: 1,
+              shot_number: 1,
+              shot_type: 'wide',
+              camera_angle: 'high_angle',
+              camera_movement: 'slow_pan_left',
+              lighting_profile_id: 'moonlit_industrial',
+              transition_type: 'establish',
+              location_id: 'loc_suite',
+              characters_present: ['char_maya'],
+              action_description: 'The detective slips through the rusted perimeter fence.',
+              visual_prompt: 'High angle wide shot moonlit warehouse',
+              aspect_ratio: '16:9',
+              source_event_ids: ['evt_1'],
+            },
+            {
+              id: 'pnl_cine_2',
+              scene_number: 1,
+              panel_number: 2,
+              shot_number: 2,
+              shot_type: 'close_up',
+              camera_angle: 'eye_level',
+              camera_movement: 'push_in',
+              focal_depth_plane: 'fore_focus',
+              lighting_profile_id: 'noir_hard',
+              transition_type: 'match_cut',
+              visual_link: 'Flashlight beam matches searchlight',
+              location_id: 'loc_suite',
+              characters_present: ['char_maya'],
+              action_description: 'Her eyes dart toward the security camera.',
+              dialogue_excerpt: 'Someone is already inside.',
+              visual_prompt: 'Close up eyes noir hard lighting',
+              aspect_ratio: '16:9',
+              source_event_ids: ['evt_2'],
+            },
+          ],
+        },
+        rendered_panels: [
+          '<svg><text>SHOT 01</text></svg>',
+          '<svg><text>SHOT 02</text></svg>',
+        ],
+      },
+    };
+
+    render(<StoryboardViewer project={mockCinematicProject} />);
+
+    // Verify grid elements
+    expect(screen.getByText(/SLOW PAN LEFT/i)).toBeDefined();
+    expect(screen.getByText(/PUSH IN/i)).toBeDefined();
+    expect(screen.getByText(/MATCH CUT/i)).toBeDefined();
+
+    // Switch to Presentation View
+    const presTab = screen.getByText('🎬 PRESENTATION VIEW');
+    fireEvent.click(presTab);
+
+    expect(screen.getByText('DIRECTOR\'S NOTEBOOK')).toBeDefined();
+    expect(screen.getByText('The detective slips through the rusted perimeter fence.')).toBeDefined();
+
+    // Navigate with Right Arrow key
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+
+    // Shot 2 has transition banner and dialogue
+    expect(screen.getByText(/TRANSITION: MATCH CUT/i)).toBeDefined();
+    expect(screen.getByText(/Flashlight beam matches searchlight/i)).toBeDefined();
+    expect(screen.getByText('"Someone is already inside."')).toBeDefined();
+  });
 });
 
 describe('formatDisplayValue and safeExtractSvg utilities', () => {
