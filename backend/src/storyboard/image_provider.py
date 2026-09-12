@@ -29,6 +29,32 @@ from src.storyboard.provider import ComicGraphicStoryboardProvider
 
 logger = logging.getLogger(__name__)
 
+def _load_env_file() -> None:
+    candidate_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env"),
+        "/workspaces/d3-story-lab/backend/.env",
+        "/workspaces/d3-story-lab/.env",
+        ".env",
+    ]
+    for p in candidate_paths:
+        p_abs = os.path.abspath(p)
+        if os.path.exists(p_abs):
+            try:
+                with open(p_abs, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            k = k.strip()
+                            v = v.strip().strip("'\"")
+                            if k and k not in os.environ:
+                                os.environ[k] = v
+            except Exception:
+                pass
+
+_load_env_file()
+
 
 class ProviderState(str, Enum):
     """Runtime availability state of an image provider."""
@@ -335,8 +361,67 @@ class CloudImagenStoryboardProvider(StoryboardImageProvider):
                     fallback_reason = FallbackReason.AUTHENTICATION_FAILED
                     self._last_state = ProviderState.AUTH_ERROR
                 elif status_code == 404:
-                    fallback_reason = FallbackReason.UNSUPPORTED_MODEL
-                    self._last_state = ProviderState.CONFIG_ERROR
+                    # Attempt multimodal Gemini image generation endpoint
+                    try:
+                        gc_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key={self.api_key}"
+                        gc_payload = {
+                            "contents": [{"parts": [{"text": compiled_prompt}]}],
+                            "generationConfig": {"responseModalities": ["image", "text"]},
+                        }
+                        gc_resp = client.post(gc_url, json=gc_payload, timeout=30.0)
+                        if gc_resp.status_code == 200:
+                            gc_data = gc_resp.json()
+                            for cand in gc_data.get("candidates", []):
+                                for part in cand.get("content", {}).get("parts", []):
+                                    if "inlineData" in part and "data" in part["inlineData"]:
+                                        raw_bytes = base64.b64decode(part["inlineData"]["data"])
+                                        mime_type, ext = self._detect_mime_and_ext(raw_bytes)
+                                        filename = f"{panel.panel_id or panel.id}_v{version}.{ext}"
+                                        project_id = panel.project_id or "default"
+                                        asset_url = self.asset_store.save_asset(
+                                            project_id=project_id,
+                                            category="panels",
+                                            filename=filename,
+                                            content=raw_bytes,
+                                        )
+                                        self._last_state = ProviderState.AVAILABLE
+                                        self._last_fallback_reason = None
+                                        return StoryboardImageResult(
+                                            panel_id=panel.panel_id or panel.id,
+                                            version=version,
+                                            image_url=asset_url,
+                                            provider="google_gemini_image",
+                                            mode="ai_image",
+                                            compiled_prompt=compiled_prompt,
+                                            negative_prompt=negative_prompt,
+                                            status=StoryboardImageStatus.READY,
+                                            fallback_reason=None,
+                                            provider_status=ProviderState.AVAILABLE.value,
+                                            continuity_mode="TEXTUAL CONTINUITY ONLY",
+                                            mime_type=mime_type,
+                                            render_metadata={
+                                                "model": "gemini-3.1-flash-image",
+                                                "label": "AI IMAGE",
+                                                "mime_type": mime_type,
+                                                "bytes_size": len(raw_bytes),
+                                            },
+                                        )
+                        status_code = gc_resp.status_code
+                    except Exception:
+                        pass
+
+                    if status_code == 429:
+                        fallback_reason = FallbackReason.QUOTA_EXCEEDED
+                        self._last_state = ProviderState.QUOTA_ERROR
+                    elif status_code in (400, 401, 403):
+                        fallback_reason = FallbackReason.AUTHENTICATION_FAILED
+                        self._last_state = ProviderState.AUTH_ERROR
+                    elif status_code == 404:
+                        fallback_reason = FallbackReason.UNSUPPORTED_MODEL
+                        self._last_state = ProviderState.CONFIG_ERROR
+                    else:
+                        fallback_reason = FallbackReason.REQUEST_FAILED
+                        self._last_state = ProviderState.UNAVAILABLE
                 elif status_code == 429:
                     fallback_reason = FallbackReason.QUOTA_EXCEEDED
                     self._last_state = ProviderState.QUOTA_ERROR

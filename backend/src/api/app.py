@@ -5,6 +5,32 @@ import os
 import csv
 import io
 from typing import Dict, Any, Optional, List
+
+def _load_env_file() -> None:
+    candidate_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env"),
+        "/workspaces/d3-story-lab/backend/.env",
+        "/workspaces/d3-story-lab/.env",
+        ".env",
+    ]
+    for p in candidate_paths:
+        p_abs = os.path.abspath(p)
+        if os.path.exists(p_abs):
+            try:
+                with open(p_abs, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            k = k.strip()
+                            v = v.strip().strip("'\"")
+                            if k and k not in os.environ:
+                                os.environ[k] = v
+            except Exception:
+                pass
+
+_load_env_file()
 from fastapi import FastAPI, HTTPException, Response, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -83,6 +109,8 @@ class RegeneratePageRequest(BaseModel):
 
 def get_llm_provider() -> LLMProvider:
     """Instantiate configured LLM provider (defaults to deterministic Mock)."""
+    if os.environ.get("USE_MOCK_LLM", "0") == "1":
+        return MockLLMProvider()
     api_key = os.environ.get("GEMINI_API_KEY")
     if api_key:
         try:

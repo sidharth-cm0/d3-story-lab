@@ -180,8 +180,11 @@ def test_continuity_validator_no_dossier_warning(test_world):
     assert report.prop_tracking_score == 1.0
 
 
-def test_cloud_provider_status_and_no_key_fallback(tmp_path):
+def test_cloud_provider_status_and_no_key_fallback(tmp_path, monkeypatch):
     """Test CloudImagenStoryboardProvider when no API key is provided."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("IMAGEN_API_KEY", raising=False)
     store = StoryboardAssetStore(base_dir=str(tmp_path))
     provider = CloudImagenStoryboardProvider(api_key=None, asset_store=store)
 
