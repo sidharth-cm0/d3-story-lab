@@ -18,6 +18,7 @@ from src.storyboard.models import (
 )
 from src.storyboard.visual_bible import VisualBible
 from src.storyboard.compiler import StoryboardPromptCompiler
+from src.storyboard.prop_resolver import PropResolver
 
 
 SFX_PATTERNS = [
@@ -91,14 +92,25 @@ class StoryboardPlanner:
             loc_name = loc.name if loc else scene.heading.replace("INT. ", "").replace("EXT. ", "").split(" - ")[0]
             loc_vis = loc_profiles.get(scene.location_id, f"{loc_name} (cinematic noir architecture, low-key lighting)")
 
-            # Identify prominent objects associated with this scene/location
-            scene_objects: List[str] = []
-            if world:
-                for oid, o in world.objects.items():
-                    if o.location_id == scene.location_id or (
-                        o.holder_id and world.characters.get(o.holder_id) and world.characters[o.holder_id].current_location_id == scene.location_id
-                    ):
-                        scene_objects.append(o.name)
+            # Resolve canonical objects for establishing shot
+            est_text = f"{scene.heading} {loc_name}"
+            est_obj_ids = PropResolver.resolve_canonical_object_ids(
+                text_pool=est_text,
+                world=world,
+                location_id=scene.location_id,
+            )
+            if not est_obj_ids and world:
+                est_obj_ids = [
+                    oid for oid, o in world.objects.items()
+                    if o.location_id == scene.location_id
+                ][:2]
+
+            est_obj_refs: Dict[str, str] = {}
+            for oid in est_obj_ids:
+                if bible and oid in bible.objects:
+                    est_obj_refs[oid] = bible.objects[oid].prompt_snippet()
+                elif oid in obj_profiles:
+                    est_obj_refs[oid] = obj_profiles[oid]
 
             # 1. Establishing Shot for the scene
             panel_counter += 1
@@ -128,7 +140,7 @@ class StoryboardPlanner:
                 location_name=loc_name,
                 characters_present=[],
                 character_names=[],
-                objects_in_frame=scene_objects[:2],
+                objects_in_frame=est_obj_ids,
                 action=est_action,
                 action_description=est_action,
                 visual_description=est_vis_desc,
@@ -139,7 +151,7 @@ class StoryboardPlanner:
                 visual_prompt=est_prompt_text,
                 compiled_prompt=est_prompt_text,
                 location_reference=loc_vis,
-                object_references={o: obj_profiles.get(o, o) for o in scene_objects[:2]},
+                object_references=est_obj_refs,
                 continuity_notes=f"Maintains {loc_name} environmental layout and lighting palette.",
                 caption=est_action,
                 dialogue_bubble_type="caption",
@@ -246,9 +258,46 @@ class StoryboardPlanner:
                                     char_names.append(other_c.name)
                                     char_ref[other_c.name] = char_profiles.get(other_id, other_c.name)
 
-                    # Identify objects in this action
-                    matched_objects = [o for o in scene_objects if o.lower() in desc]
-                    obj_refs = {o: obj_profiles.get(o, o) for o in matched_objects}
+                    # Identify canonical objects in this action via PropResolver
+                    act_event_texts = []
+                    direct_obj_ids = []
+                    if world and block.source_event_ids:
+                        for eid in block.source_event_ids:
+                            ev = world.events.get(eid)
+                            if ev:
+                                if ev.description:
+                                    act_event_texts.append(ev.description)
+                                if getattr(ev, "target_object_id", None):
+                                    direct_obj_ids.append(ev.target_object_id)
+                                if hasattr(ev, "details") and isinstance(ev.details, dict):
+                                    for k, v in ev.details.items():
+                                        if any(sub in k for sub in ("object", "item", "prop", "target")) and isinstance(v, str):
+                                            direct_obj_ids.append(v)
+
+                    act_text_pool = " ".join([block.text, desc, purpose.value, scene.heading] + act_event_texts)
+                    matched_obj_ids = PropResolver.resolve_canonical_object_ids(
+                        text_pool=act_text_pool,
+                        world=world,
+                        location_id=scene.location_id,
+                        characters_present=char_names,
+                        direct_object_ids=direct_obj_ids,
+                    )
+                    obj_refs = {}
+                    for oid in matched_obj_ids:
+                        if bible and oid in bible.objects:
+                            obj_refs[oid] = bible.objects[oid].prompt_snippet()
+                        elif oid in obj_profiles:
+                            obj_refs[oid] = obj_profiles[oid]
+
+                    primary_prop_focus = ""
+                    if matched_obj_ids:
+                        p_oid = matched_obj_ids[0]
+                        if bible and p_oid in bible.objects:
+                            primary_prop_focus = bible.objects[p_oid].name
+                        elif world and p_oid in world.objects:
+                            primary_prop_focus = world.objects[p_oid].name
+                        else:
+                            primary_prop_focus = p_oid
 
                     # Detect comic SFX
                     detected_sfx = None
@@ -276,12 +325,12 @@ class StoryboardPlanner:
                         narrative_purpose=purpose,
                         lens_feel=lens,
                         composition=comp,
-                        subject_focus=f"{char_name} {matched_objects[0] if matched_objects else ''}".strip(),
+                        subject_focus=f"{char_name} {primary_prop_focus}".strip(),
                         location_id=scene.location_id,
                         location_name=loc_name,
                         characters_present=[char_id] if char_id else [],
                         character_names=char_names,
-                        objects_in_frame=matched_objects,
+                        objects_in_frame=matched_obj_ids,
                         action=block.text,
                         action_description=block.text,
                         visual_description=f"{char_name} in {loc_name}. Chiaroscuro key illumination.",
@@ -358,6 +407,37 @@ class StoryboardPlanner:
                     char_desc = char_profiles.get(char_id, speaker_name) if char_id else speaker_name
                     char_ref = {speaker_name: char_desc}
 
+                    # Resolve canonical objects mentioned in dialogue or source events
+                    dia_event_texts = []
+                    dia_direct_obj_ids = []
+                    if world and source_ids:
+                        for eid in source_ids:
+                            ev = world.events.get(eid)
+                            if ev:
+                                if ev.description:
+                                    dia_event_texts.append(ev.description)
+                                if getattr(ev, "target_object_id", None):
+                                    dia_direct_obj_ids.append(ev.target_object_id)
+                                if hasattr(ev, "details") and isinstance(ev.details, dict):
+                                    for k, v in ev.details.items():
+                                        if any(sub in k for sub in ("object", "item", "prop", "target")) and isinstance(v, str):
+                                            dia_direct_obj_ids.append(v)
+
+                    dia_text_pool = " ".join([speaker_name, dialogue_text, dia_lower, purpose.value, scene.heading] + dia_event_texts)
+                    dia_obj_ids = PropResolver.resolve_canonical_object_ids(
+                        text_pool=dia_text_pool,
+                        world=world,
+                        location_id=scene.location_id,
+                        characters_present=[char_id] if char_id else [],
+                        direct_object_ids=dia_direct_obj_ids,
+                    )
+                    dia_obj_refs = {}
+                    for oid in dia_obj_ids:
+                        if bible and oid in bible.objects:
+                            dia_obj_refs[oid] = bible.objects[oid].prompt_snippet()
+                        elif oid in obj_profiles:
+                            dia_obj_refs[oid] = obj_profiles[oid]
+
                     # Detect SFX
                     detected_sfx = None
                     for pat, sfx_text in SFX_PATTERNS:
@@ -389,7 +469,7 @@ class StoryboardPlanner:
                         location_name=loc_name,
                         characters_present=[char_id] if char_id else [],
                         character_names=[speaker_name],
-                        objects_in_frame=[],
+                        objects_in_frame=dia_obj_ids,
                         action=f"{speaker_name}: \"{dialogue_text}\"",
                         action_description=f"{speaker_name} delivering dialogue with calculated intensity.",
                         visual_description=f"{speaker_name} speaking. Razor-sharp lighting across features.",
@@ -403,6 +483,7 @@ class StoryboardPlanner:
                         dialogue_bubble_type=bubble_type,
                         sfx_label=detected_sfx,
                         character_references=char_ref,
+                        object_references=dia_obj_refs,
                         location_reference=loc_vis,
                         caption=f"{speaker_name}: \"{dialogue_text}\"",
                         continuity_notes=f"Matches {speaker_name} facial features, hairstyle, and wardrobe.",

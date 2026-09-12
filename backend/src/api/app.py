@@ -106,16 +106,19 @@ def get_image_provider(
 ) -> StoryboardImageProvider:
     """Instantiate provider-independent image generator with transparent fallback."""
     asset_store = asset_store or StoryboardAssetStore()
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = (
+        os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+        or os.environ.get("IMAGEN_API_KEY")
+    )
     if provider_type == "mock":
         return MockStoryboardImageProvider(asset_store=asset_store)
+    if provider_type == "mock_ai":
+        return MockStoryboardImageProvider(asset_store=asset_store, simulate_ai_mode=True)
     if provider_type == "fallback":
         return FallbackComicSvgProvider(asset_store=asset_store)
-    if provider_type == "cloud":
-        return CloudImagenStoryboardProvider(api_key=api_key, asset_store=asset_store)
-    if api_key:
-        return CloudImagenStoryboardProvider(api_key=api_key, asset_store=asset_store)
-    return FallbackComicSvgProvider(asset_store=asset_store)
+    # Default to Cloud provider (handles live generation if key exists or transparent fallback with diagnostic reason)
+    return CloudImagenStoryboardProvider(api_key=api_key, asset_store=asset_store)
 
 
 def create_app(store_dir: Optional[str] = None) -> FastAPI:
@@ -364,6 +367,8 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             p.rendered_svg = res.svg_content
             p.image_status = res.status
             p.provider = res.provider
+            p.fallback_reason = res.fallback_reason
+            p.continuity_mode = res.continuity_mode
             ver = StoryboardImageVersion(
                 version=1,
                 image_url=res.image_url,
@@ -371,6 +376,9 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
                 negative_prompt=res.negative_prompt,
                 provider=res.provider,
                 mode=res.mode,
+                fallback_reason=res.fallback_reason,
+                mime_type=res.mime_type,
+                continuity_mode=res.continuity_mode,
                 is_selected=True,
                 render_metadata=res.render_metadata,
             )
@@ -465,6 +473,8 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             p.rendered_svg = res.svg_content
             p.image_status = res.status
             p.provider = res.provider
+            p.fallback_reason = res.fallback_reason
+            p.continuity_mode = res.continuity_mode
             ver = StoryboardImageVersion(
                 version=1,
                 image_url=res.image_url,
@@ -472,6 +482,9 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
                 negative_prompt=res.negative_prompt,
                 provider=res.provider,
                 mode=res.mode,
+                fallback_reason=res.fallback_reason,
+                mime_type=res.mime_type,
+                continuity_mode=res.continuity_mode,
                 is_selected=True,
                 render_metadata=res.render_metadata,
             )
@@ -514,6 +527,8 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             p.rendered_svg = res.svg_content
             p.image_status = res.status
             p.provider = res.provider
+            p.fallback_reason = res.fallback_reason
+            p.continuity_mode = res.continuity_mode
             p.generation_version = target_version
             p.selected_version = target_version
 
@@ -527,6 +542,9 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
                 negative_prompt=res.negative_prompt,
                 provider=res.provider,
                 mode=res.mode,
+                fallback_reason=res.fallback_reason,
+                mime_type=res.mime_type,
+                continuity_mode=res.continuity_mode,
                 is_selected=True,
                 render_metadata=res.render_metadata,
             )
@@ -574,6 +592,8 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             p.rendered_svg = res.svg_content
             p.image_status = res.status
             p.provider = res.provider
+            p.fallback_reason = res.fallback_reason
+            p.continuity_mode = res.continuity_mode
             ver = StoryboardImageVersion(
                 version=1,
                 image_url=res.image_url,
@@ -581,6 +601,9 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
                 negative_prompt=res.negative_prompt,
                 provider=res.provider,
                 mode=res.mode,
+                fallback_reason=res.fallback_reason,
+                mime_type=res.mime_type,
+                continuity_mode=res.continuity_mode,
                 is_selected=True,
                 render_metadata=res.render_metadata,
             )
@@ -647,6 +670,8 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         target_panel.rendered_svg = res.svg_content
         target_panel.image_status = res.status
         target_panel.provider = res.provider
+        target_panel.fallback_reason = res.fallback_reason
+        target_panel.continuity_mode = res.continuity_mode
         target_panel.generation_version = next_ver
         target_panel.selected_version = next_ver
 
@@ -660,6 +685,9 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             negative_prompt=res.negative_prompt,
             provider=res.provider,
             mode=res.mode,
+            fallback_reason=res.fallback_reason,
+            mime_type=res.mime_type,
+            continuity_mode=res.continuity_mode,
             is_selected=True,
             render_metadata=res.render_metadata,
         )
@@ -770,6 +798,24 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             "panels_count": len([p for p in proj.shot_plan.panels if p.page_number == req.page_number]),
             "rendered_panels": updated_renders,
         }
+
+    @app.get("/api/storyboard/provider-status")
+    def get_storyboard_provider_status():
+        """Expose image provider availability and diagnostic status without exposing secrets."""
+        provider = get_image_provider()
+        return provider.get_status()
+
+    @app.get("/api/projects/{project_id}/storyboard/status")
+    def get_project_storyboard_status(project_id: str):
+        """Expose project-level storyboard generation diagnostics."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        provider = get_image_provider()
+        status = provider.get_status()
+        status["project_id"] = project_id
+        status["total_panels"] = len(proj.shot_plan.panels) if proj.shot_plan else 0
+        return status
 
     @app.get("/api/projects/{project_id}/storyboard/assets/{category}/{filename}")
     def serve_storyboard_asset(project_id: str, category: str, filename: str):

@@ -385,6 +385,11 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                               <span className={`badge-pill ${isAi ? 'badge-ai-image' : 'badge-fallback-comic'}`}>
                                 {isAi ? 'AI IMAGE' : 'FALLBACK COMIC'}
                               </span>
+                              {!isAi && panel.fallback_reason && (
+                                <span className="badge-pill" style={{ background: '#451a03', color: '#fca5a5', fontSize: '9px', border: '1px solid #78350f' }} title={`Fallback: ${panel.fallback_reason}`}>
+                                  {panel.fallback_reason}
+                                </span>
+                              )}
                               <button
                                 className="btn-panel-regen"
                                 onClick={(e) => {
@@ -548,6 +553,11 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                           <span className={`badge-pill ${isAi ? 'badge-ai-image' : 'badge-fallback-comic'}`}>
                             {isAi ? 'AI IMAGE' : 'FALLBACK COMIC'}
                           </span>
+                          {!isAi && panel.fallback_reason && (
+                            <span className="badge-pill" style={{ background: '#451a03', color: '#fca5a5', fontSize: '9px', border: '1px solid #78350f' }} title={`Fallback: ${panel.fallback_reason}`}>
+                              {panel.fallback_reason}
+                            </span>
+                          )}
                           <button
                             className="btn-panel-regen"
                             onClick={(e) => {
@@ -684,6 +694,26 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                     <div className="bible-prop-row">
                       <span className="bible-prop-label">INFLUENCES: </span>
                       <span>{visualBible.style_profile?.artist_influences?.join(', ')}</span>
+                    </div>
+                  </div>
+
+                  <div className="bible-card" style={{ borderLeft: '4px solid #38bdf8', marginTop: '12px' }}>
+                    <div className="bible-card-header">
+                      <div>
+                        <div className="bible-title">CONTINUITY ENGINE CONFIGURATION</div>
+                        <div className="bible-subtitle">Character &amp; World Consistency Pipeline</div>
+                      </div>
+                      <span className="badge-pill badge-continuity-mode">
+                        TEXTUAL CONTINUITY ONLY
+                      </span>
+                    </div>
+                    <div className="bible-prop-row">
+                      <span className="bible-prop-label">PROVIDER: </span>
+                      <span>Google Generative Language API (imagen-3.0-generate-002)</span>
+                    </div>
+                    <div className="bible-prop-row">
+                      <span className="bible-prop-label">CONDITIONING: </span>
+                      <span>No reference-image or latent conditioning API supported on Google AI Studio endpoint. Consistency enforced via compiled multi-layer prompt turnarounds &amp; canonical object/character anchors.</span>
                     </div>
                   </div>
                 </div>
@@ -939,54 +969,128 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div>
-                  <div className="pane-kicker">CINEMATIC TECHNICAL SPECS</div>
-                  <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                    <span className="panel-badge text-amber">{selectedPanel.shot_type.toUpperCase()}</span>
-                    <span className="panel-badge">{selectedPanel.camera_angle.toUpperCase()}</span>
-                    <span className="panel-badge">{selectedPanel.lens_feel}</span>
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>
-                    <strong>Composition:</strong> {selectedPanel.composition}
-                  </div>
-                </div>
+              {(() => {
+                const currentVersion = selectedPanel.versions?.find(
+                  (v) => (selectedPanel.selected_version ? v.version === selectedPanel.selected_version : v.is_selected)
+                ) || selectedPanel.versions?.[selectedPanel.versions.length - 1];
 
-                <div>
-                  <div className="pane-kicker">ACTION &amp; CAPTION</div>
-                  <div style={{ fontSize: '13px', color: '#f8fafc', marginTop: '4px' }}>
-                    {selectedPanel.action_description || selectedPanel.action}
-                  </div>
-                  {selectedPanel.dialogue_excerpt && (
-                    <div className="panel-dialogue-excerpt" style={{ marginTop: '8px' }}>
-                      "{selectedPanel.dialogue_excerpt}"
+                const currentMode = currentVersion?.mode || (selectedPanel as any).mode || (selectedPanel.image_url?.endsWith('.svg') || selectedPanel.rendered_svg ? 'fallback_comic' : 'ai_image');
+                const currentReason = currentVersion?.fallback_reason || selectedPanel.fallback_reason;
+                const currentContinuity = currentVersion?.continuity_mode || selectedPanel.continuity_mode || 'TEXTUAL CONTINUITY ONLY';
+                const currentProvider = currentVersion?.provider || selectedPanel.provider || 'CloudImagenStoryboardProvider';
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {/* Render Diagnostics */}
+                    <div
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: '4px',
+                        background: currentMode === 'ai_image' ? 'rgba(124, 58, 237, 0.12)' : 'rgba(245, 158, 11, 0.08)',
+                        border: `1px solid ${currentMode === 'ai_image' ? 'rgba(167, 139, 250, 0.4)' : 'rgba(245, 158, 11, 0.35)'}`,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.08em', color: '#94a3b8' }}>
+                          RENDER DIAGNOSTICS
+                        </span>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span className={`badge-pill ${currentMode === 'ai_image' ? 'badge-ai-image' : 'badge-fallback-comic'}`}>
+                            SOURCE: {currentMode === 'ai_image' ? 'AI IMAGE' : 'FALLBACK COMIC'}
+                          </span>
+                          {currentReason && (
+                            <span className="badge-pill badge-fallback-reason">
+                              REASON: {currentReason}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                        <span style={{ color: '#94a3b8' }}>CONTINUITY MODE:</span>
+                        <span className="badge-pill badge-continuity-mode">
+                          {currentContinuity}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                        <span style={{ color: '#94a3b8' }}>PROVIDER:</span>
+                        <span style={{ color: '#cbd5e1', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                          {currentProvider}
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </div>
 
-                <div>
-                  <div className="pane-kicker">CONTINUITY SPECIFICATIONS</div>
-                  <div style={{ fontSize: '12px', color: '#cbd5e1', marginTop: '4px' }}>
-                    {selectedPanel.continuity_notes || 'Preserves wardrobe, props, and lighting palette.'}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="pane-kicker">COMPILED MULTI-LAYER PROMPT</div>
-                  <div className="panel-prompt-mono" style={{ maxHeight: '180px', overflowY: 'auto' }}>
-                    {selectedPanel.compiled_prompt || selectedPanel.image_prompt || selectedPanel.visual_prompt}
-                  </div>
-                </div>
-
-                {selectedPanel.negative_prompt && (
-                  <div>
-                    <div className="pane-kicker">NEGATIVE CONSTRAINTS</div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-                      {selectedPanel.negative_prompt}
+                    <div>
+                      <div className="pane-kicker">CINEMATIC TECHNICAL SPECS</div>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                        <span className="panel-badge text-amber">{selectedPanel.shot_type.toUpperCase()}</span>
+                        <span className="panel-badge">{selectedPanel.camera_angle.toUpperCase()}</span>
+                        <span className="panel-badge">{selectedPanel.lens_feel}</span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>
+                        <strong>Composition:</strong> {selectedPanel.composition}
+                      </div>
                     </div>
+
+                    <div>
+                      <div className="pane-kicker">ACTION &amp; CAPTION</div>
+                      <div style={{ fontSize: '13px', color: '#f8fafc', marginTop: '4px' }}>
+                        {selectedPanel.action_description || selectedPanel.action}
+                      </div>
+                      {selectedPanel.dialogue_excerpt && (
+                        <div className="panel-dialogue-excerpt" style={{ marginTop: '8px' }}>
+                          "{selectedPanel.dialogue_excerpt}"
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="pane-kicker">CONTINUITY SPECIFICATIONS</div>
+                      <div style={{ fontSize: '12px', color: '#cbd5e1', marginTop: '4px' }}>
+                        {selectedPanel.continuity_notes || 'Preserves wardrobe, props, and lighting palette.'}
+                      </div>
+                      <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {selectedPanel.characters_present && selectedPanel.characters_present.length > 0 && (
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            <strong style={{ color: '#cbd5e1' }}>Characters Present:</strong>{' '}
+                            {selectedPanel.characters_present.join(', ')}
+                          </div>
+                        )}
+                        {selectedPanel.objects_in_frame && selectedPanel.objects_in_frame.length > 0 && (
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            <strong style={{ color: '#cbd5e1' }}>Props in Frame (Canonical):</strong>{' '}
+                            {selectedPanel.objects_in_frame.map((objId) => (
+                              <span key={objId} className="panel-badge text-amber" style={{ marginRight: '4px', fontSize: '10px' }}>
+                                {objId}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="pane-kicker">COMPILED MULTI-LAYER PROMPT</div>
+                      <div className="panel-prompt-mono" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                        {selectedPanel.compiled_prompt || selectedPanel.image_prompt || selectedPanel.visual_prompt}
+                      </div>
+                    </div>
+
+                    {selectedPanel.negative_prompt && (
+                      <div>
+                        <div className="pane-kicker">NEGATIVE CONSTRAINTS</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+                          {selectedPanel.negative_prompt}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
             </div>
           </div>
         </div>

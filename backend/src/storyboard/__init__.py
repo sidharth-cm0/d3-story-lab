@@ -21,12 +21,15 @@ from .visual_bible import (
 )
 from .compiler import StoryboardPromptCompiler, ContinuityValidator
 from .asset_store import StoryboardAssetStore
+from .prop_resolver import PropResolver, COMMON_PROP_ALIASES
 from .image_provider import (
     StoryboardImageProvider,
     StoryboardImageResult,
     FallbackComicSvgProvider,
     CloudImagenStoryboardProvider,
     MockStoryboardImageProvider,
+    ProviderState,
+    FallbackReason,
 )
 from .provider import (
     StoryboardProvider,
@@ -59,6 +62,10 @@ __all__ = [
     "FallbackComicSvgProvider",
     "CloudImagenStoryboardProvider",
     "MockStoryboardImageProvider",
+    "ProviderState",
+    "FallbackReason",
+    "PropResolver",
+    "COMMON_PROP_ALIASES",
     "StoryboardProvider",
     "MockStoryboardProvider",
     "ComicGraphicStoryboardProvider",

@@ -90,19 +90,26 @@ class StoryboardPromptCompiler:
         # 5. Prominent Props & Objects
         props_desc: List[str] = []
         if panel.objects_in_frame:
-            for obj_name in panel.objects_in_frame:
+            for obj_key in panel.objects_in_frame:
                 found_obj = None
                 if bible:
-                    for oid, oref in bible.objects.items():
-                        if oref.name.lower() == obj_name.lower():
-                            found_obj = oref
-                            break
+                    if obj_key in bible.objects:
+                        found_obj = bible.objects[obj_key]
+                    else:
+                        for oid, oref in bible.objects.items():
+                            if (
+                                oid.lower() == obj_key.lower()
+                                or oref.object_id.lower() == obj_key.lower()
+                                or oref.name.lower() == obj_key.lower()
+                            ):
+                                found_obj = oref
+                                break
                 if found_obj:
                     props_desc.append(found_obj.prompt_snippet())
-                elif panel.object_references.get(obj_name):
-                    props_desc.append(f"{obj_name}: {panel.object_references[obj_name]}")
+                elif panel.object_references.get(obj_key):
+                    props_desc.append(f"{obj_key}: {panel.object_references[obj_key]}")
                 else:
-                    props_desc.append(f"{obj_name} with defined graphic edges")
+                    props_desc.append(f"{obj_key} with defined graphic edges")
         props_section = f"Key objects visible: {', '.join(props_desc)}." if props_desc else ""
 
         # 6. Narrative Action & Expression
@@ -200,22 +207,40 @@ class ContinuityValidator:
                         )
 
         # 3. Check Prop Tracking
-        # If an object was in action, check that it's tracked in objects_in_frame
+        # If an object was in action/dialogue, verify that it's formally tracked in objects_in_frame
         prop_issues_count = 0
         for panel in panels:
             action_lower = (panel.action + " " + (panel.dialogue_excerpt or "")).lower()
             for key_prop in ["dossier", "ledger", "transceiver", "safe", "key", "revolver", "phone"]:
-                if key_prop in action_lower and not any(key_prop in obj.lower() for obj in panel.objects_in_frame):
-                    prop_issues_count += 1
-                    issues.append(
-                        ContinuityIssue(
-                            panel_id=panel.panel_id or panel.id,
-                            severity="info",
-                            category="prop_tracking",
-                            message=f"Narrative action mentions '{key_prop}' but it is not formally tracked in objects_in_frame.",
-                            suggestion=f"Include '{key_prop}' in panel.objects_in_frame for targeted visual prompt injection.",
+                if key_prop in action_lower:
+                    is_tracked = False
+                    for obj_ref in panel.objects_in_frame:
+                        if key_prop in obj_ref.lower():
+                            is_tracked = True
+                            break
+                        if bible and obj_ref in bible.objects:
+                            b_obj = bible.objects[obj_ref]
+                            if (
+                                key_prop in b_obj.name.lower()
+                                or key_prop in b_obj.form_factor.lower()
+                                or key_prop in b_obj.object_id.lower()
+                            ):
+                                is_tracked = True
+                                break
+                        if panel.object_references.get(obj_ref) and key_prop in panel.object_references[obj_ref].lower():
+                            is_tracked = True
+                            break
+                    if not is_tracked:
+                        prop_issues_count += 1
+                        issues.append(
+                            ContinuityIssue(
+                                panel_id=panel.panel_id or panel.id,
+                                severity="info",
+                                category="prop_tracking",
+                                message=f"Narrative action mentions '{key_prop}' but it is not formally tracked in objects_in_frame.",
+                                suggestion=f"Include '{key_prop}' in panel.objects_in_frame for targeted visual prompt injection.",
+                            )
                         )
-                    )
 
         # Calculate scores
         total = len(panels)

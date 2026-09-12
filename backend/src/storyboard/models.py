@@ -72,6 +72,9 @@ class StoryboardImageVersion(BaseModel):
     negative_prompt: str = ""
     provider: str = ""
     mode: str = "fallback_comic"  # "ai_image" | "fallback_comic"
+    fallback_reason: Optional[str] = None
+    mime_type: Optional[str] = None
+    continuity_mode: str = "TEXTUAL CONTINUITY ONLY"
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     is_selected: bool = False
     render_metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -141,6 +144,8 @@ class StoryboardPanel(BaseModel):
     rendered_svg: Optional[str] = None
     image_status: StoryboardImageStatus = StoryboardImageStatus.PLANNED
     provider: str = ""
+    fallback_reason: Optional[str] = None
+    continuity_mode: str = "TEXTUAL CONTINUITY ONLY"
     generation_version: int = 1
     selected_version: int = 1
     versions: List[StoryboardImageVersion] = Field(default_factory=list)

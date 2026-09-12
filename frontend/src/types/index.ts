@@ -267,6 +267,9 @@ export interface StoryboardImageVersion {
   negative_prompt?: string;
   provider?: string;
   mode?: 'ai_image' | 'fallback_comic';
+  fallback_reason?: string;
+  mime_type?: string;
+  continuity_mode?: string;
   created_at?: string;
   is_selected?: boolean;
   render_metadata?: Record<string, any>;
@@ -394,6 +397,9 @@ export interface StoryboardPanel {
   rendered_svg?: string | null;
   image_status?: StoryboardImageStatus | string;
   provider?: string;
+  fallback_reason?: string;
+  mime_type?: string;
+  continuity_mode?: string;
   generation_version?: number;
   selected_version?: number;
   versions?: StoryboardImageVersion[];
@@ -438,6 +444,10 @@ export interface RenderedPanelData {
   mode?: string;
   status?: string;
   version?: number;
+  fallback_reason?: string;
+  provider_status?: string;
+  continuity_mode?: string;
+  mime_type?: string;
   svg_data?: string;
   prompt_used?: string;
   negative_prompt?: string;
@@ -445,6 +455,18 @@ export interface RenderedPanelData {
   caption?: string;
   is_mock?: boolean;
   metadata?: Record<string, any>;
+}
+
+export interface ProviderStatusResponse {
+  storyboard_image_provider: string;
+  mode: string;
+  status: 'AVAILABLE' | 'UNAVAILABLE' | 'AUTH_ERROR' | 'QUOTA_ERROR' | 'CONFIG_ERROR';
+  available: boolean;
+  model: string;
+  fallback_enabled: boolean;
+  fallback_reason?: string | null;
+  continuity_mode: string;
+  supports_image_conditioning: boolean;
 }
 
 export interface StoryboardResponse {

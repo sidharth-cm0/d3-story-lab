@@ -1,4 +1,4 @@
-import { ProjectMetadata, ProjectData, Event, StoryboardResponse, StoryOutline, StorySynopsis } from './types';
+import { ProjectMetadata, ProjectData, Event, StoryboardResponse, StoryOutline, StorySynopsis, ProviderStatusResponse } from './types';
 
 const BASE_URL = '/api';
 
@@ -202,4 +202,12 @@ export async function regeneratePage(
 
 export function getAssetUrl(projectId: string, category: string, filename: string): string {
   return `${BASE_URL}/projects/${projectId}/storyboard/assets/${category}/${filename}`;
+}
+
+export async function fetchProviderStatus(): Promise<ProviderStatusResponse> {
+  const res = await fetch(`${BASE_URL}/storyboard/provider-status`);
+  if (!res.ok) {
+    throw new Error('Failed to fetch provider status');
+  }
+  return res.json();
 }
