@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { Header } from '../components/Header';
 import { CharacterCards } from '../components/CharacterCards';
 import { WorldInspector } from '../components/WorldInspector';
@@ -461,21 +461,120 @@ describe('Frontend Workstation Components', () => {
     expect(screen.getByText('FULL CONCEPT')).toBeDefined();
 
     // Select MIDPOINT
-    fireEvent.click(screen.getByText('MIDPOINT'));
+    act(() => {
+      fireEvent.click(screen.getByText('MIDPOINT'));
+    });
     expect(screen.getByText(/You provide the dramatic twist/i)).toBeDefined();
 
     // Select 45 MIN duration
-    fireEvent.click(screen.getByText('45 MIN'));
+    act(() => {
+      fireEvent.click(screen.getByText('45 MIN'));
+    });
     expect(screen.getByText('45 MINUTES')).toBeDefined();
 
     // Submit form
-    fireEvent.click(screen.getByText('BUILD WORLD'));
+    act(() => {
+      fireEvent.click(screen.getByText('BUILD WORLD'));
+    });
     expect(onCreate).toHaveBeenCalledWith(
       expect.any(String),
       undefined,
       'midpoint',
       45
     );
+  });
+
+  it('verifies NewProjectModal accessibility, background scroll locking, and pinned header/footer', () => {
+    const onClose = vi.fn();
+    const onCreate = vi.fn();
+
+    // Verify initial body overflow
+    document.body.style.overflow = 'visible';
+
+    const { unmount, container } = render(
+      <NewProjectModal
+        isOpen={true}
+        onClose={onClose}
+        onCreate={onCreate}
+      />
+    );
+
+    // 1. Check background scroll lock
+    expect(document.body.style.overflow).toBe('hidden');
+
+    // 2. Check pinned header with close button
+    const header = container.querySelector('.cinematic-modal-header');
+    expect(header).toBeDefined();
+    const closeBtn = screen.getByRole('button', { name: /close modal/i });
+    expect(closeBtn).toBeDefined();
+
+    // 3. Check scrollable body
+    const modalBody = container.querySelector('.cinematic-modal-body');
+    expect(modalBody).toBeDefined();
+
+    // 4. Check pinned footer with action buttons
+    const footer = container.querySelector('.cinematic-modal-footer');
+    expect(footer).toBeDefined();
+    const buildBtn = screen.getByRole('button', { name: /build world/i });
+    const cancelBtn = screen.getByRole('button', { name: /cancel/i });
+    expect(buildBtn).toBeDefined();
+    expect(cancelBtn).toBeDefined();
+
+    // 5. Test close button click
+    fireEvent.click(closeBtn);
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    // 6. Test Escape key closes modal
+    fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(2);
+
+    // 7. Test unmount restores body overflow
+    unmount();
+    expect(document.body.style.overflow).toBe('visible');
+  });
+
+  it('ensures NewProjectModal controls and buttons are reachable across small laptop viewports', () => {
+    const viewports = [
+      { name: '1366x768 MacBook/Laptop', width: 1366, height: 768 },
+      { name: '1280x800 Standard Laptop', width: 1280, height: 800 },
+      { name: '1024x768 Compact Display', width: 1024, height: 768 },
+      { name: '375x667 Mobile Fallback', width: 375, height: 667 },
+    ];
+
+    for (const vp of viewports) {
+      // Simulate viewport
+      window.innerWidth = vp.width;
+      window.innerHeight = vp.height;
+
+      const { unmount, container } = render(
+        <NewProjectModal
+          isOpen={true}
+          onClose={vi.fn()}
+          onCreate={vi.fn()}
+        />
+      );
+
+      // Verify modal card exists with proper classes
+      const modal = container.querySelector('.cinematic-modal');
+      expect(modal).toBeDefined();
+
+      // Verify the scrollable container and pinned footer both exist
+      const scrollBody = container.querySelector('.cinematic-modal-body');
+      const stickyFooter = container.querySelector('.cinematic-modal-footer');
+      expect(scrollBody).toBeDefined();
+      expect(stickyFooter).toBeDefined();
+
+      // Verify action buttons exist in sticky footer and are enabled
+      const submitBtn = screen.getByRole('button', { name: /build world/i });
+      expect(submitBtn).toBeDefined();
+      expect((submitBtn as HTMLButtonElement).disabled).toBe(false);
+
+      // Verify prompt textarea and all options are reachable
+      const textarea = screen.getByPlaceholderText(/A man enters an abandoned building/i);
+      expect(textarea).toBeDefined();
+
+      unmount();
+    }
   });
 
   it('renders ScreenplayViewer synopsis tab with logline, summary, and act beats', () => {

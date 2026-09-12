@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StoryInputType } from '../types';
 
 interface NewProjectModalProps {
@@ -67,6 +67,28 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ isOpen, onClos
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Prevent background page scroll while modal is open & listen for Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -85,137 +107,161 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ isOpen, onClos
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div
+      className="modal-overlay"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-spark-title"
+    >
       <div className="modal-card cinematic-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <div className="modal-kicker">NARRATIVE ENGINE INITIALIZER</div>
-          <h2 className="modal-title">START WITH A SPARK.</h2>
-          <p className="modal-subtitle">
-            Provide a beginning, midpoint, ending, or full concept. The Director Agent synthesizes sovereign actors, private secrets, and 3-act episodic structure.
-          </p>
+        {/* Pinned / Fixed Header */}
+        <div className="modal-header cinematic-modal-header">
+          <div className="modal-header-text">
+            <div className="modal-kicker">NARRATIVE ENGINE INITIALIZER</div>
+            <h2 id="modal-spark-title" className="modal-title">START WITH A SPARK.</h2>
+            <p className="modal-subtitle">
+              Provide a beginning, midpoint, ending, or full concept. The Director Agent synthesizes sovereign actors, private secrets, and 3-act episodic structure.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="modal-close-btn"
+            onClick={onClose}
+            aria-label="Close modal"
+            title="Close (Esc)"
+          >
+            ✕
+          </button>
         </div>
 
-        {error && (
-          <div className="modal-error-box">
-            {error}
-          </div>
-        )}
+        {/* Modal Form with Scrollable Body & Sticky Action Footer */}
+        <form onSubmit={handleSubmit} className="modal-form cinematic-modal-form">
+          <div className="modal-body cinematic-modal-body">
+            {error && (
+              <div className="modal-error-box" role="alert">
+                {error}
+              </div>
+            )}
 
-        <form onSubmit={handleSubmit} className="modal-form">
-          {/* Preset Selector */}
-          <div className="form-group">
-            <label className="form-label">PRESETS</label>
-            <select
-              className="form-select"
-              onChange={(e) => {
-                const selected = PRESETS.find((p) => p.title === e.target.value);
-                if (selected) {
-                  setTitle(selected.title);
-                  setPrompt(selected.prompt);
-                  setInputType(selected.type);
-                  setDuration(selected.duration);
-                }
-              }}
-              defaultValue={PRESETS[0].title}
-            >
-              {PRESETS.map((p) => (
-                <option key={p.title} value={p.title}>
-                  {p.title} ({p.type.toUpperCase()})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 1. Story Input Type Selector */}
-          <div className="form-group">
-            <label className="form-label">1. STORY INPUT TYPE</label>
-            <div className="input-type-pill-grid">
-              {(['beginning', 'midpoint', 'ending', 'full_concept'] as StoryInputType[]).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  className={`type-pill-btn ${inputType === type ? 'active' : ''}`}
-                  onClick={() => setInputType(type)}
-                >
-                  <span className="pill-title">{INPUT_TYPE_HINTS[type].label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="input-type-explainer">
-              {INPUT_TYPE_HINTS[inputType].desc}
-            </div>
-          </div>
-
-          {/* 2. Episode Duration */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label className="form-label">2. EPISODE DURATION TARGET</label>
-              <span className="text-amber mono-bold">{duration} MINUTES</span>
-            </div>
-            <div className="duration-pill-row">
-              {[10, 20, 30, 45].map((mins) => (
-                <button
-                  key={mins}
-                  type="button"
-                  className={`duration-chip ${duration === mins ? 'active' : ''}`}
-                  onClick={() => setDuration(mins)}
-                >
-                  {mins} MIN
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Title (Optional) */}
-          <div className="form-group">
-            <label className="form-label">EPISODE TITLE (OPTIONAL)</label>
-            <input
-              type="text"
-              className="form-input"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. The Threshold, False Partner, Ashes of Truth..."
-            />
-          </div>
-
-          {/* 3. Prompt Textarea */}
-          <div className="form-group">
-            <label className="form-label">3. PROMPT / PREMISE / INCIDENT</label>
-            <textarea
-              className="form-textarea cinematic-textarea"
-              rows={4}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="e.g. A man enters an abandoned building..."
-              required
-            />
-          </div>
-
-          <div className="quick-seeds-container">
-            <span className="quick-seeds-label">EXAMPLES:</span>
-            {QUICK_SEEDS.map((seed, i) => (
-              <button
-                key={i}
-                type="button"
-                className="seed-chip"
-                onClick={() => {
-                  setPrompt(seed);
-                  setTitle('');
+            {/* Preset Selector */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="modal-preset-select">PRESETS</label>
+              <select
+                id="modal-preset-select"
+                className="form-select"
+                onChange={(e) => {
+                  const selected = PRESETS.find((p) => p.title === e.target.value);
+                  if (selected) {
+                    setTitle(selected.title);
+                    setPrompt(selected.prompt);
+                    setInputType(selected.type);
+                    setDuration(selected.duration);
+                  }
                 }}
+                defaultValue={PRESETS[0].title}
               >
-                "{seed}"
-              </button>
-            ))}
+                {PRESETS.map((p) => (
+                  <option key={p.title} value={p.title}>
+                    {p.title} ({p.type.toUpperCase()})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 1. Story Input Type Selector */}
+            <div className="form-group">
+              <label className="form-label">1. STORY INPUT TYPE</label>
+              <div className="input-type-pill-grid">
+                {(['beginning', 'midpoint', 'ending', 'full_concept'] as StoryInputType[]).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    className={`type-pill-btn ${inputType === type ? 'active' : ''}`}
+                    onClick={() => setInputType(type)}
+                  >
+                    <span className="pill-title">{INPUT_TYPE_HINTS[type].label}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="input-type-explainer">
+                {INPUT_TYPE_HINTS[inputType].desc}
+              </div>
+            </div>
+
+            {/* 2. Episode Duration */}
+            <div className="form-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label className="form-label">2. EPISODE DURATION TARGET</label>
+                <span className="text-amber mono-bold">{duration} MINUTES</span>
+              </div>
+              <div className="duration-pill-row">
+                {[10, 20, 30, 45].map((mins) => (
+                  <button
+                    key={mins}
+                    type="button"
+                    className={`duration-chip ${duration === mins ? 'active' : ''}`}
+                    onClick={() => setDuration(mins)}
+                  >
+                    {mins} MIN
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Title (Optional) */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="modal-episode-title">EPISODE TITLE (OPTIONAL)</label>
+              <input
+                id="modal-episode-title"
+                type="text"
+                className="form-input"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. The Threshold, False Partner, Ashes of Truth..."
+              />
+            </div>
+
+            {/* 3. Prompt Textarea */}
+            <div className="form-group">
+              <label className="form-label" htmlFor="modal-prompt-textarea">3. PROMPT / PREMISE / INCIDENT</label>
+              <textarea
+                id="modal-prompt-textarea"
+                className="form-textarea cinematic-textarea"
+                rows={3}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="e.g. A man enters an abandoned building..."
+                required
+              />
+            </div>
+
+            <div className="quick-seeds-container">
+              <span className="quick-seeds-label">EXAMPLES:</span>
+              {QUICK_SEEDS.map((seed, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className="seed-chip"
+                  onClick={() => {
+                    setPrompt(seed);
+                    setTitle('');
+                  }}
+                >
+                  "{seed}"
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="modal-actions">
+          {/* Pinned / Fixed Footer */}
+          <div className="modal-actions cinematic-modal-footer">
             <button type="button" className="btn-cinematic-secondary" onClick={onClose} disabled={loading}>
               CANCEL
             </button>
             <button type="submit" className="btn-cinematic-primary" disabled={loading || !prompt.trim()}>
               {loading ? 'BUILDING WORLD...' : 'BUILD WORLD'}
             </button>
-
           </div>
         </form>
       </div>

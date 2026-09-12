@@ -2146,19 +2146,72 @@ html, body {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .cinematic-modal {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  width: 580px;
-  max-width: 92vw;
-  padding: 32px;
+  width: min(720px, calc(100vw - 24px));
+  max-width: 100%;
+  max-height: calc(100vh - 32px);
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  padding: 0;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
+  box-sizing: border-box;
+  position: relative;
+}
+
+.cinematic-modal-header {
+  flex-shrink: 0;
+  padding: 22px 28px 16px 28px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.cinematic-modal-header .modal-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.modal-close-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-muted);
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  transition: all var(--trans-micro);
+  flex-shrink: 0;
+}
+
+.modal-close-btn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--border-focus);
+  color: var(--text-primary);
 }
 
 .modal-header {
@@ -2187,10 +2240,45 @@ html, body {
   line-height: 1.4;
 }
 
-.modal-form {
+.cinematic-modal-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cinematic-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 28px 28px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-medium) var(--bg-void);
+}
+
+.cinematic-modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cinematic-modal-body::-webkit-scrollbar-track {
+  background: var(--bg-void);
+  border-radius: 4px;
+}
+
+.cinematic-modal-body::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: 4px;
+  border: 1px solid var(--bg-card);
+}
+
+.cinematic-modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-amber);
 }
 
 .form-group {
@@ -2226,6 +2314,7 @@ html, body {
   font-size: 13px;
   line-height: 1.5;
   resize: vertical;
+  min-height: 72px;
 }
 
 .quick-seeds-container {
@@ -2250,7 +2339,10 @@ html, body {
   color: var(--text-muted);
   font-size: 11px;
   text-align: left;
-  padding: 4px 0;
+  padding: 6px 4px;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
   cursor: pointer;
   transition: color var(--trans-micro);
 }
@@ -2266,6 +2358,28 @@ html, body {
   margin-top: 10px;
 }
 
+.cinematic-modal-footer {
+  flex-shrink: 0;
+  padding: 16px 28px 20px 28px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+}
+
+.cinematic-modal-footer .btn-cinematic-primary,
+.cinematic-modal-footer .btn-cinematic-secondary {
+  min-height: 44px;
+  padding: 10px 22px;
+  font-size: 11px;
+}
+
 .modal-error-box {
   background: rgba(217, 83, 79, 0.1);
   border: 1px solid rgba(217, 83, 79, 0.3);
@@ -2273,6 +2387,74 @@ html, body {
   padding: 10px 14px;
   border-radius: 4px;
   font-size: 11px;
+}
+
+/* Viewport & Responsive Modifiers for Laptops (1366x768, 1280x800, 1024x768) and Mobile */
+@media (max-height: 800px) {
+  .cinematic-modal {
+    max-height: calc(100vh - 24px);
+  }
+  .cinematic-modal-header {
+    padding: 16px 24px 12px 24px;
+  }
+  .modal-title {
+    font-size: 18px;
+  }
+  .modal-subtitle {
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .cinematic-modal-body {
+    padding: 14px 24px 24px 24px;
+    gap: 12px;
+  }
+  .cinematic-modal-footer {
+    padding: 12px 24px 16px 24px;
+  }
+  .cinematic-textarea {
+    min-height: 60px;
+  }
+}
+
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 12px;
+  }
+  .cinematic-modal {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    border-radius: 8px;
+  }
+  .cinematic-modal-header {
+    padding: 16px 18px 12px 18px;
+  }
+  .cinematic-modal-body {
+    padding: 14px 18px 24px 18px;
+    gap: 12px;
+  }
+  .cinematic-modal-footer {
+    padding: 14px 18px 16px 18px;
+  }
+  .input-type-pill-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .duration-pill-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  .cinematic-modal-footer {
+    flex-direction: column-reverse;
+    gap: 10px;
+  }
+  .cinematic-modal-footer .btn-cinematic-primary,
+  .cinematic-modal-footer .btn-cinematic-secondary {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 /* Empty / Standby Screen */
@@ -2397,6 +2579,8 @@ html, body {
   border-radius: 4px;
   color: var(--text-secondary);
   padding: 10px 8px;
+  min-height: 44px;
+  box-sizing: border-box;
   cursor: pointer;
   text-align: center;
   transition: all var(--trans-micro);
@@ -2452,6 +2636,11 @@ html, body {
   font-size: 11px;
   font-weight: 700;
   padding: 8px 12px;
+  min-height: 44px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   transition: all var(--trans-micro);
 }
