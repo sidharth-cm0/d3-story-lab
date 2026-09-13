@@ -54,6 +54,21 @@ from src.storyboard.storyboard_validator import StoryboardQualityValidator
 from src.storyboard.visual_bible import VisualBible, StoryboardStyleProfile
 from src.storyboard.compiler import StoryboardPromptCompiler, ContinuityValidator
 from src.storyboard.asset_store import StoryboardAssetStore
+from src.storyboard.continuity import (
+    CharacterContinuityPack,
+    LocationContinuityPack,
+    PropContinuityPack,
+    StoryboardSequenceContext,
+)
+from src.storyboard.control import StoryboardControlBundle, PrevisControlRenderer
+from src.storyboard.open_model_provider import (
+    OpenModelStoryboardProvider,
+    ComfyUIStoryboardAdapter,
+    DiffusersStoryboardAdapter,
+    MockOpenModelStoryboardAdapter,
+    select_keyframe_indices,
+    RenderMode,
+)
 from src.storyboard.image_provider import (
     StoryboardImageProvider,
     StoryboardImageResult,
@@ -62,6 +77,7 @@ from src.storyboard.image_provider import (
     FallbackComicSvgProvider,
     CloudImagenStoryboardProvider,
     MockStoryboardImageProvider,
+    OpenModelImageProviderAdapter,
 )
 from src.storyboard.provider import (
     StoryboardProvider,
@@ -96,10 +112,23 @@ class GenerateScreenplayRequest(BaseModel):
 class PlanStoryboardRequest(BaseModel):
     density_mode: str = Field(default="standard")  # "quick" | "standard" | "detailed"
     panels_per_page: int = Field(default=4, ge=1, le=8)
+    render_mode: str = Field(default="KEYFRAMES")  # "KEYFRAMES" | "FULL_BOARD"
 
 
 class GenerateStoryboardRequest(BaseModel):
-    provider: Optional[str] = None  # "cloud" | "fallback" | "mock"
+    provider: Optional[str] = None  # "on_demand" | "comfyui" | "diffusers" | "cloud" | "mock"
+    render_mode: Optional[str] = "KEYFRAMES"  # "KEYFRAMES" | "FULL_BOARD"
+    model: Optional[str] = None
+    keyframe_budget: Optional[int] = 8  # 4 | 8 | 12 (hard cap: 12)
+
+
+class ConfigureRendererRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    provider: str = "on_demand"  # "on_demand" | "comfyui"
+    runtime_url: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+
 
 
 class SelectVersionRequest(BaseModel):
@@ -147,19 +176,28 @@ def get_image_provider(
     provider_type: Optional[str] = None,
     asset_store: Optional[StoryboardAssetStore] = None,
 ) -> StoryboardImageProvider:
-    """Instantiate storyboard renderer. Defaults strictly to offline HandDrawnStoryboardProvider."""
+    """Instantiate storyboard renderer. Defaults strictly to OpenModelImageProviderAdapter."""
     asset_store = asset_store or StoryboardAssetStore()
-    provider_type = (provider_type or os.environ.get("STORYBOARD_PROVIDER", "hand_drawn")).lower()
+    provider_type = (provider_type or os.environ.get("STORYBOARD_PROVIDER", "open_model")).lower()
 
-    if provider_type in ("hand_drawn", "hand_drawn_storyboard", "sketch", "local", "offline"):
+    if provider_type in ("on_demand", "ondemand", "on-demand"):
+        return OpenModelImageProviderAdapter(asset_store=asset_store, adapter_type="on_demand")
+    if provider_type in ("open_model", "open_model_storyboard", "ai_storyboard", "open"):
+        return OpenModelImageProviderAdapter(asset_store=asset_store)
+    if provider_type in ("comfyui", "comfy"):
+        return OpenModelImageProviderAdapter(asset_store=asset_store, adapter_type="comfyui")
+
+    if provider_type in ("diffusers",):
+        return OpenModelImageProviderAdapter(asset_store=asset_store, adapter_type="diffusers")
+    if provider_type in ("mock_ai", "mock_connected"):
+        return OpenModelImageProviderAdapter(asset_store=asset_store, adapter_type="mock_ai")
+    if provider_type in ("mock", "mock_unavailable"):
+        return OpenModelImageProviderAdapter(asset_store=asset_store, adapter_type="mock_unavailable")
+    if provider_type in ("hand_drawn", "hand_drawn_storyboard", "sketch", "local", "previs"):
         from src.storyboard.sketch.renderer import HandDrawnStoryboardProvider
         return HandDrawnStoryboardProvider(asset_store=asset_store)
     if provider_type in ("huggingface", "hf", "experimental_ai"):
         return HuggingFaceStoryboardProvider(asset_store=asset_store)
-    if provider_type == "mock":
-        return MockStoryboardImageProvider(asset_store=asset_store)
-    if provider_type == "mock_ai":
-        return MockStoryboardImageProvider(asset_store=asset_store, simulate_ai_mode=True)
     if provider_type == "fallback":
         return FallbackComicSvgProvider(asset_store=asset_store)
 
@@ -172,8 +210,63 @@ def get_image_provider(
         model_name = os.environ.get("STORYBOARD_IMAGE_MODEL") or "gemini-3.1-flash-image"
         return CloudImagenStoryboardProvider(api_key=api_key, asset_store=asset_store, model_name=model_name)
 
-    from src.storyboard.sketch.renderer import HandDrawnStoryboardProvider
-    return HandDrawnStoryboardProvider(asset_store=asset_store)
+    return OpenModelImageProviderAdapter(asset_store=asset_store)
+
+
+def _format_rendered_panel_dict(panel, res, version: int = 1) -> dict:
+    """Format rendered panel dictionary from generation result without repeating generation."""
+    return {
+        "panel_id": res.panel_id,
+        "scene_number": panel.scene_number,
+        "shot_number": panel.shot_number,
+        "page_number": panel.page_number,
+        "shot_type": panel.shot_type.value if hasattr(panel.shot_type, "value") else str(panel.shot_type),
+        "camera_angle": panel.camera_angle.value if hasattr(panel.camera_angle, "value") else str(panel.camera_angle),
+        "image_url": res.image_url,
+        "rendered_svg": None,
+        "render_type": "ai_image" if res.image_url else "previs_guide",
+        "provider": res.provider,
+        "mode": res.mode,
+        "status": res.status.value if hasattr(res.status, "value") else str(res.status),
+        "fallback_reason": res.fallback_reason,
+        "provider_status": res.provider_status,
+        "continuity_mode": res.continuity_mode,
+        "mime_type": res.mime_type,
+        "version": version,
+        "prompt_used": res.compiled_prompt,
+        "negative_prompt": res.negative_prompt,
+        "caption": panel.caption,
+        "metadata": res.render_metadata,
+    }
+
+
+def _build_continuity_context(world, bible):
+    """Build Character, Location, and Prop continuity packs from world state or visual bible."""
+    char_packs = {}
+    if world and world.characters:
+        for cid, char in world.characters.items():
+            char_packs[cid] = CharacterContinuityPack.from_character(char)
+    elif bible and bible.characters:
+        for cid, cref in bible.characters.items():
+            char_packs[cid] = CharacterContinuityPack.from_visual_reference(cref)
+
+    loc_packs = {}
+    if world and world.locations:
+        for lid, loc in world.locations.items():
+            loc_packs[lid] = LocationContinuityPack.from_location(loc)
+    elif bible and bible.locations:
+        for lid, lref in bible.locations.items():
+            loc_packs[lid] = LocationContinuityPack.from_visual_reference(lref)
+
+    prop_packs = {}
+    if world and world.objects:
+        for oid, obj in world.objects.items():
+            prop_packs[oid] = PropContinuityPack.from_object(obj)
+    elif bible and bible.objects:
+        for oid, oref in bible.objects.items():
+            prop_packs[oid] = PropContinuityPack.from_visual_reference(oref)
+
+    return char_packs, loc_packs, prop_packs
 
 
 def create_app(store_dir: Optional[str] = None) -> FastAPI:
@@ -430,32 +523,88 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         planner = StoryboardPlanner(panels_per_page=4)
         shot_plan = planner.plan_shots(doc, proj.world, bible=bible, project_id=project_id)
         storyboard_engine = get_image_provider(asset_store=asset_store)
+        caps = storyboard_engine.get_capabilities() if hasattr(storyboard_engine, "get_capabilities") else storyboard_engine.get_status()
+        shot_plan.runtime_status = caps
         rendered_panels = []
         for p in shot_plan.panels:
-            res = storyboard_engine.generate_panel(p, bible=bible, version=1)
-            p.image_url = res.image_url
-            p.rendered_image_url = res.image_url
-            p.rendered_svg = res.svg_content
-            p.image_status = res.status
-            p.provider = res.provider
-            p.fallback_reason = res.fallback_reason
-            p.continuity_mode = res.continuity_mode
-            ver = StoryboardImageVersion(
-                version=1,
-                image_url=res.image_url,
-                prompt_used=res.compiled_prompt,
-                negative_prompt=res.negative_prompt,
-                provider=res.provider,
-                mode=res.mode,
-                fallback_reason=res.fallback_reason,
-                mime_type=res.mime_type,
-                continuity_mode=res.continuity_mode,
-                is_selected=True,
-                render_metadata=res.render_metadata,
-            )
-            p.versions = [ver]
-            p.selected_version = 1
-            rendered_panels.append(storyboard_engine.render_panel(p, bible=bible, version=1))
+            # In default KEYFRAMES mode, only render keyframe dramatic beats
+            if not p.is_keyframe:
+                previs_renderer = PrevisControlRenderer(asset_store=asset_store)
+                bundle = previs_renderer.generate_control_bundle(p, bible=bible, version=1)
+                p.control_bundle = bundle.to_dict()
+                p.previs_svg = bundle.previs_svg
+                p.image_url = None
+                p.rendered_image_url = None
+                p.rendered_svg = None
+                p.image_status = StoryboardImageStatus.PLANNED
+                p.provider = caps.get("provider", "open_model_storyboard")
+                ver = StoryboardImageVersion(
+                    version=1,
+                    image_url="",
+                    prompt_used=p.visual_prompt,
+                    negative_prompt="",
+                    provider=p.provider,
+                    mode="previs_guide",
+                    previs_available=True,
+                    control_bundle=p.control_bundle,
+                    continuity_mode="Open-Model Continuity Pack",
+                    is_selected=True,
+                    render_metadata={"previs_available": True, "label": "PREVIS GUIDE", "keyframe_deferred": True},
+                )
+                p.versions = [ver]
+                p.selected_version = 1
+                rendered_panels.append({
+                    "panel_id": p.panel_id or p.id,
+                    "scene_number": p.scene_number,
+                    "shot_number": p.shot_number,
+                    "page_number": p.page_number,
+                    "shot_type": p.shot_type.value if hasattr(p.shot_type, "value") else str(p.shot_type),
+                    "camera_angle": p.camera_angle.value if hasattr(p.camera_angle, "value") else str(p.camera_angle),
+                    "image_url": None,
+                    "rendered_svg": None,
+                    "render_type": "previs_guide",
+                    "provider": p.provider,
+                    "mode": "previs_guide",
+                    "status": "PLANNED",
+                    "fallback_reason": None,
+                    "provider_status": "AVAILABLE",
+                    "continuity_mode": "Open-Model Continuity Pack",
+                    "mime_type": "image/png",
+                    "version": 1,
+                    "prompt_used": p.visual_prompt,
+                    "negative_prompt": "",
+                    "caption": p.caption,
+                    "metadata": {"previs_available": True, "label": "PREVIS GUIDE", "keyframe_deferred": True},
+                })
+            else:
+                res = storyboard_engine.generate_panel(p, bible=bible, version=1)
+                p.image_url = res.image_url if res.status == StoryboardImageStatus.READY else None
+                p.rendered_image_url = p.image_url
+                p.rendered_svg = None  # Never show procedural SVG as final artwork
+                p.image_status = res.status
+                p.provider = res.provider
+                p.fallback_reason = res.fallback_reason
+                p.continuity_mode = res.continuity_mode
+                ctrl_dict = res.render_metadata.get("control_bundle") or p.control_bundle
+                p.control_bundle = ctrl_dict
+                ver = StoryboardImageVersion(
+                    version=1,
+                    image_url=res.image_url or "",
+                    prompt_used=res.compiled_prompt,
+                    negative_prompt=res.negative_prompt,
+                    provider=res.provider,
+                    mode=res.mode,
+                    fallback_reason=res.fallback_reason,
+                    mime_type=res.mime_type,
+                    continuity_mode=res.continuity_mode,
+                    is_selected=True,
+                    control_bundle=ctrl_dict,
+                    previs_available=True,
+                    render_metadata=res.render_metadata,
+                )
+                p.versions = [ver]
+                p.selected_version = 1
+                rendered_panels.append(_format_rendered_panel_dict(p, res, version=1))
 
         proj.shot_plan = shot_plan
         proj.rendered_panels = rendered_panels
@@ -556,6 +705,7 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
 
         density = req.density_mode if req else "standard"
         ppp = req.panels_per_page if req else 4
+        render_mode = req.render_mode if req else "KEYFRAMES"
 
         asset_store = StoryboardAssetStore(store.base_dir)
         bible = proj.visual_bible or asset_store.load_visual_bible(project_id)
@@ -564,38 +714,75 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             proj.visual_bible = bible
             asset_store.save_visual_bible(project_id, bible)
 
+        char_packs, loc_packs, prop_packs = _build_continuity_context(proj.world, bible)
+
         planner = StoryboardPlanner(panels_per_page=ppp, density_mode=density)
         shot_plan = planner.plan_shots(proj.screenplay, proj.world, bible=bible, project_id=project_id)
+        shot_plan.render_mode = render_mode
 
         continuity_report = ContinuityValidator.validate_shot_plan(shot_plan.panels, bible)
 
         engine = get_image_provider(asset_store=asset_store)
+        caps = engine.get_capabilities() if hasattr(engine, "get_capabilities") else engine.get_status()
+        shot_plan.runtime_status = caps
+
         rendered_panels = []
         for p in shot_plan.panels:
-            res = engine.generate_panel(p, bible=bible, version=1)
-            p.image_url = res.image_url
-            p.rendered_image_url = res.image_url
-            p.rendered_svg = res.svg_content
-            p.image_status = res.status
-            p.provider = res.provider
-            p.fallback_reason = res.fallback_reason
-            p.continuity_mode = res.continuity_mode
-            ver = StoryboardImageVersion(
-                version=1,
-                image_url=res.image_url,
-                prompt_used=res.compiled_prompt,
-                negative_prompt=res.negative_prompt,
-                provider=res.provider,
-                mode=res.mode,
-                fallback_reason=res.fallback_reason,
-                mime_type=res.mime_type,
-                continuity_mode=res.continuity_mode,
-                is_selected=True,
-                render_metadata=res.render_metadata,
-            )
-            p.versions = [ver]
-            p.selected_version = 1
-            rendered_panels.append(engine.render_panel(p, bible=bible, version=1))
+            if render_mode == "KEYFRAMES" and not p.is_keyframe:
+                previs_renderer = PrevisControlRenderer(asset_store=asset_store)
+                bundle = previs_renderer.generate_control_bundle(p, bible=bible, version=1)
+                p.control_bundle = bundle.to_dict()
+                p.previs_svg = bundle.previs_svg
+                p.image_url = None
+                p.rendered_image_url = None
+                p.rendered_svg = None
+                p.image_status = StoryboardImageStatus.PLANNED
+                p.provider = caps.get("provider", "open_model_storyboard")
+                ver = StoryboardImageVersion(
+                    version=1,
+                    image_url="",
+                    prompt_used=p.visual_prompt,
+                    negative_prompt="",
+                    provider=p.provider,
+                    mode="previs_guide",
+                    previs_available=True,
+                    control_bundle=p.control_bundle,
+                    continuity_mode="Open-Model Continuity Pack",
+                    is_selected=True,
+                    render_metadata={"previs_available": True, "label": "PREVIS GUIDE", "keyframe_deferred": True},
+                )
+                p.versions = [ver]
+                p.selected_version = 1
+                rendered_panels.append(engine.render_panel(p, bible=bible, version=1))
+            else:
+                res = engine.generate_panel(p, bible=bible, version=1)
+                p.image_url = res.image_url if res.status == StoryboardImageStatus.READY else None
+                p.rendered_image_url = p.image_url
+                p.rendered_svg = None  # Never show procedural SVG as final artwork
+                p.image_status = res.status
+                p.provider = res.provider
+                p.fallback_reason = res.fallback_reason
+                p.continuity_mode = res.continuity_mode
+                ctrl_dict = res.render_metadata.get("control_bundle") or p.control_bundle
+                p.control_bundle = ctrl_dict
+                ver = StoryboardImageVersion(
+                    version=1,
+                    image_url=res.image_url or "",
+                    prompt_used=res.compiled_prompt,
+                    negative_prompt=res.negative_prompt,
+                    provider=res.provider,
+                    mode=res.mode,
+                    fallback_reason=res.fallback_reason,
+                    mime_type=res.mime_type,
+                    continuity_mode=res.continuity_mode,
+                    is_selected=True,
+                    control_bundle=ctrl_dict,
+                    previs_available=True,
+                    render_metadata=res.render_metadata,
+                )
+                p.versions = [ver]
+                p.selected_version = 1
+                rendered_panels.append(engine.render_panel(p, bible=bible, version=1))
 
         proj.shot_plan = shot_plan
         proj.rendered_panels = rendered_panels
@@ -621,40 +808,136 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             asset_store.save_visual_bible(project_id, bible)
 
         provider_type = req.provider if req else None
+        render_mode = req.render_mode if req and req.render_mode else getattr(proj.shot_plan, "render_mode", "KEYFRAMES")
+        budget = min(max(1, req.keyframe_budget if (req and req.keyframe_budget) else 8), 12)
+        proj.shot_plan.render_mode = render_mode
         engine = get_image_provider(provider_type=provider_type, asset_store=asset_store)
+        caps = engine.get_capabilities() if hasattr(engine, "get_capabilities") else engine.get_status()
+        proj.shot_plan.runtime_status = caps
+
+        from src.storyboard.open_model_provider import select_keyframe_indices
+        kf_indices = (
+            set(select_keyframe_indices(proj.shot_plan.panels, budget=budget))
+            if render_mode == "KEYFRAMES"
+            else set(range(min(len(proj.shot_plan.panels), 12)))
+        )
 
         rendered_panels = []
-        for p in proj.shot_plan.panels:
+        for idx, p in enumerate(proj.shot_plan.panels):
             target_version = len(p.versions) + 1 if p.versions else 1
-            res = engine.generate_panel(p, bible=bible, version=target_version)
-            p.image_url = res.image_url
-            p.rendered_image_url = res.image_url
-            p.rendered_svg = res.svg_content
-            p.image_status = res.status
-            p.provider = res.provider
-            p.fallback_reason = res.fallback_reason
-            p.continuity_mode = res.continuity_mode
-            p.generation_version = target_version
-            p.selected_version = target_version
+            is_keyframe = idx in kf_indices
+            p.is_keyframe = is_keyframe
 
-            for v in p.versions:
-                v.is_selected = False
+            if render_mode == "KEYFRAMES" and not is_keyframe:
+                previs_renderer = PrevisControlRenderer(asset_store=asset_store)
+                bundle = previs_renderer.generate_control_bundle(p, bible=bible, version=target_version)
+                p.control_bundle = bundle.to_dict()
+                p.previs_svg = bundle.previs_svg
+                p.image_url = None
+                p.rendered_image_url = None
+                p.rendered_svg = None
+                p.image_status = StoryboardImageStatus.PLANNED
+                p.provider = caps.get("provider", "on_demand")
+                p.generation_version = target_version
+                p.selected_version = target_version
+                for v in p.versions:
+                    v.is_selected = False
+                new_ver = StoryboardImageVersion(
+                    version=target_version,
+                    image_url="",
+                    prompt_used=p.visual_prompt,
+                    negative_prompt="",
+                    provider=p.provider,
+                    mode="previs_guide",
+                    previs_available=True,
+                    control_bundle=p.control_bundle,
+                    continuity_mode="Open-Model Continuity Pack",
+                    is_selected=True,
+                    render_metadata={"previs_available": True, "label": "PREVIS GUIDE", "keyframe_deferred": True},
+                )
+                p.versions.append(new_ver)
+                rendered_panels.append({
+                    "panel_id": p.id,
+                    "scene_number": p.scene_number,
+                    "shot_number": p.shot_number,
+                    "page_number": p.page_number,
+                    "shot_type": p.shot_type.value if hasattr(p.shot_type, "value") else str(p.shot_type),
+                    "camera_angle": p.camera_angle.value if hasattr(p.camera_angle, "value") else str(p.camera_angle),
+                    "image_url": None,
+                    "rendered_svg": None,
+                    "render_type": "previs_guide",
+                    "provider": p.provider,
+                    "mode": "previs_guide",
+                    "status": "PLANNED",
+                    "fallback_reason": None,
+                    "provider_status": caps.get("provider_status", "AVAILABLE") if isinstance(caps, dict) else "AVAILABLE",
+                    "continuity_mode": "Open-Model Continuity Pack",
+                    "mime_type": "image/png",
+                    "version": target_version,
+                    "prompt_used": p.visual_prompt,
+                    "negative_prompt": "",
+                    "caption": p.caption,
+                    "metadata": {"previs_available": True, "label": "PREVIS GUIDE", "keyframe_deferred": True},
+                })
+            else:
+                res = engine.generate_panel(p, bible=bible, version=target_version)
+                p.image_url = res.image_url if res.status == StoryboardImageStatus.READY else None
+                p.rendered_image_url = p.image_url
+                p.rendered_svg = None  # Never show procedural SVG as final artwork
+                p.image_status = res.status
+                p.provider = res.provider
+                p.fallback_reason = res.fallback_reason
+                p.continuity_mode = res.continuity_mode
+                p.generation_version = target_version
+                p.selected_version = target_version
+                ctrl_dict = res.render_metadata.get("control_bundle") or p.control_bundle
+                p.control_bundle = ctrl_dict
+                if res.fallback_reason == "QUOTA_UNAVAILABLE":
+                    p.status_message = "Image generation quota unavailable."
 
-            new_ver = StoryboardImageVersion(
-                version=target_version,
-                image_url=res.image_url,
-                prompt_used=res.compiled_prompt,
-                negative_prompt=res.negative_prompt,
-                provider=res.provider,
-                mode=res.mode,
-                fallback_reason=res.fallback_reason,
-                mime_type=res.mime_type,
-                continuity_mode=res.continuity_mode,
-                is_selected=True,
-                render_metadata=res.render_metadata,
-            )
-            p.versions.append(new_ver)
-            rendered_panels.append(engine.render_panel(p, bible=bible, version=target_version))
+                for v in p.versions:
+                    v.is_selected = False
+
+                new_ver = StoryboardImageVersion(
+                    version=target_version,
+                    image_url=res.image_url or "",
+                    prompt_used=res.compiled_prompt,
+                    negative_prompt=res.negative_prompt,
+                    provider=res.provider,
+                    mode=res.mode,
+                    fallback_reason=res.fallback_reason,
+                    mime_type=res.mime_type,
+                    continuity_mode=res.continuity_mode,
+                    is_selected=True,
+                    control_bundle=ctrl_dict,
+                    previs_available=True,
+                    render_metadata=res.render_metadata,
+                )
+                p.versions.append(new_ver)
+                rendered_panels.append({
+                    "panel_id": res.panel_id,
+                    "scene_number": p.scene_number,
+                    "shot_number": p.shot_number,
+                    "page_number": p.page_number,
+                    "shot_type": p.shot_type.value if hasattr(p.shot_type, "value") else str(p.shot_type),
+                    "camera_angle": p.camera_angle.value if hasattr(p.camera_angle, "value") else str(p.camera_angle),
+                    "image_url": res.image_url,
+                    "rendered_svg": None,
+                    "render_type": "ai_image" if res.image_url else "previs_guide",
+                    "provider": res.provider,
+                    "mode": res.mode,
+                    "status": res.status.value if hasattr(res.status, "value") else str(res.status),
+                    "fallback_reason": res.fallback_reason,
+                    "provider_status": res.provider_status,
+                    "continuity_mode": res.continuity_mode,
+                    "mime_type": res.mime_type,
+                    "version": target_version,
+                    "prompt_used": res.compiled_prompt,
+                    "negative_prompt": res.negative_prompt,
+                    "caption": p.caption,
+                    "metadata": res.render_metadata,
+                })
+
 
         proj.rendered_panels = rendered_panels
         store.save_project(proj)
@@ -689,32 +972,87 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         planner = StoryboardPlanner(panels_per_page=4)
         shot_plan = planner.plan_shots(proj.screenplay, proj.world, bible=bible, project_id=project_id)
         engine = get_image_provider(asset_store=asset_store)
+        caps = engine.get_capabilities() if hasattr(engine, "get_capabilities") else engine.get_status()
+        shot_plan.runtime_status = caps
         rendered_panels = []
         for p in shot_plan.panels:
-            res = engine.generate_panel(p, bible=bible, version=1)
-            p.image_url = res.image_url
-            p.rendered_image_url = res.image_url
-            p.rendered_svg = res.svg_content
-            p.image_status = res.status
-            p.provider = res.provider
-            p.fallback_reason = res.fallback_reason
-            p.continuity_mode = res.continuity_mode
-            ver = StoryboardImageVersion(
-                version=1,
-                image_url=res.image_url,
-                prompt_used=res.compiled_prompt,
-                negative_prompt=res.negative_prompt,
-                provider=res.provider,
-                mode=res.mode,
-                fallback_reason=res.fallback_reason,
-                mime_type=res.mime_type,
-                continuity_mode=res.continuity_mode,
-                is_selected=True,
-                render_metadata=res.render_metadata,
-            )
-            p.versions = [ver]
-            p.selected_version = 1
-            rendered_panels.append(engine.render_panel(p, bible=bible, version=1))
+            if not p.is_keyframe:
+                previs_renderer = PrevisControlRenderer(asset_store=asset_store)
+                bundle = previs_renderer.generate_control_bundle(p, bible=bible, version=1)
+                p.control_bundle = bundle.to_dict()
+                p.previs_svg = bundle.previs_svg
+                p.image_url = None
+                p.rendered_image_url = None
+                p.rendered_svg = None
+                p.image_status = StoryboardImageStatus.PLANNED
+                p.provider = caps.get("provider", "open_model_storyboard")
+                ver = StoryboardImageVersion(
+                    version=1,
+                    image_url="",
+                    prompt_used=p.visual_prompt,
+                    negative_prompt="",
+                    provider=p.provider,
+                    mode="previs_guide",
+                    previs_available=True,
+                    control_bundle=p.control_bundle,
+                    continuity_mode="Open-Model Continuity Pack",
+                    is_selected=True,
+                    render_metadata={"previs_available": True, "label": "PREVIS GUIDE", "keyframe_deferred": True},
+                )
+                p.versions = [ver]
+                p.selected_version = 1
+                rendered_panels.append({
+                    "panel_id": p.panel_id or p.id,
+                    "scene_number": p.scene_number,
+                    "shot_number": p.shot_number,
+                    "page_number": p.page_number,
+                    "shot_type": p.shot_type.value if hasattr(p.shot_type, "value") else str(p.shot_type),
+                    "camera_angle": p.camera_angle.value if hasattr(p.camera_angle, "value") else str(p.camera_angle),
+                    "image_url": None,
+                    "rendered_svg": None,
+                    "render_type": "previs_guide",
+                    "provider": p.provider,
+                    "mode": "previs_guide",
+                    "status": "PLANNED",
+                    "fallback_reason": None,
+                    "provider_status": "AVAILABLE",
+                    "continuity_mode": "Open-Model Continuity Pack",
+                    "mime_type": "image/png",
+                    "version": 1,
+                    "prompt_used": p.visual_prompt,
+                    "negative_prompt": "",
+                    "caption": p.caption,
+                    "metadata": {"previs_available": True, "label": "PREVIS GUIDE", "keyframe_deferred": True},
+                })
+            else:
+                res = engine.generate_panel(p, bible=bible, version=1)
+                p.image_url = res.image_url if res.status == StoryboardImageStatus.READY else None
+                p.rendered_image_url = p.image_url
+                p.rendered_svg = None  # Never show procedural SVG as final artwork
+                p.image_status = res.status
+                p.provider = res.provider
+                p.fallback_reason = res.fallback_reason
+                p.continuity_mode = res.continuity_mode
+                ctrl_dict = res.render_metadata.get("control_bundle") or p.control_bundle
+                p.control_bundle = ctrl_dict
+                ver = StoryboardImageVersion(
+                    version=1,
+                    image_url=res.image_url or "",
+                    prompt_used=res.compiled_prompt,
+                    negative_prompt=res.negative_prompt,
+                    provider=res.provider,
+                    mode=res.mode,
+                    fallback_reason=res.fallback_reason,
+                    mime_type=res.mime_type,
+                    continuity_mode=res.continuity_mode,
+                    is_selected=True,
+                    control_bundle=ctrl_dict,
+                    previs_available=True,
+                    render_metadata=res.render_metadata,
+                )
+                p.versions = [ver]
+                p.selected_version = 1
+                rendered_panels.append(_format_rendered_panel_dict(p, res, version=1))
 
         proj.shot_plan = shot_plan
         proj.rendered_panels = rendered_panels
@@ -770,9 +1108,9 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         engine = get_image_provider(provider_type=provider_type, asset_store=asset_store)
 
         res = engine.generate_panel(target_panel, bible=bible, version=next_ver)
-        target_panel.image_url = res.image_url
-        target_panel.rendered_image_url = res.image_url
-        target_panel.rendered_svg = res.svg_content
+        target_panel.image_url = res.image_url if res.status == StoryboardImageStatus.READY else None
+        target_panel.rendered_image_url = target_panel.image_url
+        target_panel.rendered_svg = None  # Never show procedural SVG as final artwork
         target_panel.image_status = res.status
         target_panel.provider = res.provider
         target_panel.fallback_reason = res.fallback_reason
@@ -780,12 +1118,15 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         target_panel.generation_version = next_ver
         target_panel.selected_version = next_ver
 
+        ctrl_dict = res.render_metadata.get("control_bundle") or target_panel.control_bundle
+        target_panel.control_bundle = ctrl_dict
+
         for v in target_panel.versions:
             v.is_selected = False
 
         new_version = StoryboardImageVersion(
             version=next_ver,
-            image_url=res.image_url,
+            image_url=res.image_url or "",
             prompt_used=res.compiled_prompt,
             negative_prompt=res.negative_prompt,
             provider=res.provider,
@@ -794,11 +1135,35 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             mime_type=res.mime_type,
             continuity_mode=res.continuity_mode,
             is_selected=True,
+            control_bundle=ctrl_dict,
+            previs_available=True,
             render_metadata=res.render_metadata,
         )
         target_panel.versions.append(new_version)
 
-        rendered_dict = engine.render_panel(target_panel, bible=bible, version=next_ver)
+        rendered_dict = {
+            "panel_id": res.panel_id,
+            "scene_number": target_panel.scene_number,
+            "shot_number": target_panel.shot_number,
+            "page_number": target_panel.page_number,
+            "shot_type": target_panel.shot_type.value if hasattr(target_panel.shot_type, "value") else str(target_panel.shot_type),
+            "camera_angle": target_panel.camera_angle.value if hasattr(target_panel.camera_angle, "value") else str(target_panel.camera_angle),
+            "image_url": res.image_url,
+            "rendered_svg": None,
+            "render_type": "ai_image" if res.image_url else "previs_guide",
+            "provider": res.provider,
+            "mode": res.mode,
+            "status": res.status.value if hasattr(res.status, "value") else str(res.status),
+            "fallback_reason": res.fallback_reason,
+            "provider_status": res.provider_status,
+            "continuity_mode": res.continuity_mode,
+            "mime_type": res.mime_type,
+            "version": next_ver,
+            "prompt_used": res.compiled_prompt,
+            "negative_prompt": res.negative_prompt,
+            "caption": target_panel.caption,
+            "metadata": res.render_metadata,
+        }
         if proj.rendered_panels and 0 <= target_idx < len(proj.rendered_panels):
             proj.rendered_panels[target_idx] = rendered_dict
 
@@ -889,7 +1254,7 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
                 p.rendered_svg = res.svg_content
                 p.image_status = res.status
                 p.provider = res.provider
-                rendered = engine.render_panel(p, bible=bible, version=p.selected_version)
+                rendered = _format_rendered_panel_dict(p, res, version=len(p.versions))
                 if idx < len(updated_renders):
                     updated_renders[idx] = rendered
                 else:
@@ -1071,9 +1436,21 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
     def get_storyboard_capabilities():
         """Expose image provider capability report without exposing secrets."""
         provider = get_image_provider()
-        if hasattr(provider, "get_capabilities"):
-            return provider.get_capabilities()
-        return provider.get_status()
+        caps = provider.get_capabilities() if hasattr(provider, "get_capabilities") else provider.get_status()
+        health = provider.health_check() if hasattr(provider, "health_check") else {}
+        if isinstance(caps, dict):
+            caps["provider_health"] = health
+            caps["provider_status"] = health.get("provider_status", "CONNECTED" if caps.get("available") else "NOT_CONFIGURED")
+            caps["model_generation_capability"] = health.get("model_status", caps.get("status", "AVAILABLE"))
+            caps["model_status"] = health.get("model_status", caps.get("status", "AVAILABLE"))
+        return caps
+
+    @app.get("/api/storyboard/smoke-test")
+    def storyboard_smoke_test(prompt: Optional[str] = None):
+        """Run single-request on-demand still image smoke test."""
+        from src.storyboard.on_demand_provider import OnDemandStoryboardProvider
+        provider = OnDemandStoryboardProvider()
+        return provider.smoke_test(prompt=prompt)
 
     @app.get("/api/projects/{project_id}/storyboard/status")
     def get_project_storyboard_status(project_id: str):
@@ -1086,6 +1463,73 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         status["project_id"] = project_id
         status["total_panels"] = len(proj.shot_plan.panels) if proj.shot_plan else 0
         return status
+
+    @app.post("/api/storyboard/configure")
+    def configure_storyboard_renderer(req: ConfigureRendererRequest):
+        """Configure open-model generation runtime provider, URL, and model."""
+        if req.provider:
+            os.environ["STORYBOARD_RENDER_PROVIDER"] = req.provider
+        if req.runtime_url is not None:
+            os.environ["STORYBOARD_RUNTIME_URL"] = req.runtime_url
+        if req.model is not None:
+            os.environ["STORYBOARD_MODEL"] = req.model
+        if req.api_key is not None:
+            os.environ["ON_DEMAND_API_KEY"] = req.api_key
+            os.environ["HF_TOKEN"] = req.api_key
+            os.environ["HUGGINGFACE_API_KEY"] = req.api_key
+
+        provider = get_image_provider(provider_type=req.provider)
+
+        caps = provider.get_capabilities() if hasattr(provider, "get_capabilities") else {}
+        status = provider.get_status()
+        caps_dict = caps if isinstance(caps, dict) else (caps.to_dict() if hasattr(caps, "to_dict") else {})
+        health_status = caps_dict.get("status", "UNCONFIGURED")
+
+        return {
+            "status": "configured",
+            "runtime_status": health_status,
+            "available": caps_dict.get("available", False),
+            "status_message": caps_dict.get("status_message", ""),
+            "provider": req.provider,
+            "runtime_url": os.environ.get("STORYBOARD_RUNTIME_URL", ""),
+            "model": os.environ.get("STORYBOARD_MODEL", ""),
+            "provider_status": status,
+            "capabilities": caps_dict,
+        }
+
+
+    @app.get("/api/projects/{project_id}/storyboard/panels/{panel_id}/control-bundle")
+    def get_panel_control_bundle(project_id: str, panel_id: str):
+        """Expose structural guidance maps (pose, edge, depth, composition) for developer/inspector view."""
+        proj = store.load_project(project_id)
+        if not proj or not proj.shot_plan:
+            raise HTTPException(status_code=404, detail="Project or shot plan not found")
+        panel = next((p for p in proj.shot_plan.panels if p.id == panel_id or p.panel_id == panel_id), None)
+        if not panel:
+            raise HTTPException(status_code=404, detail=f"Panel '{panel_id}' not found")
+
+        asset_store = StoryboardAssetStore(store.base_dir)
+        previs_renderer = PrevisControlRenderer(asset_store=asset_store)
+        bundle = previs_renderer.generate_control_bundle(panel, bible=proj.visual_bible)
+        return {
+            "panel_id": panel_id,
+            "control_bundle": bundle.to_dict(),
+            "previs_svg": bundle.previs_svg,
+        }
+
+    @app.get("/api/projects/{project_id}/storyboard/continuity")
+    def get_project_continuity(project_id: str):
+        """Expose Character, Location, and Prop continuity packs for sequence consistency."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        bible = proj.visual_bible
+        char_packs, loc_packs, prop_packs = _build_continuity_context(proj.world, bible)
+        return {
+            "characters": {k: v.model_dump(mode="json") for k, v in char_packs.items()},
+            "locations": {k: v.model_dump(mode="json") for k, v in loc_packs.items()},
+            "props": {k: v.model_dump(mode="json") for k, v in prop_packs.items()},
+        }
 
     @app.get("/api/projects/{project_id}/storyboard/assets/{category}/{filename}")
     def serve_storyboard_asset(project_id: str, category: str, filename: str):

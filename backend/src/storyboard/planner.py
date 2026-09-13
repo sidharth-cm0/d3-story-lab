@@ -521,6 +521,14 @@ class StoryboardPlanner:
         # Apply Transition Planning across panels
         self.transition_planner.plan_transitions(panels)
 
+        # Apply Keyframe Beat Selection
+        from src.storyboard.open_model_provider import select_keyframe_indices
+        keyframe_indices = select_keyframe_indices(panels)
+        for idx, pnl in enumerate(panels):
+            pnl.is_keyframe = idx in keyframe_indices
+            if idx in keyframe_indices:
+                pnl.keyframe_reason = f"Keyframe dramatic beat ({pnl.narrative_purpose.value})"
+
         # Organize into Storyboard Pages with Layout Templates and Slot Assignments
         total_pages = max(1, math.ceil(len(panels) / self.panels_per_page)) if panels else 1
         pages: List[StoryboardPage] = []
@@ -600,5 +608,7 @@ class StoryboardPlanner:
             pages=pages,
             aspect_ratio=aspect_ratio,
             density_mode=self.density_mode,
+            render_mode="KEYFRAMES",
+            keyframe_panel_indices=keyframe_indices,
             storyboard_coverage=coverage_data,
         )

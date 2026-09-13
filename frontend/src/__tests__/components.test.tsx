@@ -947,7 +947,7 @@ describe('Frontend Workstation Components', () => {
     expect(screen.getByText('High-contrast noir illustration of Elena examining the heavy safe.')).toBeDefined();
   });
 
-  it('renders HAND-DRAWN STORYBOARD badge and inspector metadata for offline sketch panels', () => {
+  it('renders PREVIS GUIDE badge and inspector metadata for offline sketch panels', () => {
     const mockProjectHandDrawn: ProjectData = {
       metadata: {
         id: 'p_sketch',
@@ -1002,7 +1002,7 @@ describe('Frontend Workstation Components', () => {
                   provider: 'hand_drawn_storyboard',
                   is_selected: true,
                   render_metadata: {
-                    label: 'HAND-DRAWN STORYBOARD',
+                    label: 'PREVIS GUIDE',
                     style: 'Pencil Noir',
                     renderer: 'HandDrawnStoryboardProvider',
                   },
@@ -1025,7 +1025,7 @@ describe('Frontend Workstation Components', () => {
     render(<StoryboardViewer project={mockProjectHandDrawn} />);
 
     // Verify badge
-    expect(screen.getAllByText('HAND-DRAWN STORYBOARD').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('PREVIS GUIDE').length).toBeGreaterThan(0);
 
     // Open inspector
     const panelCard = screen.getByText('Maya enters the abandoned warehouse.');
@@ -1033,8 +1033,7 @@ describe('Frontend Workstation Components', () => {
 
     expect(screen.getByText('PANEL INSPECTOR & VERSION CONTROLLER')).toBeDefined();
     expect(screen.getByText('HandDrawnStoryboardProvider')).toBeDefined();
-    expect(screen.getByText('Pencil Noir')).toBeDefined();
-    expect(screen.getByText('NO CLOUD API (100% Offline SVG)')).toBeDefined();
+    expect(screen.getByText('Deterministic Procedural Previs (Internal Only)')).toBeDefined();
   });
 
   it('renders transitions, camera movements, and presentation mode with arrow keys', () => {

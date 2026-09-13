@@ -62,10 +62,13 @@ export function safeExtractSvg(item: unknown): string {
   if (typeof item === 'string') return item;
   if (typeof item === 'object') {
     const obj = item as Record<string, any>;
+    if (typeof obj.svg_content === 'string') return obj.svg_content;
     if (typeof obj.svg_data === 'string') return obj.svg_data;
     if (typeof obj.svg === 'string') return obj.svg;
     if (typeof obj.data === 'string') return obj.data;
     if (typeof obj.content === 'string') return obj.content;
+    if (typeof obj.rendered_svg === 'string') return obj.rendered_svg;
+    if (typeof obj.previs_svg === 'string') return obj.previs_svg;
   }
   return '';
 }

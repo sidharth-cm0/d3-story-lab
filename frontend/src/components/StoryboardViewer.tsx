@@ -9,20 +9,25 @@ import {
 import {
   fetchVisualBible,
   planStoryboard,
+  generateStoryboard,
   regeneratePanelVersion,
   selectPanelVersion,
   regeneratePage,
   externalRenderPanel,
   externalRenderPage,
+  fetchCapabilities,
+  runStoryboardSmokeTest,
 } from '../api';
 import { formatDisplayValue, safeExtractSvg } from '../utils/format';
+import { VisualQaView } from './VisualQaView';
 
 interface StoryboardViewerProps {
   project: ProjectData;
   loading?: boolean;
 }
 
-type SubTab = 'comic' | 'grid' | 'presentation' | 'bible' | 'continuity';
+type SubTab = 'comic' | 'grid' | 'presentation' | 'visual_qa' | 'bible' | 'continuity';
+
 
 export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) => {
   const [storyboardData, setStoryboardData] = useState<StoryboardResponse | null>(null);
@@ -32,6 +37,13 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
   const [presentationIndex, setPresentationIndex] = useState<number>(0);
   const [densityMode, setDensityMode] = useState<string>('standard');
   const [selectedPanel, setSelectedPanel] = useState<StoryboardPanel | null>(null);
+  const [showInspectorPrevis, setShowInspectorPrevis] = useState<boolean>(false);
+
+  // Budget & On-Demand Provider selection
+  const [selectedProvider, setSelectedProvider] = useState<'on_demand' | 'comfyui'>('on_demand');
+  const [keyframeBudget, setKeyframeBudget] = useState<number>(8);
+  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
+  const [isGeneratingBatch, setIsGeneratingBatch] = useState<boolean>(false);
 
   const [fetching, setFetching] = useState(false);
   const [regeneratingPanelId, setRegeneratingPanelId] = useState<string | null>(null);
@@ -39,6 +51,26 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
   const [renderingExternalPanelId, setRenderingExternalPanelId] = useState<string | null>(null);
   const [renderingExternalPage, setRenderingExternalPage] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Previs toggles, advanced drawer, and smoke test states
+  const [showPrevisForPanel, setShowPrevisForPanel] = useState<Record<string, boolean>>({});
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+  const [smokeTestResult, setSmokeTestResult] = useState<any>(null);
+  const [isSmokeTesting, setIsSmokeTesting] = useState<boolean>(false);
+
+  const handleRunSmokeTest = async () => {
+    setIsSmokeTesting(true);
+    setSmokeTestResult(null);
+    try {
+      const res = await runStoryboardSmokeTest();
+      setSmokeTestResult(res);
+    } catch (err: any) {
+      setSmokeTestResult({ success: false, message: err.message || 'Smoke test failed' });
+    } finally {
+      setIsSmokeTesting(false);
+    }
+  };
+
 
   useEffect(() => {
     if (project.storyboard) {
@@ -68,6 +100,18 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
         .catch(() => {});
     }
   }, [project.metadata?.id]);
+
+  const [capabilities, setCapabilities] = useState<any>(null);
+  const loadCapabilities = () => {
+    fetchCapabilities()
+      .then((caps) => setCapabilities(caps))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    loadCapabilities();
+  }, []);
+
 
   const handlePlanStoryboard = async () => {
     if (!project.screenplay) {
@@ -204,6 +248,31 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
     }
   };
 
+  const handleGenerateSelectedKeyframes = async () => {
+    setShowConfirmModal(false);
+    setIsGeneratingBatch(true);
+    setError(null);
+    try {
+      const data = await generateStoryboard(
+        project.metadata.id,
+        selectedProvider,
+        'KEYFRAMES',
+        keyframeBudget
+      );
+      setStoryboardData(data);
+      const hasQuotaError = data.shot_plan?.panels?.some(
+        (p) => p.fallback_reason === 'QUOTA_UNAVAILABLE' || p.status_message?.includes('quota')
+      );
+      if (hasQuotaError) {
+        setError('Image generation quota unavailable.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Image generation quota unavailable.');
+    } finally {
+      setIsGeneratingBatch(false);
+    }
+  };
+
   const panels: StoryboardPanel[] = storyboardData?.shot_plan?.panels || [];
   const renderedPanels = storyboardData?.rendered_panels || [];
   const continuityReport: ContinuityReport | undefined = storyboardData?.continuity_report;
@@ -218,6 +287,158 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
   const currentPageObj = storyboardData?.shot_plan?.pages?.find((pg) => pg.page_number === activePage);
   const currentTemplate = currentPageObj?.layout_template || 'template_a';
 
+  const renderArtworkFrame = (
+    panel: StoryboardPanel,
+    renderData: any,
+    shotNum: number,
+    isPresentation: boolean = false
+  ) => {
+    const imageUrl =
+      panel.image_url ||
+      panel.rendered_image_url ||
+      (typeof renderData === 'object' ? renderData?.image_url : null);
+    const hasRasterImage = Boolean(imageUrl && !imageUrl.endsWith('.svg'));
+    const svgContent =
+      panel.previs_svg ||
+      panel.control_bundle?.previs_svg ||
+      safeExtractSvg(renderData) ||
+      panel.rendered_svg ||
+      '';
+    const isRegenerating = regeneratingPanelId === panel.id;
+    const isGenerating = isRegenerating || (isGeneratingBatch && panel.status === 'GENERATING');
+    const isFailed = panel.status === 'FAILED' || Boolean(panel.fallback_reason && !hasRasterImage && panel.fallback_reason !== 'OPEN_MODEL_NOT_CONNECTED');
+    const showPrevis = showPrevisForPanel[panel.id];
+
+    if (isGenerating) {
+      return (
+        <div className="storyboard-generating-shimmer" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: isPresentation ? '360px' : '200px', background: '#0a0d14', color: '#38bdf8', padding: '24px', textAlign: 'center' }}>
+          <div style={{ fontSize: '32px', marginBottom: '8px' }}>⏳</div>
+          <div style={{ fontWeight: 700, fontSize: '13px', letterSpacing: '0.05em', color: '#38bdf8' }}>GENERATING STILL FRAME...</div>
+          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>On-demand neural diffusion</div>
+        </div>
+      );
+    }
+
+    // Priority 1: Real raster artwork (ALWAYS takes precedence. Previs NEVER replaces final raster artwork.)
+    if (hasRasterImage) {
+      return (
+        <img
+          src={imageUrl!}
+          alt={panel.caption || `Shot ${shotNum}`}
+          className="comic-panel-artwork"
+          loading="lazy"
+        />
+      );
+    }
+
+    // Priority 2: Failed state with provider error & retry
+    if (isFailed) {
+      const errorMsg = panel.error_message || panel.status_message || (
+        panel.fallback_reason === 'QUOTA_UNAVAILABLE'
+          ? 'Image generation quota unavailable.'
+          : panel.fallback_reason === 'MODEL_UNAVAILABLE'
+          ? 'Configured model is unavailable through this provider.'
+          : panel.fallback_reason === 'AUTH_FAILED'
+          ? 'Authentication failed. Please verify HF_TOKEN.'
+          : 'Generation failed or timed out.'
+      );
+
+      return (
+        <div className="storyboard-error-frame" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: isPresentation ? '360px' : '200px', background: '#181012', border: '1px dashed #ef4444', padding: '16px', textAlign: 'center' }}>
+          <div style={{ fontSize: '24px', marginBottom: '4px' }}>⚠️</div>
+          <div style={{ color: '#fca5a5', fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>
+            {panel.fallback_reason || 'GENERATION FAILED'}
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '12px', maxWidth: '280px', lineHeight: 1.4 }}>
+            {errorMsg}
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              className="btn-cinematic-secondary"
+              style={{ fontSize: '11px', padding: '4px 10px', borderColor: '#ef4444', color: '#fca5a5' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRegenerateSinglePanel(panel.id);
+              }}
+              disabled={isRegenerating}
+            >
+              ↻ Retry Generation
+            </button>
+            {svgContent && (
+              <button
+                type="button"
+                className="btn-cinematic-secondary"
+                style={{ fontSize: '11px', padding: '4px 10px', borderColor: '#38bdf8', color: '#38bdf8' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowPrevisForPanel(prev => ({ ...prev, [panel.id]: !prev[panel.id] }));
+                }}
+              >
+                {showPrevis ? 'Hide Guide' : '📐 View Previs Guide'}
+              </button>
+            )}
+          </div>
+          {showPrevis && svgContent && (
+            <div style={{ marginTop: '12px', width: '100%', borderTop: '1px solid #334155', paddingTop: '8px' }} dangerouslySetInnerHTML={{ __html: svgContent }} />
+          )}
+        </div>
+      );
+    }
+
+    // Priority 3: Previs guide available (structural composition sketch)
+    if (svgContent) {
+      return (
+        <div className="storyboard-previs-container" style={{ position: 'relative', width: '100%', height: '100%', minHeight: isPresentation ? '360px' : '200px' }}>
+          <div
+            className={isPresentation ? 'storyboard-svg-wrapper' : 'comic-svg-art'}
+            dangerouslySetInnerHTML={{ __html: svgContent }}
+          />
+          <div style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 10 }}>
+            <button
+              type="button"
+              className="btn-cinematic"
+              style={{ fontSize: '11px', padding: '4px 10px', background: '#0284c7', borderColor: '#38bdf8', color: '#fff', boxShadow: '0 2px 6px rgba(0,0,0,0.5)', cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRegenerateSinglePanel(panel.id);
+              }}
+              disabled={isRegenerating}
+              title="Generate on-demand neural still frame for this shot"
+            >
+              ★ Generate Shot
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Priority 4: Clean ungenerated state
+    return (
+      <div className="storyboard-unrendered-clean" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: isPresentation ? '360px' : '200px', background: '#0a0d14', border: '1px dashed #334155', padding: '20px', textAlign: 'center' }}>
+        <div style={{ fontSize: '32px', marginBottom: '8px' }}>🎬</div>
+        <div style={{ color: '#f8fafc', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>
+          {(panel.shot_type || 'SHOT').toUpperCase()} • {(panel.camera_angle || 'EYE LEVEL').toUpperCase()}
+        </div>
+        <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '14px', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {panel.action || panel.action_description || 'Scene unfolds'}
+        </div>
+        <button
+          type="button"
+          className="btn-cinematic"
+          style={{ fontSize: '11px', padding: '5px 12px', background: '#0284c7', borderColor: '#38bdf8', color: '#fff', cursor: 'pointer' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleRegenerateSinglePanel(panel.id);
+          }}
+          disabled={isRegenerating}
+        >
+          ★ Generate Shot
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="cinematic-storyboard-pane">
       {/* Top Header Controls */}
@@ -227,13 +448,100 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
           <h2 className="pane-title">STORYBOARD</h2>
         </div>
 
-        <div className="pane-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div className="pane-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Primary Action 1: Plan / Re-Plan */}
+          <button
+            className="btn-cinematic-primary"
+            onClick={handlePlanStoryboard}
+            disabled={fetching || isGeneratingBatch}
+            data-testid="btn-plan-storyboard"
+          >
+            {fetching ? 'PLANNING FRAMES...' : panels.length > 0 ? '↻ RE-PLAN SHOTS' : 'PREPARE SHOT PLAN'}
+          </button>
+
+          {/* Primary Action 2: Generate Storyboard Keyframes */}
+          {panels.length > 0 && (
+            <button
+              className="btn-cinematic-primary"
+              onClick={() => setShowConfirmModal(true)}
+              disabled={isGeneratingBatch || fetching}
+              title="Generate selected still storyboard images. Free/limited provider availability depends on current quota."
+              data-testid="btn-generate-selected-frames"
+              style={{ background: '#0284c7', borderColor: '#38bdf8' }}
+            >
+              {isGeneratingBatch ? 'GENERATING FRAMES...' : 'GENERATE SELECTED STORYBOARD FRAMES'}
+            </button>
+          )}
+
+          {/* Keyframe Generation Budget */}
+          <div className="density-selector" title="Keyframe generation budget">
+            <span>BUDGET:</span>
+            <select
+              value={keyframeBudget}
+              onChange={(e) => setKeyframeBudget(Number(e.target.value))}
+              disabled={fetching || isGeneratingBatch}
+              data-testid="select-keyframe-budget"
+            >
+              <option value={4}>KEYFRAMES 4</option>
+              <option value={8}>KEYFRAMES 8</option>
+              <option value={12}>KEYFRAMES 12</option>
+            </select>
+          </div>
+
+          {/* Provider Selection */}
+          <div className="density-selector" title="Free/limited provider availability depends on current quota.">
+            <span>PROVIDER:</span>
+            <select
+              value={selectedProvider}
+              onChange={(e) => setSelectedProvider(e.target.value as 'on_demand' | 'comfyui')}
+              disabled={fetching || isGeneratingBatch}
+              data-testid="select-storyboard-provider"
+            >
+              <option value="on_demand">ON-DEMAND</option>
+              <option value="comfyui">COMFYUI</option>
+            </select>
+            {selectedProvider === 'on_demand' && (
+              <span className="quota-disclaimer-badge" style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: '6px' }}>
+                Free/limited provider availability depends on current quota.
+              </span>
+            )}
+          </div>
+
+          {/* Advanced Controls Toggle */}
+          <button
+            type="button"
+            className={`btn-cinematic-secondary ${showAdvanced ? 'active' : ''}`}
+            onClick={() => setShowAdvanced((prev) => !prev)}
+            title="Toggle advanced options: density, diagnostic smoke test, and page-by-page renders"
+          >
+            {showAdvanced ? '▲ OPTIONS' : '⚙ ADVANCED'}
+          </button>
+        </div>
+      </div>
+
+      {/* Advanced Inspector & Diagnostics Drawer */}
+      {showAdvanced && (
+        <div
+          className="advanced-options-drawer"
+          style={{
+            background: '#090d16',
+            border: '1px solid #1e293b',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            margin: '8px 0 12px 0',
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            fontSize: '0.85rem',
+          }}
+        >
           <div className="density-selector" title="Shot coverage density per scene">
             <span>DENSITY:</span>
             <select
               value={densityMode}
               onChange={(e) => setDensityMode(e.target.value)}
-              disabled={fetching || regeneratingPage || renderingExternalPage}
+              disabled={fetching || regeneratingPage || renderingExternalPage || isGeneratingBatch}
             >
               <option value="quick">QUICK (2 / scene)</option>
               <option value="standard">STANDARD (4 / scene)</option>
@@ -246,8 +554,8 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
               <button
                 className="btn-cinematic-secondary"
                 onClick={() => handleRegeneratePage(activePage)}
-                disabled={regeneratingPage || fetching}
-                title={`Regenerate all visual frames on Page ${activePage} (Offline Hand-Drawn)`}
+                disabled={regeneratingPage || fetching || isGeneratingBatch}
+                title={`Regenerate all visual frames on Page ${activePage}`}
               >
                 {regeneratingPage ? 'REGENERATING PAGE...' : `↻ REGENERATE PAGE ${activePage}`}
               </button>
@@ -255,23 +563,130 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
               <button
                 className="btn-cinematic-secondary"
                 onClick={() => handleExternalRenderPage(activePage)}
-                disabled={renderingExternalPage || fetching}
-                title="Optional external provider. Availability, quotas and pricing depend on the provider/account."
+                disabled={renderingExternalPage || fetching || isGeneratingBatch}
+                title="Render panels using configured open-model generation runtime"
               >
-                {renderingExternalPage ? 'RENDERING EXTERNALLY...' : `⚡ RENDER PAGE EXTERNALLY`}
+                {renderingExternalPage ? 'RENDERING OPEN-MODEL...' : `⚡ RENDER PAGE (OPEN-MODEL)`}
               </button>
             </>
           )}
 
           <button
-            className="btn-cinematic-primary"
-            onClick={handlePlanStoryboard}
-            disabled={fetching}
+            type="button"
+            className="btn-cinematic-secondary"
+            onClick={handleRunSmokeTest}
+            disabled={isSmokeTesting}
+            title="Execute backend single-request smoke test to verify live image provider without faking"
           >
-            {fetching ? 'PLANNING FRAMES...' : 'PREPARE SHOT PLAN'}
+            {isSmokeTesting ? 'RUNNING SMOKE TEST...' : '🧪 RUN SMOKE TEST'}
+          </button>
+
+          {capabilities && (
+            <span style={{ fontSize: '0.75rem', color: capabilities.available ? '#34d399' : '#f59e0b', marginLeft: 'auto' }}>
+              ● {capabilities.provider?.toUpperCase()} • {capabilities.status || 'READY'} ({capabilities.model_generation_capability || capabilities.model})
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Smoke Test Feedback Box */}
+      {smokeTestResult && (
+        <div
+          style={{
+            background: smokeTestResult.success ? '#064e3b' : '#450a0a',
+            border: `1px solid ${smokeTestResult.success ? '#059669' : '#b91c1c'}`,
+            borderRadius: '6px',
+            padding: '8px 12px',
+            margin: '8px 0',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '0.8rem',
+            color: smokeTestResult.success ? '#a7f3d0' : '#fecaca',
+          }}
+        >
+          <div>
+            <strong>Smoke Test Result:</strong> {smokeTestResult.message}
+            {smokeTestResult.file_path && ` (Saved: ${smokeTestResult.file_path})`}
+          </div>
+          <button
+            type="button"
+            style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 'bold' }}
+            onClick={() => setSmokeTestResult(null)}
+          >
+            ✕
           </button>
         </div>
-      </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div
+          className="modal-backdrop"
+          data-testid="generate-confirm-modal"
+          onClick={() => setShowConfirmModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+          }}
+        >
+          <div
+            className="modal-container"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#0f172a',
+              border: '1px solid #334155',
+              borderRadius: '8px',
+              padding: '1.5rem',
+              maxWidth: '500px',
+              width: '90%',
+              color: '#f8fafc',
+            }}
+          >
+            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.15rem' }}>
+              Confirm Storyboard Generation
+            </h3>
+            <p style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontWeight: 600, fontSize: '1rem' }}>
+              {keyframeBudget} storyboard images will be generated.
+            </p>
+            <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#94a3b8' }}>
+              <strong>Selected Provider:</strong> {selectedProvider === 'on_demand' ? 'ON-DEMAND' : 'COMFYUI'}
+            </p>
+            <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.8rem', color: '#f59e0b' }}>
+              Free/limited provider availability depends on current quota.
+            </p>
+            <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.75rem', color: '#64748b' }}>
+              Generates still storyboard images (PNG/JPEG/WebP) directly persisted to project storage. D3 Story Lab does NOT generate video or animations.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button
+                type="button"
+                className="btn-cinematic-secondary"
+                onClick={() => setShowConfirmModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-cinematic-primary"
+                onClick={handleGenerateSelectedKeyframes}
+                data-testid="btn-confirm-generate-batch"
+              >
+                Confirm &amp; Generate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Sub-Navigation Tabs Bar */}
       <div className="storyboard-subtabs-bar">
@@ -300,6 +715,14 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
           >
             🎨 VISUAL BIBLE
           </button>
+          <button
+            className={`subtab-btn ${activeTab === 'visual_qa' ? 'active' : ''}`}
+            onClick={() => setActiveTab('visual_qa')}
+            data-testid="subtab-visual-qa"
+          >
+            🔍 VISUAL QA
+          </button>
+
           {continuityReport && (
             <button
               className={`subtab-btn ${activeTab === 'continuity' ? 'active' : ''}`}
@@ -344,9 +767,58 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                 </button>
               ))}
             </div>
+
+            <button
+              className="btn-cinematic-secondary"
+              style={{ fontSize: '11px', padding: '4px 10px', marginLeft: 'auto' }}
+              onClick={() => handleRegeneratePage(activePage)}
+              disabled={regeneratingPage}
+              title={`Regenerate visual panels on Page ${activePage}`}
+            >
+              {regeneratingPage ? '↻...' : `↻ REGENERATE PAGE ${activePage}`}
+            </button>
           </div>
         )}
       </div>
+
+      {capabilities && !capabilities.available && (
+        <div
+          className="runtime-unconnected-banner"
+          data-testid="runtime-unconnected-banner"
+          style={{
+            background: '#451a03',
+            border: '1px solid #d97706',
+            color: '#fef3c7',
+            padding: '0.6rem 1rem',
+            borderRadius: '6px',
+            margin: '8px 0',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '0.85rem',
+          }}
+        >
+          <div>
+            <strong>Open-model storyboard runtime not connected.</strong> Previs guide available.
+          </div>
+          <button
+            type="button"
+            className="subtab-btn"
+            onClick={() => setActiveTab('visual_qa')}
+            style={{
+              fontSize: '0.75rem',
+              padding: '0.25rem 0.5rem',
+              background: '#78350f',
+              border: '1px solid #d97706',
+              color: '#fff',
+              cursor: 'pointer',
+              borderRadius: '4px',
+            }}
+          >
+            Open Visual QA
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="modal-error-box" style={{ margin: '12px 0' }}>
@@ -354,15 +826,30 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
         </div>
       )}
 
+
       {/* Main Content Area */}
       <div className="storyboard-content-scroll">
         {panels.length === 0 ? (
-          <div className="empty-quiet" style={{ marginTop: '60px' }}>
-            NO SHOT PLAN PREPARED YET.<br />
-            {project.screenplay ? (
-              <span>CLICK <strong>PREPARE SHOT PLAN</strong> TO GENERATE CINEMATIC FRAMES.</span>
-            ) : (
-              <span>GENERATE A SCREENPLAY UNDER <strong>SCRIPT</strong> BEFORE PLANNING FRAMES.</span>
+          <div style={{ maxWidth: '640px', margin: '60px auto', textAlign: 'center', padding: '36px 24px', background: '#0a0d14', border: '1px solid #1e293b', borderRadius: '8px' }}>
+            <div style={{ fontSize: '42px', marginBottom: '16px' }}>🎬</div>
+            <h3 style={{ color: '#f8fafc', fontSize: '18px', margin: '0 0 8px 0', letterSpacing: '0.02em' }}>
+              {project.screenplay ? 'Screenplay Ready for Cinematic Planning' : 'Screenplay Required First'}
+            </h3>
+            <p style={{ color: '#94a3b8', fontSize: '13px', lineHeight: 1.5, margin: '0 0 24px 0' }}>
+              {project.screenplay
+                ? 'Prepare an 8–12 beat keyframe shot plan with visual continuity tracking, composition previs guides, and on-demand neural still frames.'
+                : 'Generate a screenplay under the SCRIPT tab first, then return here to plan cinematic frames and generate storyboard images.'}
+            </p>
+            {project.screenplay && (
+              <button
+                type="button"
+                className="btn-cinematic"
+                onClick={handlePlanStoryboard}
+                disabled={fetching}
+                style={{ fontSize: '13px', padding: '10px 24px', background: '#0284c7', borderColor: '#38bdf8', color: '#fff', cursor: 'pointer' }}
+              >
+                {fetching ? 'PREPARING SHOT PLAN...' : '🎬 PREPARE SHOT PLAN'}
+              </button>
             )}
           </div>
         ) : (
@@ -387,18 +874,31 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                       const svgContent = safeExtractSvg(renderData) || panel.rendered_svg;
                       const shotNum = panel.shot_number ?? panel.panel_number ?? 1;
 
-                      const isAi =
-                        (typeof renderData === 'object' && renderData?.mode === 'ai_image') ||
-                        panel.versions?.some((v) => v.is_selected && v.mode === 'ai_image');
-                      const isHandDrawn =
-                        !isAi &&
-                        ((typeof renderData === 'object' && (renderData?.mode === 'hand_drawn' || renderData?.provider === 'hand_drawn_storyboard')) ||
-                          panel.versions?.some((v) => v.is_selected && (v.mode === 'hand_drawn' || v.provider === 'hand_drawn_storyboard')) ||
-                          panel.provider === 'hand_drawn_storyboard' ||
-                          panel.mode === 'hand_drawn' ||
-                          !panel.fallback_reason);
-                      const badgeLabel = isAi ? 'EXTERNAL AI IMAGE' : (isHandDrawn ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC');
-                      const badgeClass = isAi ? 'badge-ai-image' : (isHandDrawn ? 'badge-hand-drawn' : 'badge-fallback-comic');
+                      const imageUrl =
+                        panel.image_url ||
+                        panel.rendered_image_url ||
+                        (typeof renderData === 'object' ? renderData?.image_url : null);
+                      const hasRaster = Boolean(imageUrl && !imageUrl.endsWith('.svg'));
+                      const isRegenerating = regeneratingPanelId === panel.id;
+                      const isFailed = panel.status === 'FAILED' || Boolean(panel.fallback_reason && !hasRaster && panel.fallback_reason !== 'OPEN_MODEL_NOT_CONNECTED');
+                      const badgeLabel = isRegenerating
+                        ? 'GENERATING...'
+                        : hasRaster
+                        ? 'READY (STILL IMAGE)'
+                        : isFailed
+                        ? (panel.fallback_reason || 'FAILED')
+                        : svgContent
+                        ? 'PREVIS GUIDE'
+                        : 'UNGENERATED';
+                      const badgeClass = isRegenerating
+                        ? 'badge-generating'
+                        : hasRaster
+                        ? 'badge-ai-image'
+                        : isFailed
+                        ? 'badge-failed'
+                        : svgContent
+                        ? 'badge-previs-guide'
+                        : 'badge-unrendered';
 
                       const activeVer =
                         panel.selected_version ||
@@ -427,10 +927,6 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
 
                       const actionText = formatDisplayValue(panel.action || panel.action_description || 'Scene unfolds');
                       const promptText = formatDisplayValue(panel.image_prompt || panel.prompt || panel.visual_prompt || '');
-                      const imageUrl =
-                        panel.image_url ||
-                        (typeof renderData === 'object' ? renderData?.image_url : null);
-                      const isRegenerating = regeneratingPanelId === panel.id;
 
                       return (
                         <div
@@ -451,7 +947,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                               <span className={`badge-pill ${badgeClass}`}>
                                 {badgeLabel}
                               </span>
-                              {!isAi && !isHandDrawn && panel.fallback_reason && (
+                              {!hasRaster && panel.fallback_reason && (
                                 <span className="badge-pill" style={{ background: '#451a03', color: '#fca5a5', fontSize: '9px', border: '1px solid #78350f' }} title={`Fallback: ${panel.fallback_reason}`}>
                                   {panel.fallback_reason}
                                 </span>
@@ -472,24 +968,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
 
                           {/* Art Layer Container */}
                           <div style={{ position: 'relative', width: '100%', height: 'calc(100% - 32px)', minHeight: '200px' }}>
-                            {imageUrl && !imageUrl.endsWith('.svg') ? (
-                              <img
-                                src={imageUrl}
-                                alt={panel.caption || `Shot ${shotNum}`}
-                                className="comic-panel-artwork"
-                                loading="lazy"
-                              />
-                            ) : svgContent ? (
-                              <div
-                                className="comic-svg-art"
-                                dangerouslySetInnerHTML={{ __html: svgContent }}
-                              />
-                            ) : (
-                              <div className="storyboard-placeholder-sketch">
-                                <span className="sketch-crosshair">✛</span>
-                                <span className="sketch-label">SHOT {shotNum}</span>
-                              </div>
-                            )}
+                            {renderArtworkFrame(panel, renderData, shotNum)}
 
                             {/* SFX Burst Overlay */}
                             {panel.sfx_label && (
@@ -563,18 +1042,31 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                   const svgContent = safeExtractSvg(renderData) || panel.rendered_svg;
                   const shotNum = panel.shot_number ?? panel.panel_number ?? 1;
 
-                  const isAi =
-                    (typeof renderData === 'object' && renderData?.mode === 'ai_image') ||
-                    panel.versions?.some((v) => v.is_selected && v.mode === 'ai_image');
-                  const isHandDrawn =
-                    !isAi &&
-                    ((typeof renderData === 'object' && (renderData?.mode === 'hand_drawn' || renderData?.provider === 'hand_drawn_storyboard')) ||
-                      panel.versions?.some((v) => v.is_selected && (v.mode === 'hand_drawn' || v.provider === 'hand_drawn_storyboard')) ||
-                      panel.provider === 'hand_drawn_storyboard' ||
-                      panel.mode === 'hand_drawn' ||
-                      !panel.fallback_reason);
-                  const badgeLabel = isAi ? 'EXTERNAL AI IMAGE' : (isHandDrawn ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC');
-                  const badgeClass = isAi ? 'badge-ai-image' : (isHandDrawn ? 'badge-hand-drawn' : 'badge-fallback-comic');
+                  const imageUrl =
+                    panel.image_url ||
+                    panel.rendered_image_url ||
+                    (typeof renderData === 'object' ? renderData?.image_url : null);
+                  const hasRaster = Boolean(imageUrl && !imageUrl.endsWith('.svg'));
+                  const isRegenerating = regeneratingPanelId === panel.id;
+                  const isFailed = panel.status === 'FAILED' || Boolean(panel.fallback_reason && !hasRaster && panel.fallback_reason !== 'OPEN_MODEL_NOT_CONNECTED');
+                  const badgeLabel = isRegenerating
+                    ? 'GENERATING...'
+                    : hasRaster
+                    ? 'READY (STILL IMAGE)'
+                    : isFailed
+                    ? (panel.fallback_reason || 'FAILED')
+                    : svgContent
+                    ? 'PREVIS GUIDE'
+                    : 'UNGENERATED';
+                  const badgeClass = isRegenerating
+                    ? 'badge-generating'
+                    : hasRaster
+                    ? 'badge-ai-image'
+                    : isFailed
+                    ? 'badge-failed'
+                    : svgContent
+                    ? 'badge-previs-guide'
+                    : 'badge-unrendered';
 
                   const activeVer =
                     panel.selected_version ||
@@ -604,10 +1096,6 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                   const dialogueText = panel.dialogue_excerpt ? formatDisplayValue(panel.dialogue_excerpt) : null;
                   const promptText = formatDisplayValue(panel.image_prompt || panel.prompt || panel.visual_prompt || '');
                   const sourceBlocks = panel.source_screenplay_block_ids || [];
-                  const isRegenerating = regeneratingPanelId === panel.id;
-                  const imageUrl =
-                    panel.image_url ||
-                    (typeof renderData === 'object' ? renderData?.image_url : null);
 
                     return (
                     <div
@@ -638,7 +1126,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                           <span className={`badge-pill ${badgeClass}`}>
                             {badgeLabel}
                           </span>
-                          {!isAi && !isHandDrawn && panel.fallback_reason && (
+                          {!hasRaster && panel.fallback_reason && (
                             <span className="badge-pill" style={{ background: '#451a03', color: '#fca5a5', fontSize: '9px', border: '1px solid #78350f' }} title={`Fallback: ${panel.fallback_reason}`}>
                               {panel.fallback_reason}
                             </span>
@@ -659,24 +1147,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
 
                       {/* 16:9 Cinematic Artwork Frame (75-80% card prominence) */}
                       <div className="storyboard-frame-container artwork-first-frame">
-                        {imageUrl && !imageUrl.endsWith('.svg') ? (
-                          <img
-                            src={imageUrl}
-                            alt={panel.caption || `Shot ${shotNum}`}
-                            className="comic-panel-artwork"
-                            loading="lazy"
-                          />
-                        ) : svgContent ? (
-                          <div
-                            className="storyboard-svg-wrapper"
-                            dangerouslySetInnerHTML={{ __html: svgContent }}
-                          />
-                        ) : (
-                          <div className="storyboard-placeholder-sketch">
-                            <span className="sketch-crosshair">✛</span>
-                            <span className="sketch-label">FRAME {String(shotNum).padStart(2, '0')}</span>
-                          </div>
-                        )}
+                        {renderArtworkFrame(panel, renderData, shotNum)}
                       </div>
 
                       {/* Clean Artwork-First Action & Subject Bar */}
@@ -738,9 +1209,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                   const currentIdx = Math.max(0, Math.min(panels.length - 1, presentationIndex));
                   const panel = panels[currentIdx];
                   const renderData = currentIdx < renderedPanels.length ? renderedPanels[currentIdx] : null;
-                  const svgContent = safeExtractSvg(renderData) || panel.rendered_svg;
                   const shotNum = panel.shot_number ?? panel.panel_number ?? currentIdx + 1;
-                  const imageUrl = panel.image_url || (typeof renderData === 'object' ? renderData?.image_url : null);
                   const isRegenerating = regeneratingPanelId === panel.id;
 
                   const shotType = (panel.shot_type || 'medium').replace(/_/g, ' ').toUpperCase();
@@ -802,24 +1271,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
 
                       {/* Large 16:9 Cinematic Stage */}
                       <div className="presentation-stage" onClick={() => setSelectedPanel(panel)}>
-                        {imageUrl && !imageUrl.endsWith('.svg') ? (
-                          <img
-                            src={imageUrl}
-                            alt={panel.caption || `Shot ${shotNum}`}
-                            className="comic-panel-artwork"
-                            loading="lazy"
-                          />
-                        ) : svgContent ? (
-                          <div
-                            className="storyboard-svg-wrapper"
-                            dangerouslySetInnerHTML={{ __html: svgContent }}
-                          />
-                        ) : (
-                          <div className="storyboard-placeholder-sketch">
-                            <span className="sketch-crosshair">✛</span>
-                            <span className="sketch-label">SHOT {shotNum}</span>
-                          </div>
-                        )}
+                        {renderArtworkFrame(panel, renderData, shotNum, true)}
                       </div>
 
                       {/* Director's Notes Block */}
@@ -1111,8 +1563,19 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                 )}
               </div>
             )}
+
+            {/* 5. VISUAL QA KEYFRAMES VIEW */}
+            {activeTab === 'visual_qa' && (
+              <VisualQaView
+                panels={panels}
+                projectId={project.metadata?.id}
+                capabilities={capabilities}
+                onRefreshCapabilities={loadCapabilities}
+              />
+            )}
           </>
         )}
+
       </div>
 
       {/* PANEL INSPECTOR MODAL */}
@@ -1160,18 +1623,60 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                       alt={selectedPanel.caption}
                       loading="lazy"
                     />
-                  ) : selectedPanel.rendered_svg ? (
-                    <div
-                      className="storyboard-svg-wrapper"
-                      dangerouslySetInnerHTML={{ __html: selectedPanel.rendered_svg }}
-                    />
+                  ) : showInspectorPrevis && (selectedPanel.previs_svg || selectedPanel.rendered_svg) ? (
+                    <div className="storyboard-svg-wrapper">
+                      <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 10, background: 'rgba(2, 132, 199, 0.9)', color: '#fff', fontSize: '10px', padding: '3px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                        PREVIS GUIDE (STRUCTURAL COMPOSITION)
+                      </div>
+                      <div dangerouslySetInnerHTML={{ __html: selectedPanel.previs_svg || selectedPanel.rendered_svg || '' }} />
+                    </div>
                   ) : (
-                    <div className="storyboard-placeholder-sketch">
-                      <span className="sketch-crosshair">✛</span>
-                      <span className="sketch-label">NO IMAGE LOADED</span>
+                    <div className="shot-unrendered-container" style={{ padding: '32px 16px', textAlign: 'center', background: '#0a0f1d', borderRadius: '4px', border: '1px dashed #334155' }}>
+                      <div style={{ fontSize: '24px', marginBottom: '8px' }}>🎨</div>
+                      <div style={{ color: '#f8fafc', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>
+                        Storyboard render unavailable
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '14px', maxWidth: '300px', margin: '0 auto 14px' }}>
+                        Open-model renderer not configured or shot is unrendered keyframe. Procedural SVG is retained only as an internal previs guide.
+                      </div>
+                      {(selectedPanel.previs_svg || selectedPanel.rendered_svg) && (
+                        <button
+                          type="button"
+                          className="btn-cinematic-secondary"
+                          style={{ fontSize: '11px', padding: '5px 10px', borderColor: '#38bdf8', color: '#38bdf8' }}
+                          onClick={() => setShowInspectorPrevis(!showInspectorPrevis)}
+                        >
+                          {showInspectorPrevis ? '✕ Hide Previs Guide' : '📐 Previs guide available (Inspect)'}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
+
+                {/* Previs toggle if raster image is active */}
+                {selectedPanel.image_url && !selectedPanel.image_url.endsWith('.svg') && (selectedPanel.previs_svg || selectedPanel.rendered_svg) && (
+                  <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      className="btn-cinematic-secondary"
+                      style={{ fontSize: '10px', padding: '4px 8px' }}
+                      onClick={() => setShowInspectorPrevis(!showInspectorPrevis)}
+                    >
+                      {showInspectorPrevis ? 'Hide Previs Overlay' : 'View Previs & Composition Guide'}
+                    </button>
+                  </div>
+                )}
+                {showInspectorPrevis && selectedPanel.image_url && !selectedPanel.image_url.endsWith('.svg') && (selectedPanel.previs_svg || selectedPanel.rendered_svg) && (
+                  <div style={{ marginTop: '8px', border: '1px solid #38bdf8', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div style={{ background: '#0c4a6e', color: '#7dd3fc', fontSize: '10px', padding: '4px 8px', fontWeight: 700 }}>
+                      PREVIS GUIDE (STRUCTURAL COMPOSITION & POSE)
+                    </div>
+                    <div
+                      className="storyboard-svg-wrapper"
+                      dangerouslySetInnerHTML={{ __html: selectedPanel.previs_svg || selectedPanel.rendered_svg || '' }}
+                    />
+                  </div>
+                )}
 
                 <div style={{ marginTop: '16px' }}>
                   <div className="pane-kicker" style={{ marginBottom: '8px' }}>
@@ -1182,23 +1687,23 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                       className="btn-cinematic-secondary"
                       onClick={() => handleRegenerateSinglePanel(selectedPanel.id)}
                       disabled={regeneratingPanelId === selectedPanel.id}
-                      title="Regenerate hand-drawn sketch (offline)"
+                      title="Regenerate panel artwork with active provider"
                       style={{ padding: '6px 12px', fontSize: '11px' }}
                     >
-                      {regeneratingPanelId === selectedPanel.id ? 'REGENERATING...' : '↻ REGENERATE HAND-DRAWN'}
+                      {regeneratingPanelId === selectedPanel.id ? 'REGENERATING...' : '↻ REGENERATE ARTWORK'}
                     </button>
                     <button
                       className="btn-cinematic-secondary"
                       onClick={() => handleExternalRenderPanel(selectedPanel.id)}
                       disabled={renderingExternalPanelId === selectedPanel.id}
-                      title="Optional external provider. Availability, quotas and pricing depend on the provider/account."
+                      title="Render with open-model or external runtime"
                       style={{ padding: '6px 12px', fontSize: '11px', borderColor: '#7c3aed', color: '#c4b5fd' }}
                     >
-                      {renderingExternalPanelId === selectedPanel.id ? 'RENDERING EXTERNALLY...' : '⚡ RENDER THIS PANEL EXTERNALLY'}
+                      {renderingExternalPanelId === selectedPanel.id ? 'RENDERING EXTERNALLY...' : '⚡ RENDER WITH RUNTIME'}
                     </button>
                   </div>
                   <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '10px', fontStyle: 'italic' }}>
-                    Optional external provider. Availability, quotas and pricing depend on the provider/account.
+                    Open-model runtime / external render. Availability and endpoints depend on configuration.
                   </div>
                   <div className="inspector-versions-list">
                     {(selectedPanel.versions && selectedPanel.versions.length > 0
@@ -1207,8 +1712,8 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                           {
                             version: 1,
                             image_url: selectedPanel.image_url || '',
-                            provider: selectedPanel.provider || 'procedural',
-                            mode: (selectedPanel as any).mode || 'fallback_comic',
+                            provider: selectedPanel.provider || 'open_model_storyboard',
+                            mode: (selectedPanel as any).mode || 'open_model',
                             is_selected: true,
                           },
                         ]
@@ -1222,8 +1727,8 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                           <span style={{ fontSize: '10px', color: '#94a3b8' }}>VER {ver.version}</span>
                         </div>
                         <div style={{ fontWeight: 800 }}>VERSION {ver.version}</div>
-                        <div style={{ fontSize: '9px', color: ver.mode === 'ai_image' ? '#a78bfa' : (ver.mode === 'hand_drawn' ? '#38bdf8' : '#f59e0b') }}>
-                          {ver.mode === 'ai_image' ? 'EXTERNAL AI' : (ver.mode === 'hand_drawn' ? 'HAND-DRAWN' : 'FALLBACK')}
+                        <div style={{ fontSize: '9px', color: ver.mode === 'ai_image' || ver.mode === 'open_model' ? '#a78bfa' : (ver.mode === 'hand_drawn' || ver.mode === 'previs' ? '#38bdf8' : '#f59e0b') }}>
+                          {ver.mode === 'ai_image' || ver.mode === 'open_model' ? 'OPEN-MODEL' : (ver.mode === 'hand_drawn' || ver.mode === 'previs' ? 'PREVIS GUIDE' : 'FALLBACK')}
                         </div>
                       </div>
                     ))}
@@ -1236,10 +1741,11 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                   (v) => (selectedPanel.selected_version ? v.version === selectedPanel.selected_version : v.is_selected)
                 ) || selectedPanel.versions?.[selectedPanel.versions.length - 1];
 
-                const isAiMode = currentVersion?.mode === 'ai_image' || (selectedPanel as any).mode === 'ai_image';
+                const isAiMode = currentVersion?.mode === 'ai_image' || currentVersion?.mode === 'open_model' || (selectedPanel as any).mode === 'ai_image' || (selectedPanel as any).mode === 'open_model';
                 const isHandDrawnMode =
                   !isAiMode &&
                   (currentVersion?.mode === 'hand_drawn' ||
+                    currentVersion?.mode === 'previs' ||
                     currentVersion?.provider === 'hand_drawn_storyboard' ||
                     selectedPanel.provider === 'hand_drawn_storyboard' ||
                     (selectedPanel as any).mode === 'hand_drawn' ||
@@ -1247,108 +1753,49 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
 
                 const currentReason = isHandDrawnMode ? null : (currentVersion?.fallback_reason || selectedPanel.fallback_reason);
                 const currentContinuity = currentVersion?.continuity_mode || selectedPanel.continuity_mode || 'Deterministic Visual Bible';
-                const currentProvider = isHandDrawnMode
-                  ? 'HandDrawnStoryboardProvider'
-                  : (currentVersion?.provider || selectedPanel.provider || 'CloudImagenStoryboardProvider');
-                const currentStyle = (currentVersion?.render_metadata?.style as string) || 'Pencil Noir';
+                const currentProvider = isAiMode
+                  ? (currentVersion?.provider || selectedPanel.provider || 'OpenModelStoryboardProvider')
+                  : ((currentVersion?.render_metadata?.renderer as string) || (currentVersion?.provider === 'hand_drawn_storyboard' ? 'HandDrawnStoryboardProvider' : currentVersion?.provider) || selectedPanel.provider || 'PrevisControlRenderer');
+                const currentStyle = (currentVersion?.render_metadata?.style as string) || 'Cinematic Film Still';
 
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {/* Render Diagnostics */}
-                    <div
-                      style={{
-                        padding: '12px 14px',
-                        borderRadius: '4px',
-                        background: isAiMode
-                          ? 'rgba(124, 58, 237, 0.12)'
-                          : isHandDrawnMode
-                          ? 'rgba(2, 132, 199, 0.12)'
-                          : 'rgba(245, 158, 11, 0.08)',
-                        border: `1px solid ${
-                          isAiMode
-                            ? 'rgba(167, 139, 250, 0.4)'
-                            : isHandDrawnMode
-                            ? 'rgba(56, 189, 248, 0.4)'
-                            : 'rgba(245, 158, 11, 0.35)'
-                        }`,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.08em', color: '#94a3b8' }}>
-                          RENDER DIAGNOSTICS
-                        </span>
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span
-                            className={`badge-pill ${
-                              isAiMode
-                                ? 'badge-ai-image'
-                                : isHandDrawnMode
-                                ? 'badge-hand-drawn'
-                                : 'badge-fallback-comic'
-                            }`}
-                          >
-                            SOURCE: {isAiMode ? 'EXTERNAL AI IMAGE' : isHandDrawnMode ? 'HAND-DRAWN STORYBOARD' : 'FALLBACK COMIC'}
-                          </span>
-                          {currentReason && (
-                            <span className="badge-pill badge-fallback-reason">
-                              REASON: {currentReason}
-                            </span>
-                          )}
-                        </div>
+                    {/* 1. NARRATIVE & STAGING LAYER */}
+                    <div className="inspector-narrative-section">
+                      <div className="pane-kicker">NARRATIVE &amp; STAGING</div>
+                      <div style={{ fontSize: '13px', color: '#f8fafc', marginTop: '6px', lineHeight: 1.5 }}>
+                        {selectedPanel.action_description || selectedPanel.action}
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
-                        <span style={{ color: '#94a3b8' }}>RENDERER:</span>
-                        <span style={{ color: '#cbd5e1', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
-                          {currentProvider}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
-                        <span style={{ color: '#94a3b8' }}>STYLE:</span>
-                        <span style={{ color: '#f59e0b', fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 }}>
-                          {currentStyle}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
-                        <span style={{ color: '#94a3b8' }}>CONTINUITY:</span>
-                        <span className="badge-pill badge-continuity-mode">
-                          {currentContinuity}
-                        </span>
-                      </div>
-
-                      {isHandDrawnMode && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
-                          <span style={{ color: '#94a3b8' }}>CLOUD API:</span>
-                          <span style={{ color: '#38bdf8', fontSize: '11px', fontWeight: 600 }}>
-                            NO CLOUD API (100% Offline SVG)
-                          </span>
+                      {selectedPanel.dialogue_excerpt && (
+                        <div className="panel-dialogue-excerpt" style={{ marginTop: '8px' }}>
+                          "{selectedPanel.dialogue_excerpt}"
                         </div>
                       )}
 
-                      {currentReason === 'QUOTA_EXCEEDED' && (
-                        <div
-                          style={{
-                            fontSize: '11px',
-                            color: '#fca5a5',
-                            marginTop: '4px',
-                            background: 'rgba(239, 68, 68, 0.12)',
-                            padding: '6px 10px',
-                            borderRadius: '4px',
-                            border: '1px solid rgba(239, 68, 68, 0.25)',
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          ⚠ Cloud image generation unavailable because this Google project currently has no usable quota for the selected image model.
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
+                        <span className="panel-location-tag">
+                          📍 {formatDisplayValue(selectedPanel.location_name || project.world?.locations?.[selectedPanel.location_id]?.name || selectedPanel.location_id || 'Unknown Location')}
+                        </span>
+                        {selectedPanel.subtext_context && (
+                          <span style={{ fontSize: '11px', color: '#38bdf8' }}>
+                            Subtext: <em>{selectedPanel.subtext_context}</em>
+                          </span>
+                        )}
+                      </div>
+
+                      {((selectedPanel.character_names && selectedPanel.character_names.length > 0) || (selectedPanel.characters_present && selectedPanel.characters_present.length > 0)) && (
+                        <div style={{ marginTop: '8px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>CHARACTERS:</span>
+                          {(selectedPanel.character_names || selectedPanel.characters_present || []).map((c: string) => (
+                            <span key={c} className="char-chip">👤 {formatDisplayValue(project.world?.characters?.[c]?.name || c)}</span>
+                          ))}
                         </div>
                       )}
                     </div>
 
-                    <div>
+                    {/* 2. CINEMATIC TECHNICAL SPECS */}
+                    <div className="inspector-cinematic-section">
                       <div className="pane-kicker">CINEMATIC TECHNICAL SPECS</div>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
                         <span className="panel-badge text-amber">{selectedPanel.shot_type.toUpperCase()}</span>
@@ -1375,65 +1822,186 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                           )}
                         </div>
                       )}
-                      {selectedPanel.subtext_context && (
-                        <div style={{ fontSize: '12px', color: '#38bdf8', marginTop: '4px' }}>
-                          <strong>Subtext Context:</strong> {selectedPanel.subtext_context}
-                        </div>
-                      )}
                     </div>
 
-                    <div>
-                      <div className="pane-kicker">ACTION &amp; CAPTION</div>
-                      <div style={{ fontSize: '13px', color: '#f8fafc', marginTop: '4px' }}>
-                        {selectedPanel.action_description || selectedPanel.action}
-                      </div>
-                      {selectedPanel.dialogue_excerpt && (
-                        <div className="panel-dialogue-excerpt" style={{ marginTop: '8px' }}>
-                          "{selectedPanel.dialogue_excerpt}"
-                        </div>
-                      )}
-                    </div>
+                    {/* 3. TECHNICAL INFRASTRUCTURE & METADATA (Collapsible) */}
+                    <details className="inspector-technical-details" open={false}>
+                      <summary className="inspector-technical-summary">
+                        ⚙ TECHNICAL INFRASTRUCTURE &amp; METADATA
+                      </summary>
 
-                    <div>
-                      <div className="pane-kicker">CONTINUITY SPECIFICATIONS</div>
-                      <div style={{ fontSize: '12px', color: '#cbd5e1', marginTop: '4px' }}>
-                        {selectedPanel.continuity_notes || 'Preserves wardrobe, props, and lighting palette.'}
-                      </div>
-                      <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {selectedPanel.characters_present && selectedPanel.characters_present.length > 0 && (
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                            <strong style={{ color: '#cbd5e1' }}>Characters Present:</strong>{' '}
-                            {selectedPanel.characters_present.join(', ')}
-                          </div>
-                        )}
-                        {selectedPanel.objects_in_frame && selectedPanel.objects_in_frame.length > 0 && (
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                            <strong style={{ color: '#cbd5e1' }}>Props in Frame (Canonical):</strong>{' '}
-                            {selectedPanel.objects_in_frame.map((objId) => (
-                              <span key={objId} className="panel-badge text-amber" style={{ marginRight: '4px', fontSize: '10px' }}>
-                                {objId}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px' }}>
+                        {/* Render Diagnostics */}
+                        <div
+                          style={{
+                            padding: '12px 14px',
+                            borderRadius: '4px',
+                            background: isAiMode
+                              ? 'rgba(124, 58, 237, 0.12)'
+                              : isHandDrawnMode
+                              ? 'rgba(2, 132, 199, 0.12)'
+                              : 'rgba(245, 158, 11, 0.08)',
+                            border: `1px solid ${
+                              isAiMode
+                                ? 'rgba(167, 139, 250, 0.4)'
+                                : isHandDrawnMode
+                                ? 'rgba(56, 189, 248, 0.4)'
+                                : 'rgba(245, 158, 11, 0.35)'
+                            }`,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.08em', color: '#94a3b8' }}>
+                              RENDER DIAGNOSTICS
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <span
+                                className={`badge-pill ${
+                                  isAiMode
+                                    ? 'badge-ai-image'
+                                    : isHandDrawnMode
+                                    ? 'badge-hand-drawn'
+                                    : 'badge-fallback-comic'
+                                }`}
+                              >
+                                SOURCE: {isAiMode ? 'OPEN-MODEL STORYBOARD' : isHandDrawnMode ? 'PREVIS GUIDE' : 'FALLBACK COMIC'}
                               </span>
-                            ))}
+                              {currentReason && (
+                                <span className="badge-pill badge-fallback-reason">
+                                  REASON: {currentReason}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                            <span style={{ color: '#94a3b8' }}>RENDERER:</span>
+                            <span style={{ color: '#cbd5e1', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                              {currentProvider}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                            <span style={{ color: '#94a3b8' }}>STYLE:</span>
+                            <span style={{ color: '#f59e0b', fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600 }}>
+                              {currentStyle}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                            <span style={{ color: '#94a3b8' }}>CONTINUITY:</span>
+                            <span className="badge-pill badge-continuity-mode">
+                              {currentContinuity}
+                            </span>
+                          </div>
+
+                          {isHandDrawnMode && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
+                              <span style={{ color: '#94a3b8' }}>PREVIS ENGINE:</span>
+                              <span style={{ color: '#38bdf8', fontSize: '11px', fontWeight: 600 }}>
+                                Deterministic Procedural Previs (Internal Only)
+                              </span>
+                            </div>
+                          )}
+
+                          {currentReason === 'QUOTA_EXCEEDED' && (
+                            <div
+                              style={{
+                                fontSize: '11px',
+                                color: '#fca5a5',
+                                marginTop: '4px',
+                                background: 'rgba(239, 68, 68, 0.12)',
+                                padding: '6px 10px',
+                                borderRadius: '4px',
+                                border: '1px solid rgba(239, 68, 68, 0.25)',
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              ⚠ Image generation unavailable because quota is exceeded or runtime is unreachable.
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Control Guides & Previs Bundle */}
+                        {selectedPanel.control_bundle && (
+                          <div>
+                            <div className="pane-kicker">CONTROL GUIDES &amp; PREVIS BUNDLE</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px', marginTop: '6px' }}>
+                              <div style={{ padding: '8px', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '4px', fontSize: '11px' }}>
+                                <div style={{ color: '#94a3b8', fontWeight: 600, marginBottom: '2px' }}>POSE GUIDE</div>
+                                <div style={{ color: selectedPanel.control_bundle.pose_map ? '#38bdf8' : '#64748b', fontSize: '10px' }}>
+                                  {selectedPanel.control_bundle.pose_map ? '✓ Available' : 'Pending'}
+                                </div>
+                              </div>
+                              <div style={{ padding: '8px', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '4px', fontSize: '11px' }}>
+                                <div style={{ color: '#94a3b8', fontWeight: 600, marginBottom: '2px' }}>EDGE MAP</div>
+                                <div style={{ color: selectedPanel.control_bundle.edge_map ? '#38bdf8' : '#64748b', fontSize: '10px' }}>
+                                  {selectedPanel.control_bundle.edge_map ? '✓ Available' : 'Pending'}
+                                </div>
+                              </div>
+                              <div style={{ padding: '8px', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '4px', fontSize: '11px' }}>
+                                <div style={{ color: '#94a3b8', fontWeight: 600, marginBottom: '2px' }}>DEPTH MAP</div>
+                                <div style={{ color: selectedPanel.control_bundle.depth_map ? '#38bdf8' : '#64748b', fontSize: '10px' }}>
+                                  {selectedPanel.control_bundle.depth_map ? '✓ Available' : 'Pending'}
+                                </div>
+                              </div>
+                              <div style={{ padding: '8px', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '4px', fontSize: '11px' }}>
+                                <div style={{ color: '#94a3b8', fontWeight: 600, marginBottom: '2px' }}>COMPOSITION</div>
+                                <div style={{ color: selectedPanel.control_bundle.composition_mask ? '#38bdf8' : '#64748b', fontSize: '10px' }}>
+                                  {selectedPanel.control_bundle.composition_mask ? '✓ Masked' : 'Standard'}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         )}
-                      </div>
-                    </div>
 
-                    <div>
-                      <div className="pane-kicker">COMPILED MULTI-LAYER PROMPT</div>
-                      <div className="panel-prompt-mono" style={{ maxHeight: '180px', overflowY: 'auto' }}>
-                        {selectedPanel.compiled_prompt || selectedPanel.image_prompt || selectedPanel.visual_prompt}
-                      </div>
-                    </div>
+                        {/* Continuity Specs */}
+                        <div>
+                          <div className="pane-kicker">CONTINUITY SPECIFICATIONS</div>
+                          <div style={{ fontSize: '12px', color: '#cbd5e1', marginTop: '4px' }}>
+                            {selectedPanel.continuity_notes || 'Preserves wardrobe, props, and lighting palette.'}
+                          </div>
+                          {selectedPanel.objects_in_frame && selectedPanel.objects_in_frame.length > 0 && (
+                            <div style={{ marginTop: '6px', fontSize: '11px', color: '#94a3b8' }}>
+                              <strong style={{ color: '#cbd5e1' }}>Props in Frame (Canonical):</strong>{' '}
+                              {selectedPanel.objects_in_frame.map((objId) => (
+                                <span key={objId} className="panel-badge text-amber" style={{ marginRight: '4px', fontSize: '10px' }}>
+                                  {objId}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
 
-                    {selectedPanel.negative_prompt && (
-                      <div>
-                        <div className="pane-kicker">NEGATIVE CONSTRAINTS</div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-                          {selectedPanel.negative_prompt}
+                        {/* Compiled Multi-Layer Prompt */}
+                        <div>
+                          <div className="pane-kicker">COMPILED MULTI-LAYER PROMPT</div>
+                          <div className="panel-prompt-mono" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                            {selectedPanel.compiled_prompt || selectedPanel.image_prompt || selectedPanel.visual_prompt}
+                          </div>
+                        </div>
+
+                        {selectedPanel.negative_prompt && (
+                          <div>
+                            <div className="pane-kicker">NEGATIVE CONSTRAINTS</div>
+                            <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+                              {selectedPanel.negative_prompt}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Raw Identifiers & Metadata */}
+                        <div style={{ fontSize: '10px', color: '#64748b', fontFamily: 'var(--font-mono)', borderTop: '1px solid #1e293b', paddingTop: '8px' }}>
+                          <div>PANEL ID: {selectedPanel.id}</div>
+                          {selectedPanel.source_screenplay_block_ids && selectedPanel.source_screenplay_block_ids.length > 0 && (
+                            <div>SOURCE BLOCKS: {selectedPanel.source_screenplay_block_ids.join(', ')}</div>
+                          )}
                         </div>
                       </div>
-                    )}
+                    </details>
                   </div>
                 );
               })()}

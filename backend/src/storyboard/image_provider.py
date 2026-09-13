@@ -838,9 +838,131 @@ class MockStoryboardImageProvider(StoryboardImageProvider):
         )
 
 
+class OpenModelImageProviderAdapter(StoryboardImageProvider):
+    """Primary adapter bridging OpenModelStoryboardProvider into the StoryboardImageProvider interface."""
+
+    def __init__(
+        self,
+        asset_store: Optional[StoryboardAssetStore] = None,
+        runtime_url: Optional[str] = None,
+        model_name: Optional[str] = None,
+        adapter_type: Optional[str] = None,
+    ):
+        self.asset_store = asset_store or StoryboardAssetStore()
+        from src.storyboard.open_model_provider import (
+            OpenModelStoryboardProvider,
+            ComfyUIStoryboardAdapter,
+            DiffusersStoryboardAdapter,
+            MockOpenModelStoryboardAdapter,
+        )
+        adapter = None
+        if adapter_type in ("on_demand", "ondemand", "on-demand"):
+            from src.storyboard.on_demand_provider import OnDemandStoryboardProvider
+            adapter = OnDemandStoryboardProvider(asset_store=self.asset_store, model_name=model_name)
+        elif adapter_type == "comfyui":
+            adapter = ComfyUIStoryboardAdapter(runtime_url=runtime_url, model_name=model_name, asset_store=self.asset_store)
+        elif adapter_type == "diffusers":
+            adapter = DiffusersStoryboardAdapter(runtime_url=runtime_url, model_name=model_name, asset_store=self.asset_store)
+        elif adapter_type in ("mock_ai", "mock_connected"):
+            adapter = MockOpenModelStoryboardAdapter(asset_store=self.asset_store, simulate_connected=True)
+        elif adapter_type in ("mock_unavailable", "mock"):
+            adapter = MockOpenModelStoryboardAdapter(asset_store=self.asset_store, simulate_connected=False)
+        self.engine = OpenModelStoryboardProvider(adapter=adapter, asset_store=self.asset_store)
+
+
+    def get_capabilities(self) -> Dict[str, Any]:
+        return self.engine.get_capabilities().to_dict()
+
+    def get_status(self) -> Dict[str, Any]:
+        caps = self.get_capabilities()
+        health = self.engine.health_check()
+        return {
+            "storyboard_image_provider": "open_model_storyboard",
+            "mode": "open_model",
+            "status": "AVAILABLE" if health.get("available") else "UNAVAILABLE",
+            "available": health.get("available", False),
+            "fallback_enabled": False,
+            "continuity_mode": "Deterministic Visual Bible & Continuity Packs",
+            "model": caps.get("model", ""),
+            "status_message": health.get("message", ""),
+            "supports_reference_images": caps.get("supports_reference_images", False),
+            "pose_control": caps.get("pose_control", False),
+            "depth_control": caps.get("depth_control", False),
+            "edge_control": caps.get("edge_control", False),
+            "max_resolution": caps.get("max_resolution", "1280x720"),
+            "pricing_disclaimer": caps.get("pricing_disclaimer", ""),
+        }
+
+    def generate_panel(
+        self,
+        panel: StoryboardPanel,
+        bible: Optional[VisualBible] = None,
+        version: int = 1,
+    ) -> StoryboardImageResult:
+        res = self.engine.render_panel(panel, bible=bible, version=version)
+        ctrl_dict = res.control_bundle.to_dict() if res.control_bundle else None
+        panel.control_bundle = ctrl_dict
+        panel.previs_svg = res.control_bundle.previs_svg if res.control_bundle else None
+
+        if res.status == StoryboardImageStatus.READY and res.image_url:
+            panel.rendered_image_url = res.image_url
+            panel.image_url = res.image_url
+            panel.rendered_svg = None  # NEVER output procedural SVG as final artwork
+            return StoryboardImageResult(
+                panel_id=panel.panel_id or panel.id,
+                version=version,
+                image_url=res.image_url,
+                svg_content=None,
+                provider="open_model_storyboard",
+                mode="open_model_storyboard",
+                compiled_prompt=res.compiled_prompt,
+                negative_prompt=res.negative_prompt,
+                status=StoryboardImageStatus.READY,
+                fallback_reason=None,
+                provider_status="AVAILABLE",
+                continuity_mode="Open-Model Continuity Pack",
+                mime_type=res.mime_type,
+                render_metadata={
+                    "provider": "open_model_storyboard",
+                    "model": res.model,
+                    "label": "OPEN-MODEL STORYBOARD",
+                    "prompt_hash": res.prompt_hash,
+                    "seed": res.seed,
+                    "previs_available": True,
+                    "control_bundle": ctrl_dict,
+                },
+            )
+        else:
+            panel.rendered_image_url = None
+            panel.image_url = None
+            panel.rendered_svg = None  # NEVER output procedural SVG as final artwork
+            return StoryboardImageResult(
+                panel_id=panel.panel_id or panel.id,
+                version=version,
+                image_url="",
+                svg_content=None,
+                provider="open_model_storyboard",
+                mode="previs_guide",
+                compiled_prompt=res.compiled_prompt,
+                negative_prompt=res.negative_prompt,
+                status=StoryboardImageStatus.FAILED if res.status == StoryboardImageStatus.FAILED else StoryboardImageStatus.PLANNED,
+                fallback_reason=res.fallback_reason or "RUNTIME_UNAVAILABLE",
+                provider_status="UNAVAILABLE",
+                continuity_mode="Open-Model Continuity Pack",
+                mime_type="image/png",
+                render_metadata={
+                    "provider": "open_model_storyboard",
+                    "model": res.model,
+                    "label": "PREVIS GUIDE",
+                    "previs_available": True,
+                    "status_message": res.status_message or "Storyboard render unavailable. Previs guide available. Configure renderer.",
+                    "control_bundle": ctrl_dict,
+                },
+            )
+
+
 def get_default_storyboard_provider(
     asset_store: Optional[StoryboardAssetStore] = None,
 ) -> StoryboardImageProvider:
-    """Return the default offline deterministic hand-drawn storyboard provider."""
-    from src.storyboard.sketch.renderer import HandDrawnStoryboardProvider
-    return HandDrawnStoryboardProvider(asset_store=asset_store)
+    """Return the default Open-Model Storyboard Provider."""
+    return OpenModelImageProviderAdapter(asset_store=asset_store)

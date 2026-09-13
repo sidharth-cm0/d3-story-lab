@@ -1,4 +1,3 @@
-"""Memory compressor for episodic memory summarization"""
 import uuid
 from typing import List, Optional
 from ..domain import Memory

@@ -73,12 +73,18 @@ class StoryboardImageVersion(BaseModel):
     version: int = 1
     image_url: str = ""
     prompt_used: str = ""
+    prompt_hash: Optional[str] = None
     negative_prompt: str = ""
     provider: str = ""
-    mode: str = "fallback_comic"  # "ai_image" | "fallback_comic"
+    model: Optional[str] = None
+    seed: Optional[int] = None
+    mode: str = "open_model_storyboard"  # "open_model_storyboard" | "ai_image" | "previs_guide"
     fallback_reason: Optional[str] = None
     mime_type: Optional[str] = None
-    continuity_mode: str = "TEXTUAL CONTINUITY ONLY"
+    continuity_mode: str = "Open-Model Continuity Pack"
+    previs_available: bool = True
+    control_bundle: Optional[Dict[str, Any]] = None
+    generation_time_ms: Optional[float] = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     is_selected: bool = False
     render_metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -153,9 +159,17 @@ class StoryboardPanel(BaseModel):
     image_url: Optional[str] = None
     rendered_image_url: Optional[str] = None
     rendered_svg: Optional[str] = None
+    previs_svg: Optional[str] = None
+    control_bundle: Optional[Dict[str, Any]] = None
+    character_continuity: Optional[Dict[str, Any]] = None
+    location_continuity: Optional[Dict[str, Any]] = None
+    prop_continuity: Optional[Dict[str, Any]] = None
+    is_keyframe: bool = False
+    keyframe_reason: Optional[str] = None
     image_status: StoryboardImageStatus = StoryboardImageStatus.PLANNED
     provider: str = ""
     fallback_reason: Optional[str] = None
+    status_message: Optional[str] = None
     continuity_mode: str = "TEXTUAL CONTINUITY ONLY"
     generation_version: int = 1
     selected_version: int = 1
@@ -210,4 +224,7 @@ class ShotPlan(BaseModel):
     aspect_ratio: str = "16:9"
     pages: List[StoryboardPage] = Field(default_factory=list)
     density_mode: str = "standard"  # "quick" | "standard" | "detailed"
+    render_mode: str = "KEYFRAMES"  # "KEYFRAMES" | "FULL_BOARD"
+    keyframe_panel_indices: List[int] = Field(default_factory=list)
+    runtime_status: Dict[str, Any] = Field(default_factory=dict)
     storyboard_coverage: Dict[str, Any] = Field(default_factory=dict)

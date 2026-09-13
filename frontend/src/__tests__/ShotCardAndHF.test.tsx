@@ -216,7 +216,7 @@ describe('ShotCard Component', () => {
     rendered_svg: '<svg data-testid="offline-svg"><rect width="100" height="100"/></svg>',
   };
 
-  it('renders clean artwork-first shot card with metadata header, action, and HAND-DRAWN STORYBOARD badge', () => {
+  it('renders clean artwork-first shot card with metadata header, action, and PREVIS GUIDE badge', () => {
     render(<ShotCard panel={testPanel} projectId="proj_test" />);
 
     expect(screen.getByText(/SHOT 03/)).toBeDefined();
@@ -226,16 +226,19 @@ describe('ShotCard Component', () => {
     expect(screen.getByText(/Don’t move./)).toBeDefined();
     expect(screen.getByText(/Abandoned Warehouse/)).toBeDefined();
     expect(screen.getByText(/Marcus/)).toBeDefined();
-    expect(screen.getByText('HAND-DRAWN STORYBOARD')).toBeDefined();
+    expect(screen.getByText('PREVIS GUIDE')).toBeDefined();
   });
 
-  it('renders offline SVG when no bitmap exists', () => {
+  it('shows unrendered state and reveals previs guide on toggle', () => {
     const { container } = render(<ShotCard panel={testPanel} projectId="proj_test" />);
+    expect(screen.getByText('Storyboard render unavailable')).toBeDefined();
+    const previsBtn = screen.getByText('Previs guide available');
+    fireEvent.click(previsBtn);
     const svgEl = container.querySelector('svg[data-testid="offline-svg"]');
-    expect(svgEl).toBeDefined();
+    expect(svgEl).not.toBeNull();
   });
 
-  it('renders seamless image container and EXTERNAL AI IMAGE badge when external image is present', () => {
+  it('renders seamless image container and OPEN-MODEL STORYBOARD badge when external image is present', () => {
     const panelWithAiImage: StoryboardPanel = {
       ...testPanel,
       image_url: '/api/projects/proj_test/storyboard/assets/panels/shot-card-1_v2.jpg',
@@ -244,7 +247,7 @@ describe('ShotCard Component', () => {
     };
 
     render(<ShotCard panel={panelWithAiImage} projectId="proj_test" />);
-    expect(screen.getByText('EXTERNAL AI IMAGE')).toBeDefined();
+    expect(screen.getByText('OPEN-MODEL STORYBOARD')).toBeDefined();
     const img = screen.getByRole('img');
     expect(img).toBeDefined();
     expect(img.getAttribute('src')).toBe('/api/projects/proj_test/storyboard/assets/panels/shot-card-1_v2.jpg');

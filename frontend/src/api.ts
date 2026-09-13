@@ -133,11 +133,12 @@ export async function planStoryboard(
   projectId: string,
   densityMode: string = 'standard',
   panelsPerPage: number = 4,
+  renderMode: string = 'KEYFRAMES',
 ): Promise<StoryboardResponse> {
   const res = await fetch(`${BASE_URL}/projects/${projectId}/storyboard/plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ density_mode: densityMode, panels_per_page: panelsPerPage }),
+    body: JSON.stringify({ density_mode: densityMode, panels_per_page: panelsPerPage, render_mode: renderMode }),
   });
   if (!res.ok) throw new Error('Failed to plan storyboard');
   return res.json();
@@ -146,13 +147,58 @@ export async function planStoryboard(
 export async function generateStoryboard(
   projectId: string,
   provider?: string,
+  renderMode: string = 'KEYFRAMES',
+  keyframeBudget: number = 8,
 ): Promise<StoryboardResponse> {
   const res = await fetch(`${BASE_URL}/projects/${projectId}/storyboard/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider }),
+    body: JSON.stringify({ provider, render_mode: renderMode, keyframe_budget: keyframeBudget }),
   });
   if (!res.ok) throw new Error('Failed to generate storyboard');
+  return res.json();
+}
+
+export async function fetchCapabilities(): Promise<any> {
+  const res = await fetch(`${BASE_URL}/storyboard/capabilities`);
+  if (!res.ok) throw new Error('Failed to fetch storyboard capabilities');
+  return res.json();
+}
+
+export async function runStoryboardSmokeTest(prompt?: string): Promise<any> {
+  const url = prompt
+    ? `${BASE_URL}/storyboard/smoke-test?prompt=${encodeURIComponent(prompt)}`
+    : `${BASE_URL}/storyboard/smoke-test`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Failed to run storyboard smoke test');
+  return res.json();
+}
+
+export async function configureRenderer(
+  provider: string,
+  runtimeUrl?: string,
+  model?: string,
+  apiKey?: string,
+): Promise<any> {
+  const res = await fetch(`${BASE_URL}/storyboard/configure`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, runtime_url: runtimeUrl, model, api_key: apiKey }),
+  });
+  if (!res.ok) throw new Error('Failed to configure storyboard renderer');
+  return res.json();
+}
+
+
+export async function fetchControlBundle(projectId: string, panelId: string): Promise<any> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/storyboard/panels/${panelId}/control-bundle`);
+  if (!res.ok) throw new Error(`Failed to fetch control bundle for panel ${panelId}`);
+  return res.json();
+}
+
+export async function fetchProjectContinuity(projectId: string): Promise<any> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/storyboard/continuity`);
+  if (!res.ok) throw new Error('Failed to fetch project continuity');
   return res.json();
 }
 

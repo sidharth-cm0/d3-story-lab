@@ -231,6 +231,10 @@ export interface ScreenplayScene {
   presentation_position?: number;
   framing_type?: string;
   dramatic_purpose?: string;
+  scene_goal?: string;
+  dramatic_question?: string;
+  turning_point?: string;
+  subtext?: string;
 }
 
 export interface ScreenplayDocument {
@@ -276,12 +280,17 @@ export interface StoryboardImageVersion {
   version: number;
   image_url: string;
   prompt_used?: string;
+  prompt_hash?: string;
   negative_prompt?: string;
   provider?: string;
-  mode?: 'ai_image' | 'fallback_comic' | 'hand_drawn';
+  model?: string;
+  seed?: number;
+  mode?: 'open_model_storyboard' | 'ai_image' | 'previs_guide' | 'fallback_comic' | 'hand_drawn' | string;
   fallback_reason?: string;
   mime_type?: string;
   continuity_mode?: string;
+  previs_available?: boolean;
+  control_bundle?: Record<string, any>;
   created_at?: string;
   is_selected?: boolean;
   render_metadata?: Record<string, any>;
@@ -413,10 +422,21 @@ export interface StoryboardPanel {
   image_url?: string | null;
   rendered_image_url?: string | null;
   rendered_svg?: string | null;
+  previs_svg?: string | null;
+  control_bundle?: StoryboardControlBundle | Record<string, any> | null;
+  character_continuity?: Record<string, any>;
+  location_continuity?: Record<string, any>;
+  prop_continuity?: Record<string, any>;
+  is_keyframe?: boolean;
+  keyframe_reason?: string;
+  status?: string;
+  error_code?: string;
+  error_message?: string;
   image_status?: StoryboardImageStatus | string;
   provider?: string;
   mode?: string;
   fallback_reason?: string;
+  status_message?: string;
   mime_type?: string;
   continuity_mode?: string;
   generation_version?: number;
@@ -445,7 +465,36 @@ export interface ShotPlan {
   pages?: StoryboardPage[];
   aspect_ratio: string;
   density_mode?: string;
+  render_mode?: 'KEYFRAMES' | 'FULL_BOARD' | string;
+  keyframe_panel_indices?: number[];
+  runtime_status?: Record<string, any>;
   storyboard_coverage?: Record<string, any>;
+}
+
+export interface StoryboardControlBundle {
+  pose_map?: string;
+  edge_map?: string;
+  depth_map?: string;
+  composition_mask?: string;
+  camera_layout?: string;
+  previs_svg?: string;
+  camera_details?: Record<string, any>;
+}
+
+export interface ProviderCapabilities {
+  provider: string;
+  model: string;
+  available: boolean;
+  status_message?: string;
+  supports_reference_images?: boolean;
+  supports_ip_adapter?: boolean;
+  supports_identity_conditioning?: boolean;
+  pose_control?: boolean;
+  depth_control?: boolean;
+  edge_control?: boolean;
+  seed_support?: boolean;
+  max_resolution?: string;
+  pricing_disclaimer?: string;
 }
 
 export interface RenderedPanelData {

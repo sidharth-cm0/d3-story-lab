@@ -54,14 +54,19 @@ def sample_panel():
 
 
 def test_offline_default_provider_safety(tmp_path):
-    """Verify that the default provider is strictly offline HandDrawnStoryboardProvider."""
+    """Verify offline HandDrawnStoryboardProvider safety and open model default."""
+    from src.storyboard.image_provider import OpenModelImageProviderAdapter
     store = StoryboardAssetStore(base_dir=tmp_path)
-    provider = get_image_provider(asset_store=store)
+    provider = get_image_provider(provider_type="hand_drawn", asset_store=store)
 
     assert isinstance(provider, HandDrawnStoryboardProvider)
     status = provider.get_status()
     assert status["mode"] == "local"
     assert status["storyboard_image_provider"] == "hand_drawn_storyboard"
+
+    # Verify default provider without args is the new open model adapter
+    default_provider = get_image_provider(asset_store=store)
+    assert isinstance(default_provider, OpenModelImageProviderAdapter)
 
 
 def test_huggingface_provider_disabled_without_token(tmp_path, sample_panel):

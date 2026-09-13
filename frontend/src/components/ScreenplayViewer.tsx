@@ -218,6 +218,35 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
                       </div>
                     </div>
 
+                    {Boolean(scene.scene_goal || scene.dramatic_question || scene.turning_point || scene.subtext) && (
+                      <div className="scene-editorial-summary">
+                        {scene.scene_goal && (
+                          <div className="scene-editorial-row">
+                            <span className="scene-editorial-label">GOAL:</span>
+                            <span className="scene-editorial-value">{scene.scene_goal}</span>
+                          </div>
+                        )}
+                        {scene.dramatic_question && (
+                          <div className="scene-editorial-row">
+                            <span className="scene-editorial-label">QUESTION:</span>
+                            <span className="scene-editorial-value">{scene.dramatic_question}</span>
+                          </div>
+                        )}
+                        {scene.turning_point && (
+                          <div className="scene-editorial-row">
+                            <span className="scene-editorial-label">TURNING POINT:</span>
+                            <span className="scene-editorial-value">{scene.turning_point}</span>
+                          </div>
+                        )}
+                        {scene.subtext && (
+                          <div className="scene-editorial-row">
+                            <span className="scene-editorial-label">SUBTEXT:</span>
+                            <span className="scene-editorial-value">{scene.subtext}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="scene-blocks-flow">
                       {scene.blocks.map((block) => {
                         const isSelected = selectedBlockId === block.id;

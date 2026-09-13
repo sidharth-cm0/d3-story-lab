@@ -133,6 +133,17 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleSelectView = useCallback((view: ActiveView) => {
+    if (view === activeView) return;
+    if (typeof document !== 'undefined' && 'startViewTransition' in document) {
+      (document as any).startViewTransition(() => {
+        setActiveView(view);
+      });
+    } else {
+      setActiveView(view);
+    }
+  }, [activeView]);
+
   const currentMeta = projects.find((p) => p.id === currentProjectId) || null;
 
   return (
@@ -144,10 +155,10 @@ export const App: React.FC = () => {
         projects={projects}
         providerName={providerName}
         activeView={activeView}
-        onSelectView={setActiveView}
+        onSelectView={handleSelectView}
         onSelectProject={(id) => {
           setCurrentProjectId(id);
-          if (activeView === 'home') setActiveView('simulation');
+          if (activeView === 'home') handleSelectView('simulation');
         }}
         onOpenNewProject={() => setIsModalOpen(true)}
         onDeleteProject={handleDeleteProject}

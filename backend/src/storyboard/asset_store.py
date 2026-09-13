@@ -14,7 +14,7 @@ from typing import Optional, Tuple, Dict, Any
 from src.storyboard.visual_bible import VisualBible
 
 
-ALLOWED_CATEGORIES = {"panels", "characters", "locations", "objects", "exports"}
+ALLOWED_CATEGORIES = {"panels", "characters", "locations", "objects", "exports", "controls", "references", "previs"}
 SAFE_ID_REGEX = re.compile(r"^[a-zA-Z0-9_\-]+$")
 SAFE_FILENAME_REGEX = re.compile(r"^[a-zA-Z0-9_\-\.]+\.(png|jpg|jpeg|webp|svg|json)$")
 
@@ -114,5 +114,22 @@ class StoryboardAssetStore:
             return None
         try:
             return VisualBible.model_validate_json(target_file.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+    def save_panel_record(self, project_id: str, panel_id: str, version: int, record_data: Dict[str, Any]) -> str:
+        """Persist metadata record for a generated storyboard panel version."""
+        import json
+        filename = f"{panel_id}_v{version}_record.json"
+        content = json.dumps(record_data, indent=2)
+        return self.save_asset(project_id, "panels", filename, content)
+
+    def load_panel_record(self, project_id: str, panel_id: str, version: int) -> Optional[Dict[str, Any]]:
+        """Load metadata record for a generated panel version."""
+        import json
+        filename = f"{panel_id}_v{version}_record.json"
+        try:
+            raw_bytes, _ = self.load_asset(project_id, "panels", filename)
+            return json.loads(raw_bytes.decode("utf-8"))
         except Exception:
             return None

@@ -14,6 +14,7 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
 }) => {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [activeCard, setActiveCard] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,6 +43,60 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
   const writtenScale = Math.max(0.85, 1 - scrollProgress * 1.2);
   const emergesOpacity = Math.min(1, 0.4 + scrollProgress * 5);
   const emergesScale = Math.min(1.15, 1 + scrollProgress * 0.8);
+
+  // Fast client-side fuzzy filter for projects portfolio
+  const filteredProjects = projects.filter((project) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    const title = (project.title || '').toLowerCase();
+    const prompt = (project.seed_prompt || '').toLowerCase();
+    const inputType = (project.input_type || '').toLowerCase();
+    if (title.includes(q) || prompt.includes(q) || inputType.includes(q)) return true;
+
+    // Fuzzy character subsequence match
+    let qIdx = 0;
+    for (let i = 0; i < title.length && qIdx < q.length; i++) {
+      if (title[i] === q[qIdx]) qIdx++;
+    }
+    return qIdx === q.length;
+  });
+
+  const renderProductionRail = (p: ProjectMetadata) => {
+    const hasWorld = true;
+    const hasSim = p.current_tick > 0 || p.total_events > 0;
+    const hasScript = p.total_scenes > 0 || Boolean((p as any).screenplay);
+    const hasStoryboard = (p.total_panels && p.total_panels > 0) || Boolean((p as any).storyboard || (p as any).shot_plan);
+    const hasExport = Boolean(hasScript && hasStoryboard);
+
+    return (
+      <div className="production-rail" aria-label="Production pipeline status">
+        <span className={`rail-step ${hasWorld ? 'active' : ''}`} title="World created">
+          <span className="rail-marker">{hasWorld ? '●' : '○'}</span>
+          <span className="rail-label">WORLD</span>
+        </span>
+        <span className="rail-line" />
+        <span className={`rail-step ${hasSim ? 'active' : ''}`} title={hasSim ? `Simulated to tick ${p.current_tick}` : 'Simulation pending'}>
+          <span className="rail-marker">{hasSim ? '●' : '○'}</span>
+          <span className="rail-label">SIMULATION</span>
+        </span>
+        <span className="rail-line" />
+        <span className={`rail-step ${hasScript ? 'active' : ''}`} title={hasScript ? `Screenplay scribed (${p.total_scenes} scenes)` : 'Screenplay pending'}>
+          <span className="rail-marker">{hasScript ? '●' : '○'}</span>
+          <span className="rail-label">SCREENPLAY</span>
+        </span>
+        <span className="rail-line" />
+        <span className={`rail-step ${hasStoryboard ? 'active' : ''}`} title={hasStoryboard ? 'Storyboard planned' : 'Storyboard pending'}>
+          <span className="rail-marker">{hasStoryboard ? '●' : '○'}</span>
+          <span className="rail-label">STORYBOARD</span>
+        </span>
+        <span className="rail-line" />
+        <span className={`rail-step ${hasExport ? 'active' : ''}`} title={hasExport ? 'Ready for export' : 'Export pending'}>
+          <span className="rail-marker">{hasExport ? '●' : '○'}</span>
+          <span className="rail-label">EXPORT</span>
+        </span>
+      </div>
+    );
+  };
 
   return (
     <div className="scrolly-container" ref={containerRef}>
@@ -373,6 +428,104 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
             ))}
           </div>
         </div>
+      </section>
+
+      {/* SECTION 08: PRODUCTION PORTFOLIO */}
+      <section className="scrolly-section portfolio-section">
+        <div className="portfolio-header-block">
+          <div className="section-index">08 / PRODUCTIONS</div>
+          <h2 className="split-large-title">
+            ACTIVE<br />PRODUCTIONS.
+          </h2>
+          <p className="split-subtext" style={{ maxWidth: '640px', margin: '0 auto 24px auto', textAlign: 'center' }}>
+            Autonomous emergent narrative sandboxes in active development.
+          </p>
+
+          <div className="portfolio-search-bar">
+            <input
+              type="text"
+              className="portfolio-search-input"
+              placeholder="Filter productions by title, premise, or prompt..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Filter active productions"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="portfolio-search-clear"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear filter"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        {filteredProjects.length === 0 ? (
+          <div className="portfolio-empty-box">
+            {projects.length === 0 ? (
+              <>
+                <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '16px' }}>
+                  No narrative simulations created yet.
+                </p>
+                <button className="btn-cinematic-primary" onClick={onStartNew}>
+                  + INITIALIZE FIRST SIMULATION
+                </button>
+              </>
+            ) : (
+              <>
+                <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '16px' }}>
+                  No simulations match "{searchQuery}".
+                </p>
+                <button className="btn-cinematic-secondary" onClick={() => setSearchQuery('')}>
+                  Clear Filter
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="portfolio-cards-grid">
+            {filteredProjects.map((p) => (
+              <div
+                key={p.id}
+                className="portfolio-project-card"
+                onClick={() => onOpenProject(p.id)}
+                title={`Open ${p.title} workstation`}
+              >
+                <div className="portfolio-card-header">
+                  <div>
+                    <span className="portfolio-card-kicker">
+                      {p.input_type ? p.input_type.toUpperCase().replace('_', ' ') : 'NARRATIVE SANDBOX'}
+                    </span>
+                    <h3 className="portfolio-card-title">{p.title}</h3>
+                  </div>
+                  <span className="portfolio-card-duration">
+                    ⏱ {p.target_duration_minutes || 20}m
+                  </span>
+                </div>
+
+                <p className="portfolio-card-prompt">
+                  "{p.seed_prompt}"
+                </p>
+
+                {renderProductionRail(p)}
+
+                <div className="portfolio-card-footer">
+                  <div className="portfolio-stats-group">
+                    <span className="portfolio-stat-pill">TICK {p.current_tick}</span>
+                    <span className="portfolio-stat-pill">{p.total_events} EVENTS</span>
+                    <span className="portfolio-stat-pill">{p.total_scenes} SCENES</span>
+                  </div>
+                  <span className="portfolio-open-link">
+                    WORKSTATION →
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* BOTTOM CTA */}

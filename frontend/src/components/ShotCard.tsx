@@ -55,12 +55,15 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       onPanelUpdated?.(result.panel);
     } catch (err: any) {
       console.error('External storyboard render failed:', err);
-      setErrorMessage(err.message || 'External rendering failed. Switched to hand-drawn fallback.');
+      setErrorMessage(err.message || 'Open-model rendering failed. Previs guide retained.');
     } finally {
       setIsGenerating(false);
       setStatusMessage(null);
     }
   };
+
+  // State for toggling previs guide when unrendered
+  const [showPrevisGuide, setShowPrevisGuide] = useState<boolean>(false);
 
   // Derive display values
   const shotNum = panel.shot_number ?? panel.panel_number ?? 1;
@@ -72,20 +75,14 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   const dialogueText = panel.dialogue_excerpt ? formatDisplayValue(panel.dialogue_excerpt) : null;
   const locationName = formatDisplayValue(panel.location_name || panel.location_id || 'Scene');
 
-  // Provenance checks
-  const isAi =
-    panel.mode === 'ai_image' ||
-    panel.provider === 'huggingface' ||
-    panel.versions?.some((v) => v.is_selected && v.mode === 'ai_image');
-
-  const provenanceLabel = isAi ? 'EXTERNAL AI IMAGE' : 'HAND-DRAWN STORYBOARD';
-  const provenanceBadgeClass = isAi ? 'badge-ai-image' : 'badge-hand-drawn';
-
   // Active artwork source
-  const existingSvg = panel.rendered_svg || safeExtractSvg(panel);
   const existingImageUrl = panel.image_url || panel.rendered_image_url;
   const hasRasterImage = Boolean(existingImageUrl && !existingImageUrl.endsWith('.svg'));
-  const hasSvg = Boolean(existingSvg);
+  const previsSvg = panel.previs_svg || panel.rendered_svg || safeExtractSvg(panel);
+
+  // Provenance checks
+  const provenanceLabel = hasRasterImage ? 'OPEN-MODEL STORYBOARD' : 'PREVIS GUIDE';
+  const provenanceBadgeClass = hasRasterImage ? 'badge-ai-image' : 'badge-previs-guide';
 
   return (
     <div
@@ -94,13 +91,14 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       title="Click to view panel inspector and visual details"
       data-testid={`shot-card-${panel.id}`}
     >
-      {/* 1. Minimal Header Bar (Clean, no heavy borders) */}
+      {/* 1. Minimal Header Bar */}
       <div className="shot-card-header">
         <div className="shot-identity-badge">
           <span className="shot-num-tag">SHOT {String(shotNum).padStart(2, '0')}</span>
           <span className="shot-separator">•</span>
           <span className="shot-framing-tag">{shotType}</span>
           {cameraAngle && <span className="shot-angle-tag">/ {cameraAngle}</span>}
+          {panel.is_keyframe && <span className="badge-keyframe">KEYFRAME</span>}
         </div>
 
         <div className="shot-header-actions">
@@ -109,20 +107,20 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             {provenanceLabel}
           </span>
 
-          {/* Explicit User Action: Render Panel Externally */}
+          {/* User Action: Render Panel with Open-Model */}
           {effectiveProjectId && (
             <button
               type="button"
               className="btn-shot-action"
               onClick={handleExternalRender}
               disabled={isGenerating}
-              title={`RENDER THIS PANEL EXTERNALLY (HF SDXL)\n${PRICING_DISCLAIMER}`}
+              title={`Render this panel externally via open-model generation runtime\n${PRICING_DISCLAIMER}`}
             >
               {isGenerating ? '⌛' : '⚡'}
             </button>
           )}
 
-          {/* Normal Offline Hand-Drawn Regeneration */}
+          {/* Regeneration */}
           <button
             type="button"
             className="btn-shot-action"
@@ -131,7 +129,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               onRegenerate?.(panel.id);
             }}
             disabled={isGenerating}
-            title="Regenerate hand-drawn sketch (offline)"
+            title="Regenerate storyboard artwork"
           >
             ↻
           </button>
@@ -141,7 +139,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       {/* 2. Main 16:9 Cinematic Artwork Frame Container */}
       <div className="shot-image-container">
         {isGenerating ? (
-          /* CSS Pulsing Skeleton Loader & Wireframe Placeholder */
+          /* CSS Pulsing Skeleton Loader */
           <div className="shot-skeleton-loader" data-testid="shot-skeleton-loader">
             <div className="shot-wireframe-placeholder">
               <div className="wireframe-crosshair-center">✛</div>
@@ -159,31 +157,48 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               <div className="status-spinner" />
               <div className="status-text-primary">RENDERING STORYBOARD PANEL</div>
               <div className="status-text-sub">
-                {statusMessage || 'Processing external AI model request...'}
+                {statusMessage || 'Processing open-model image render...'}
               </div>
             </div>
           </div>
         ) : hasRasterImage ? (
-          /* Raster Artwork (Persisted backend asset) */
+          /* Final Raster Artwork */
           <img
             src={existingImageUrl!}
             alt={actionText}
             className="shot-image-seamless"
             loading="lazy"
           />
-        ) : hasSvg ? (
-          /* Offline Deterministic Hand-Drawn SVG */
+        ) : showPrevisGuide && previsSvg ? (
+          /* Previs Guide Overlay (User explicitly toggled on) */
           <div
-            className="shot-svg-seamless"
-            dangerouslySetInnerHTML={{ __html: existingSvg! }}
+            className="shot-svg-seamless previs-overlay"
+            dangerouslySetInnerHTML={{ __html: previsSvg }}
           />
         ) : (
-          /* Idle Wireframe Placeholder */
-          <div className="shot-wireframe-placeholder idle-placeholder">
-            <div className="wireframe-crosshair-center">✛</div>
-            <div className="wireframe-label">FRAME {String(shotNum).padStart(2, '0')}</div>
-            <span className="idle-instruction">Hand-drawn storyboard ready</span>
+          /* Ungenerated State: Do NOT show procedural SVG as final artwork */
+          <div className="shot-unrendered-container" data-testid="shot-unrendered-state">
+            <div className="unrendered-icon">🎬</div>
+            <div className="unrendered-title">Open-model storyboard runtime not connected.</div>
+            <div className="unrendered-sub">
+              <span>Storyboard render unavailable</span>. Connect a GPU generation runtime for final artwork.
+            </div>
+            <div className="unrendered-actions">
+              {previsSvg && (
+                <button
+                  type="button"
+                  className="btn-previs-toggle"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowPrevisGuide(!showPrevisGuide);
+                  }}
+                >
+                  {showPrevisGuide ? 'Hide Previs Guide' : 'Previs guide available'}
+                </button>
+              )}
+            </div>
           </div>
+
         )}
 
         {/* Error Notification Pill */}
