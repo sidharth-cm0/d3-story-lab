@@ -47,6 +47,18 @@ from src.narrative.framer import FramingMode
 from src.narrative.screenplay_validator import ScreenplayQualityValidator
 from src.narrative.completion import StoryCompletionEngine, StoryOutline, StoryInputType
 from src.narrative.synopsis import SynopsisGenerator, StorySynopsis
+from src.domain.story_structure import (
+    StoryStructureType,
+    PresentationStrategy,
+    StructureSelectionMode,
+    ScenePurposeType,
+)
+from src.narrative.structure_library import STRUCTURE_LIBRARY, COMPATIBILITY_MATRIX
+from src.narrative.structure_selector import StructureSelector
+from src.narrative.blueprint_generator import StoryBlueprintGenerator
+from src.narrative.scene_builder import SceneBuilder
+from src.narrative.causal_analyzer import CausalContinuityAnalyzer
+from src.narrative.arc_tracker import CharacterArcTracker
 from src.storage.project_store import ProjectStore, ProjectData, ProjectMetadata
 from src.storyboard.models import ShotPlan, StoryboardPanel, StoryboardImageVersion, StoryboardImageStatus
 from src.storyboard.planner import StoryboardPlanner
@@ -95,6 +107,10 @@ class CreateProjectRequest(BaseModel):
     title: Optional[str] = None
     input_type: Optional[str] = "beginning"
     target_duration_minutes: int = Field(default=20, ge=5, le=120)
+    structure_mode: Optional[str] = "AUTO"
+    structure_type: Optional[str] = None
+    secondary_structure: Optional[str] = None
+    presentation_strategy: Optional[str] = "CHRONOLOGICAL"
 
 
 class StepRequest(BaseModel):
@@ -113,6 +129,7 @@ class PlanStoryboardRequest(BaseModel):
     density_mode: str = Field(default="standard")  # "quick" | "standard" | "detailed"
     panels_per_page: int = Field(default=4, ge=1, le=8)
     render_mode: str = Field(default="KEYFRAMES")  # "KEYFRAMES" | "FULL_BOARD"
+    keyframe_budget: Optional[int] = Field(default=8, ge=1, le=12)
 
 
 class GenerateStoryboardRequest(BaseModel):
@@ -236,6 +253,7 @@ def _format_rendered_panel_dict(panel, res, version: int = 1) -> dict:
         "prompt_used": res.compiled_prompt,
         "negative_prompt": res.negative_prompt,
         "caption": panel.caption,
+        "psychological_rationale": getattr(panel, "psychological_rationale", None) or (panel.metadata.get("psychological_rationale") if panel.metadata else None),
         "metadata": res.render_metadata,
     }
 
@@ -297,6 +315,7 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         orch = SimulationOrchestrator(
             world=project.world,
             provider=provider,
+            story_blueprint=getattr(project, "story_blueprint", None),
         )
         orchestrator_cache[pid] = orch
         return orch
@@ -352,6 +371,42 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         synopsis_gen = SynopsisGenerator()
         synopsis = synopsis_gen.generate_synopsis(outline=outline, world=world)
 
+        # Select narrative structure & synthesize soft-pressure blueprint
+        selector = StructureSelector()
+        mode_val = StructureSelectionMode.AUTO
+        if req.structure_mode and req.structure_mode.upper() in StructureSelectionMode._value2member_map_:
+            mode_val = StructureSelectionMode(req.structure_mode.upper())
+        elif req.structure_type:
+            mode_val = StructureSelectionMode.MANUAL
+
+        primary_val = None
+        if req.structure_type and req.structure_type.upper() in StoryStructureType._value2member_map_:
+            primary_val = StoryStructureType(req.structure_type.upper())
+
+        sec_val = None
+        if req.secondary_structure and req.secondary_structure.upper() in StoryStructureType._value2member_map_:
+            sec_val = StoryStructureType(req.secondary_structure.upper())
+
+        pres_val = PresentationStrategy.CHRONOLOGICAL
+        if req.presentation_strategy and req.presentation_strategy.upper() in PresentationStrategy._value2member_map_:
+            pres_val = PresentationStrategy(req.presentation_strategy.upper())
+
+        sel_result = selector.select_structure(
+            prompt=req.seed_prompt,
+            input_type=req.input_type or "beginning",
+            mode=mode_val,
+            manual_primary=primary_val,
+            manual_secondary=sec_val,
+        )
+
+        bp_gen = StoryBlueprintGenerator()
+        blueprint = bp_gen.generate_blueprint(
+            prompt=req.seed_prompt,
+            selection=sel_result,
+            title=title,
+            presentation_strategy=pres_val,
+        )
+
         metadata = ProjectMetadata(
             id=world.id,
             title=title,
@@ -370,6 +425,8 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             world=world,
             story_outline=outline,
             synopsis=synopsis,
+            story_structure=sel_result.primary_structure.value,
+            story_blueprint=blueprint,
         )
         store.save_project(project)
         get_or_create_orchestrator(project)
@@ -609,6 +666,19 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         proj.shot_plan = shot_plan
         proj.rendered_panels = rendered_panels
 
+        # Build scenes with SceneBuilder and CoreEmotionalObjective
+        scene_builder = SceneBuilder()
+        scenes = scene_builder.build_scenes(selection, proj.world)
+        proj.scenes = scenes
+
+        # Analyze causal continuity ('Therefore / But' vs 'And Then')
+        causal_analyzer = CausalContinuityAnalyzer()
+        proj.causal_summary = causal_analyzer.analyze_causal_continuity(events, scenes)
+
+        # Track observational character arcs
+        arc_tracker = CharacterArcTracker()
+        proj.character_arcs = arc_tracker.track_character_arcs(proj.world, events)
+
         # Validate screenplay and storyboard quality
         screenplay_validator = ScreenplayQualityValidator()
         screenplay_report = screenplay_validator.validate_screenplay(doc, proj.world)
@@ -630,7 +700,89 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             "synopsis": proj.synopsis.model_dump(mode="json") if proj.synopsis else None,
             "screenplay_quality": proj.screenplay_quality,
             "storyboard_quality": proj.storyboard_quality,
+            "causal_summary": proj.causal_summary.model_dump(mode="json") if proj.causal_summary else None,
+            "character_arcs": {cid: r.model_dump(mode="json") for cid, r in proj.character_arcs.items()} if proj.character_arcs else {},
+            "scenes": [s.model_dump(mode="json") for s in proj.scenes] if proj.scenes else [],
         }
+
+    @app.get("/api/structures")
+    def list_structures():
+        return {
+            "structures": [
+                {
+                    "structure_type": s.structure_type.value,
+                    "name": s.name,
+                    "description": s.description,
+                    "pacing_curve": s.pacing_curve,
+                    "ideal_for": s.ideal_for,
+                    "beats": [b.model_dump(mode="json") for b in s.beats],
+                }
+                for s in STRUCTURE_LIBRARY.values()
+            ],
+            "compatibility": {
+                f"{k[0].value}:{k[1].value}": v
+                for k, v in COMPATIBILITY_MATRIX.items()
+            },
+        }
+
+    @app.get("/api/projects/{project_id}/blueprint")
+    def get_blueprint(project_id: str):
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if not proj.story_blueprint:
+            selector = StructureSelector()
+            sel_result = selector.select_structure(
+                prompt=proj.metadata.seed_prompt,
+                mode=StructureSelectionMode.AUTO,
+            )
+            bp_gen = StoryBlueprintGenerator()
+            proj.story_blueprint = bp_gen.generate_blueprint(
+                prompt=proj.metadata.seed_prompt,
+                selection=sel_result,
+                title=proj.metadata.title,
+            )
+            store.save_project(proj)
+        return proj.story_blueprint.model_dump(mode="json")
+
+    @app.get("/api/projects/{project_id}/character-arcs")
+    def get_character_arcs(project_id: str):
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        events = sorted(proj.world.events.values(), key=lambda e: (e.tick, e.id))
+        tracker = CharacterArcTracker()
+        reports = tracker.track_character_arcs(proj.world, events)
+        proj.character_arcs = reports
+        store.save_project(proj)
+        return {cid: rep.model_dump(mode="json") for cid, rep in reports.items()}
+
+    @app.get("/api/projects/{project_id}/causal-continuity")
+    def get_causal_continuity(project_id: str):
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        events = sorted(proj.world.events.values(), key=lambda e: (e.tick, e.id))
+        analyzer = CausalContinuityAnalyzer()
+        scenes = proj.scenes or []
+        summary = analyzer.analyze_causal_continuity(events, scenes)
+        proj.causal_summary = summary
+        store.save_project(proj)
+        return summary.model_dump(mode="json")
+
+    @app.get("/api/projects/{project_id}/scenes")
+    def get_scenes(project_id: str):
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if not proj.scenes:
+            if proj.selection and proj.selection.filtered_beats:
+                builder = SceneBuilder()
+                proj.scenes = builder.build_scenes(proj.selection, proj.world)
+                store.save_project(proj)
+            else:
+                return []
+        return [s.model_dump(mode="json") for s in proj.scenes]
 
     @app.get("/api/projects/{project_id}/screenplay/quality")
     def get_screenplay_quality(project_id: str):
@@ -706,6 +858,7 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         density = req.density_mode if req else "standard"
         ppp = req.panels_per_page if req else 4
         render_mode = req.render_mode if req else "KEYFRAMES"
+        budget = req.keyframe_budget if (req and req.keyframe_budget) else 8
 
         asset_store = StoryboardAssetStore(store.base_dir)
         bible = proj.visual_bible or asset_store.load_visual_bible(project_id)
@@ -717,7 +870,7 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         char_packs, loc_packs, prop_packs = _build_continuity_context(proj.world, bible)
 
         planner = StoryboardPlanner(panels_per_page=ppp, density_mode=density)
-        shot_plan = planner.plan_shots(proj.screenplay, proj.world, bible=bible, project_id=project_id)
+        shot_plan = planner.plan_shots(proj.screenplay, proj.world, bible=bible, project_id=project_id, keyframe_budget=budget)
         shot_plan.render_mode = render_mode
 
         continuity_report = ContinuityValidator.validate_shot_plan(shot_plan.panels, bible)
@@ -753,7 +906,30 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
                 )
                 p.versions = [ver]
                 p.selected_version = 1
-                rendered_panels.append(engine.render_panel(p, bible=bible, version=1))
+                rendered_panels.append({
+                    "panel_id": p.panel_id or p.id,
+                    "scene_number": p.scene_number,
+                    "shot_number": p.shot_number,
+                    "page_number": p.page_number,
+                    "shot_type": p.shot_type.value if hasattr(p.shot_type, "value") else str(p.shot_type),
+                    "camera_angle": p.camera_angle.value if hasattr(p.camera_angle, "value") else str(p.camera_angle),
+                    "image_url": None,
+                    "rendered_svg": None,
+                    "render_type": "previs_guide",
+                    "provider": p.provider,
+                    "mode": "previs_guide",
+                    "status": "PLANNED",
+                    "fallback_reason": None,
+                    "provider_status": caps.get("status", "AVAILABLE") if isinstance(caps, dict) else "AVAILABLE",
+                    "continuity_mode": "Open-Model Continuity Pack",
+                    "mime_type": "image/png",
+                    "version": 1,
+                    "prompt_used": p.visual_prompt,
+                    "negative_prompt": "",
+                    "caption": p.caption,
+                    "psychological_rationale": getattr(p, "psychological_rationale", None) or (p.metadata.get("psychological_rationale") if p.metadata else None),
+                    "metadata": {"previs_available": True, "label": "PREVIS GUIDE", "keyframe_deferred": True},
+                })
             else:
                 res = engine.generate_panel(p, bible=bible, version=1)
                 p.image_url = res.image_url if res.status == StoryboardImageStatus.READY else None
@@ -782,7 +958,7 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
                 )
                 p.versions = [ver]
                 p.selected_version = 1
-                rendered_panels.append(engine.render_panel(p, bible=bible, version=1))
+                rendered_panels.append(_format_rendered_panel_dict(p, res, version=1))
 
         proj.shot_plan = shot_plan
         proj.rendered_panels = rendered_panels
@@ -877,6 +1053,7 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
                     "prompt_used": p.visual_prompt,
                     "negative_prompt": "",
                     "caption": p.caption,
+                    "psychological_rationale": getattr(p, "psychological_rationale", None) or (p.metadata.get("psychological_rationale") if p.metadata else None),
                     "metadata": {"previs_available": True, "label": "PREVIS GUIDE", "keyframe_deferred": True},
                 })
             else:

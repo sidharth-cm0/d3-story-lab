@@ -57,6 +57,7 @@ class StoryboardPlanner:
         bible: Optional[VisualBible] = None,
         aspect_ratio: str = "16:9",
         project_id: str = "",
+        keyframe_budget: Optional[int] = None,
     ) -> ShotPlan:
         """Create a complete sequence of storyboard panels organized into pages."""
         panels: List[StoryboardPanel] = []
@@ -98,6 +99,11 @@ class StoryboardPlanner:
             loc_name = loc.name if loc else scene.heading.replace("INT. ", "").replace("EXT. ", "").split(" - ")[0]
             loc_vis = loc_profiles.get(scene.location_id, f"{loc_name} (cinematic noir architecture, low-key lighting)")
 
+            # Extract Core Emotional Objective for the scene if available
+            ceo_data: Optional[Dict[str, Any]] = scene.metadata.get("core_emotional_objective") if scene.metadata else None
+            focal_char_id = ceo_data.get("focal_character_id") if ceo_data else None
+            focal_char_name = ceo_data.get("focal_character_name") if ceo_data else None
+
             # Resolve canonical objects for establishing shot
             est_text = f"{scene.heading} {loc_name}"
             est_obj_ids = PropResolver.resolve_canonical_object_ids(
@@ -128,6 +134,10 @@ class StoryboardPlanner:
                 f"Wide establishing shot of {loc_vis}. Low-key chiaroscuro lighting, deep black shadows."
             )
 
+            est_rationale = f"Atmospheric environmental establish for {scene.heading}; sets spatial grounding and mood."
+            if ceo_data and ceo_data.get("immediate_desire"):
+                est_rationale += f" Prepares arena for focal pursuit: '{ceo_data.get('immediate_desire')}'."
+
             est_panel = StoryboardPanel(
                 id=f"pnl_{scene.scene_number:02d}_est_{panel_counter:03d}",
                 panel_id=f"pnl_{scene.scene_number:02d}_est_{panel_counter:03d}",
@@ -142,6 +152,7 @@ class StoryboardPlanner:
                 narrative_purpose=ShotPurpose.ESTABLISH,
                 lens_feel="24mm anamorphic wide, expansive environment depth",
                 composition="Rule of thirds, low architectural horizon, deep shadows framing entrance",
+                psychological_rationale=est_rationale,
                 location_id=scene.location_id,
                 location_name=loc_name,
                 characters_present=[],
@@ -167,7 +178,11 @@ class StoryboardPlanner:
                 aspect_ratio=aspect_ratio,
                 source_event_ids=list(scene.source_event_ids[:2]),
                 source_screenplay_block_ids=[scene.blocks[0].id] if scene.blocks else [],
-                metadata={"shot_role": "establishing"},
+                metadata={
+                    "shot_role": "establishing",
+                    "psychological_rationale": est_rationale,
+                    **({"core_emotional_objective": ceo_data} if ceo_data else {}),
+                },
             )
             # Compile full structured prompt
             compiled_est = self.compiler.compile_panel_prompt(est_panel, bible)
@@ -222,6 +237,14 @@ class StoryboardPlanner:
                     char_names = [char_name] if char else []
                     char_ref = {char_name: char_profiles.get(char_id, char_name)} if char_id else {}
 
+                    # Check if focal character is framed in this action
+                    is_focal = False
+                    if ceo_data:
+                        if char_id and char_id == focal_char_id:
+                            is_focal = True
+                        elif focal_char_name and (char_name.lower() == str(focal_char_name).lower() or str(focal_char_name).lower() in block.text.lower()):
+                            is_focal = True
+
                     # Psychological Camera Planning
                     psych_state = self.camera_planner.derive_psychological_state(char)
                     cam_rec = self.camera_planner.plan_camera(
@@ -229,6 +252,7 @@ class StoryboardPlanner:
                         action_text=block.text,
                         shot_purpose=purpose,
                         last_shot_type=last_shot_type,
+                        core_emotional_objective=ceo_data if is_focal else None,
                     )
                     lighting_prof = resolve_lighting_profile(mood=scene.heading, action=block.text)
 
@@ -328,6 +352,7 @@ class StoryboardPlanner:
                         narrative_purpose=purpose,
                         lens_feel=lens,
                         composition=comp,
+                        psychological_rationale=cam_rec.psychological_rationale,
                         subject_focus=f"{char_name} {primary_prop_focus}".strip(),
                         location_id=scene.location_id,
                         location_name=loc_name,
@@ -355,7 +380,13 @@ class StoryboardPlanner:
                         aspect_ratio=aspect_ratio,
                         source_event_ids=list(block.source_event_ids),
                         source_screenplay_block_ids=[block.id],
-                        metadata={"shot_role": "action", "purpose": purpose.value},
+                        metadata={
+                            "shot_role": "action",
+                            "purpose": purpose.value,
+                            "psychological_rationale": cam_rec.psychological_rationale,
+                            "is_focal_character": is_focal,
+                            **({"core_emotional_objective": ceo_data} if is_focal else {}),
+                        },
                     )
                     compiled_act = self.compiler.compile_panel_prompt(act_panel, bible)
                     act_panel.compiled_prompt = compiled_act
@@ -397,12 +428,20 @@ class StoryboardPlanner:
                         bubble_type = "shout"
 
                     speaker_char = world.characters.get(char_id) if (world and char_id) else None
+                    is_focal = False
+                    if ceo_data:
+                        if char_id and char_id == focal_char_id:
+                            is_focal = True
+                        elif focal_char_name and (speaker_name.lower() == str(focal_char_name).lower() or (speaker_char and speaker_char.name.lower() == str(focal_char_name).lower())):
+                            is_focal = True
+
                     psych_state = self.camera_planner.derive_psychological_state(speaker_char)
                     cam_rec = self.camera_planner.plan_camera(
                         psych_state=psych_state,
                         action_text=dialogue_text,
                         shot_purpose=purpose,
                         last_shot_type=last_shot_type,
+                        core_emotional_objective=ceo_data if is_focal else None,
                     )
                     lighting_prof = resolve_lighting_profile(mood="Tense", action=dialogue_text)
 
@@ -479,6 +518,7 @@ class StoryboardPlanner:
                         narrative_purpose=purpose,
                         lens_feel=lens,
                         composition=comp,
+                        psychological_rationale=cam_rec.psychological_rationale,
                         subject_focus=f"{speaker_name} speaking",
                         location_id=scene.location_id,
                         location_name=loc_name,
@@ -507,7 +547,13 @@ class StoryboardPlanner:
                         aspect_ratio=aspect_ratio,
                         source_event_ids=list(dict.fromkeys(source_ids)),
                         source_screenplay_block_ids=block_ids,
-                        metadata={"shot_role": "dialogue", "purpose": purpose.value},
+                        metadata={
+                            "shot_role": "dialogue",
+                            "purpose": purpose.value,
+                            "psychological_rationale": cam_rec.psychological_rationale,
+                            "is_focal_character": is_focal,
+                            **({"core_emotional_objective": ceo_data} if is_focal else {}),
+                        },
                     )
                     compiled_dia = self.compiler.compile_panel_prompt(dia_panel, bible)
                     dia_panel.compiled_prompt = compiled_dia
@@ -523,7 +569,7 @@ class StoryboardPlanner:
 
         # Apply Keyframe Beat Selection
         from src.storyboard.open_model_provider import select_keyframe_indices
-        keyframe_indices = select_keyframe_indices(panels)
+        keyframe_indices = select_keyframe_indices(panels, budget=keyframe_budget)
         for idx, pnl in enumerate(panels):
             pnl.is_keyframe = idx in keyframe_indices
             if idx in keyframe_indices:

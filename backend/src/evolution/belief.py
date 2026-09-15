@@ -1,5 +1,5 @@
-"""Belief updater for belief formation, reinforcement, and contradiction handling"""
 import uuid
+import hashlib
 from typing import Optional, List
 from ..domain import WorldState, Belief
 
@@ -32,7 +32,8 @@ class BeliefUpdater:
                 return updated_bel
 
         # Form new belief
-        new_id = f"bel_{world.current_tick}_{character_id}_{uuid.uuid4().hex[:6]}"
+        slug = hashlib.sha256(f"{world.current_tick}:{character_id}:{len(world.beliefs)}:{statement}".encode()).hexdigest()[:6]
+        new_id = f"bel_{world.current_tick}_{character_id}_{slug}"
         initial_conf = round(max(0.0, min(1.0, initial_confidence)), 2)
         new_bel = Belief(
             id=new_id,

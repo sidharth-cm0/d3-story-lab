@@ -26,6 +26,7 @@ from src.storyboard.visual_bible import VisualBible
 from src.storyboard.compiler import StoryboardPromptCompiler
 from src.storyboard.asset_store import StoryboardAssetStore
 from src.storyboard.provider import ComicGraphicStoryboardProvider
+from src.providers.budget import BudgetGovernor, BudgetExceededError, ContentHashCache
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,71 @@ class StoryboardImageProvider(ABC):
             "metadata": res.render_metadata,
         }
         return data
+
+
+class CachedStoryboardImageProvider(StoryboardImageProvider):
+    """Wraps any StoryboardImageProvider with ContentHashCache and BudgetGovernor.
+    - Key = SHA-256 hash of (shot prompt + visual style prompt + character visual anchor descriptions + aspect ratio)
+    - If key exists in cache, return cached image, do not call image provider, do not bill against budget.
+    - If budget limit reached, raises BudgetExceededError.
+    """
+
+    def __init__(
+        self,
+        provider: StoryboardImageProvider,
+        cache: Optional[ContentHashCache] = None,
+        budget_governor: Optional[BudgetGovernor] = None,
+    ):
+        self.provider = provider
+        self.cache = cache if cache is not None else ContentHashCache()
+        self.budget_governor = budget_governor
+
+    def get_status(self) -> Dict[str, Any]:
+        status = self.provider.get_status()
+        status["cache_size"] = self.cache.size
+        if self.budget_governor:
+            status["budget"] = self.budget_governor.get_summary()
+        return status
+
+    def compute_cache_key(
+        self,
+        panel: StoryboardPanel,
+        bible: Optional[VisualBible] = None,
+    ) -> str:
+        shot_prompt = panel.compiled_prompt or panel.image_prompt or panel.prompt
+        style_prompt = getattr(bible, "style_prompt", "") if bible else ""
+        anchors = ""
+        if bible and hasattr(bible, "characters") and bible.characters:
+            anchors = "|".join(
+                f"{k}:{getattr(v, 'visual_summary', str(v))}"
+                for k, v in sorted(bible.characters.items())
+            )
+        return ContentHashCache.compute_hash(
+            shot_prompt=shot_prompt,
+            visual_style_prompt=style_prompt,
+            character_visual_anchors=anchors,
+            aspect_ratio=panel.aspect_ratio or "16:9",
+        )
+
+    def generate_panel(
+        self,
+        panel: StoryboardPanel,
+        bible: Optional[VisualBible] = None,
+        version: int = 1,
+    ) -> StoryboardImageResult:
+        cache_key = self.compute_cache_key(panel, bible)
+        cached_result = self.cache.get(cache_key)
+        if cached_result is not None:
+            # Cache hit: Return cached image without calling provider or charging budget
+            return cached_result
+
+        # Check / charge budget
+        if self.budget_governor:
+            self.budget_governor.charge_panel()
+
+        result = self.provider.generate_panel(panel, bible=bible, version=version)
+        self.cache.set(cache_key, result)
+        return result
 
 
 class FallbackComicSvgProvider(StoryboardImageProvider):

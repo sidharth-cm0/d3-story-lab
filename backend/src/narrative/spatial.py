@@ -108,7 +108,7 @@ class SpatialReasoner:
 
         loc = world.locations.get(location_id)
         name = loc.name if loc else location_id
-        desc = (loc.description if loc else "").lower()
+        desc = ((loc.description or "") if loc else "").lower()
 
         # Deterministically parse or generate zones
         zones = ["main_floor", "entrance_threshold", "perimeter_shadows"]

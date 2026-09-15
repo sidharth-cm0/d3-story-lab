@@ -75,8 +75,13 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
   useEffect(() => {
     if (project.storyboard) {
       setStoryboardData(project.storyboard);
+    } else if (project.shot_plan && project.rendered_panels) {
+      setStoryboardData({
+        shot_plan: project.shot_plan,
+        rendered_panels: project.rendered_panels,
+      });
     }
-  }, [project.storyboard]);
+  }, [project.storyboard, project.shot_plan, project.rendered_panels]);
 
   useEffect(() => {
     if (activeTab !== 'presentation') return;

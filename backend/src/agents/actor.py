@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import uuid
+import hashlib
 import logging
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field
@@ -45,11 +46,13 @@ class ActorAgent:
         provider: Optional[LLMProvider] = None,
         memory_service: Optional[MemoryService] = None,
         repetition_tracker: Optional[RepetitionTracker] = None,
+        seed: Optional[int] = None,
     ):
         self.character_id = character_id
         self.provider = provider or MockLLMProvider()
         self.memory_service = memory_service
         self.repetition_tracker = repetition_tracker or RepetitionTracker()
+        self.seed = seed
 
     def propose_action(self, world: WorldState) -> ActionProposal:
         """Execute the cognitive loop:
@@ -57,8 +60,9 @@ class ActorAgent:
         """
         char = world.characters.get(self.character_id)
         if not char:
+            slug = hashlib.sha256(f"{self.seed}:{self.character_id}:{world.current_tick}:err".encode()).hexdigest()[:6] if self.seed is not None else uuid.uuid4().hex[:6]
             return ActionProposal(
-                id=f"act_err_{uuid.uuid4().hex[:6]}",
+                id=f"act_err_{slug}",
                 actor_id=self.character_id,
                 action_type=ActionType.WAIT,
                 tick_proposed=world.current_tick,
@@ -254,8 +258,11 @@ class ActorAgent:
                 cand, char, goals, world, self.repetition_tracker
             )
 
-        # Sort descending by final score
-        candidates.sort(key=lambda c: c.final_score, reverse=True)
+        # Sort descending by final score with deterministic tie-breaking
+        candidates.sort(
+            key=lambda c: (c.final_score, c.intent, c.action_type.value, c.target_id or ""),
+            reverse=True,
+        )
 
         # Pick the highest-scoring candidate that passes deterministic validation
         for cand in candidates:
@@ -286,8 +293,12 @@ class ActorAgent:
             loc = world.locations.get(char.current_location_id)
             if loc and loc.connected_locations:
                 dest = loc.connected_locations[0]
+                slug = (
+                    hashlib.sha256(f"{self.seed}:{self.character_id}:{world.current_tick}:fallback_move:{dest}".encode()).hexdigest()[:6]
+                    if self.seed is not None else uuid.uuid4().hex[:6]
+                )
                 return ActionProposal(
-                    id=f"prop_fallback_move_{self.character_id}_{world.current_tick}_{uuid.uuid4().hex[:6]}",
+                    id=f"prop_fallback_move_{self.character_id}_{world.current_tick}_{slug}",
                     actor_id=self.character_id,
                     action_type=ActionType.MOVE,
                     location_id=dest,
@@ -296,8 +307,12 @@ class ActorAgent:
                     reason="Moving to adjacent room after previous action rejected",
                 )
 
+        slug = (
+            hashlib.sha256(f"{self.seed}:{self.character_id}:{world.current_tick}:fallback_wait".encode()).hexdigest()[:6]
+            if self.seed is not None else uuid.uuid4().hex[:6]
+        )
         return ActionProposal(
-            id=f"prop_fallback_wait_{self.character_id}_{world.current_tick}_{uuid.uuid4().hex[:6]}",
+            id=f"prop_fallback_wait_{self.character_id}_{world.current_tick}_{slug}",
             actor_id=self.character_id,
             action_type=ActionType.WAIT,
             tick_proposed=world.current_tick,
@@ -305,8 +320,12 @@ class ActorAgent:
         )
 
     def _candidate_to_proposal(self, candidate: CandidateAction, current_tick: int) -> ActionProposal:
+        slug = (
+            hashlib.sha256(f"{self.seed}:{self.character_id}:{current_tick}:{candidate.action_type.value}:{candidate.target_id or ''}".encode()).hexdigest()[:6]
+            if self.seed is not None else uuid.uuid4().hex[:6]
+        )
         return ActionProposal(
-            id=f"prop_{self.character_id}_{current_tick}_{uuid.uuid4().hex[:6]}",
+            id=f"prop_{self.character_id}_{current_tick}_{slug}",
             actor_id=self.character_id,
             action_type=candidate.action_type,
             target_id=candidate.target_id,
@@ -318,8 +337,12 @@ class ActorAgent:
 
     def _decision_to_proposal(self, decision: ActorDecision, current_tick: int) -> ActionProposal:
         """Convert an ActorDecision to an ActionProposal"""
+        slug = (
+            hashlib.sha256(f"{self.seed}:{self.character_id}:{current_tick}:{decision.action_type.value}:{decision.target_id or ''}".encode()).hexdigest()[:6]
+            if self.seed is not None else uuid.uuid4().hex[:6]
+        )
         return ActionProposal(
-            id=f"prop_{self.character_id}_{current_tick}_{uuid.uuid4().hex[:6]}",
+            id=f"prop_{self.character_id}_{current_tick}_{slug}",
             actor_id=self.character_id,
             action_type=decision.action_type,
             target_id=decision.target_id,

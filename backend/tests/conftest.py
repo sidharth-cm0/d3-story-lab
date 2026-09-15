@@ -7,3 +7,8 @@ def ensure_offline_testing(monkeypatch):
     monkeypatch.setenv("USE_MOCK_LLM", "1")
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv("ON_DEMAND_API_KEY", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_API_KEY", raising=False)
+    monkeypatch.delenv("STORYBOARD_RENDER_PROVIDER", raising=False)
+    monkeypatch.delenv("STORYBOARD_PROVIDER", raising=False)
+    monkeypatch.delenv("STORYBOARD_RUNTIME_URL", raising=False)
+    monkeypatch.delenv("STORYBOARD_MODEL", raising=False)

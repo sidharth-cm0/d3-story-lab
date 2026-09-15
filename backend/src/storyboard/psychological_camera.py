@@ -98,13 +98,14 @@ class PsychologicalCameraPlanner:
         action_text: str,
         shot_purpose: ShotPurpose,
         last_shot_type: Optional[ShotType] = None,
+        core_emotional_objective: Optional[Dict[str, Any]] = None,
     ) -> CinematicShotRecommendation:
         """Determine camera framing, elevation, and movement from psychological state and purpose."""
         act_lower = action_text.lower()
 
         # 1. Sudden Realization / Shock / Revelation
         if shot_purpose in (ShotPurpose.REVELATION, ShotPurpose.REACTION) or any(w in act_lower for w in ["gasps", "stares", "realizes", "shock", "freeze"]):
-            return CinematicShotRecommendation(
+            rec = CinematicShotRecommendation(
                 shot_type=ShotType.CLOSE_UP,
                 camera_angle=CameraAngle.DUTCH_ANGLE if psych_state.certainty < 0.4 else CameraAngle.EYE_LEVEL,
                 camera_movement="PUSH IN",
@@ -115,8 +116,8 @@ class PsychologicalCameraPlanner:
             )
 
         # 2. Clue / Object Insert
-        if shot_purpose in (ShotPurpose.CLUE, ShotPurpose.DISCOVERY) or any(w in act_lower for w in ["dossier", "key", "ledger", "safe", "drawer", "lock"]):
-            return CinematicShotRecommendation(
+        elif shot_purpose in (ShotPurpose.CLUE, ShotPurpose.DISCOVERY) or any(w in act_lower for w in ["dossier", "key", "ledger", "safe", "drawer", "lock"]):
+            rec = CinematicShotRecommendation(
                 shot_type=ShotType.INSERT,
                 camera_angle=CameraAngle.HIGH_ANGLE if psych_state.power < 0 else CameraAngle.EYE_LEVEL,
                 camera_movement="PUSH IN",
@@ -126,8 +127,8 @@ class PsychologicalCameraPlanner:
             )
 
         # 3. High Dominance / High Information Advantage -> Controlled Low-Angle Medium
-        if psych_state.social_dominance > 0.3 and psych_state.power > 0.2:
-            return CinematicShotRecommendation(
+        elif psych_state.social_dominance > 0.3 and psych_state.power > 0.2:
+            rec = CinematicShotRecommendation(
                 shot_type=ShotType.MEDIUM,
                 camera_angle=CameraAngle.LOW_ANGLE,
                 camera_movement="STATIC",
@@ -137,8 +138,8 @@ class PsychologicalCameraPlanner:
             )
 
         # 4. Low Power / High Fear / Low Certainty -> Slightly High-Angle Medium Close-Up
-        if psych_state.power < -0.2 and psych_state.fear > 0.5:
-            return CinematicShotRecommendation(
+        elif psych_state.power < -0.2 and psych_state.fear > 0.5:
+            rec = CinematicShotRecommendation(
                 shot_type=ShotType.CLOSE_UP,
                 camera_angle=CameraAngle.HIGH_ANGLE,
                 camera_movement="DOLLY OUT",
@@ -148,8 +149,8 @@ class PsychologicalCameraPlanner:
             )
 
         # 5. Betrayal / Evasion / High Deception -> Dutch Angle or Canted Framing
-        if psych_state.certainty < 0.35 or any(w in act_lower for w in ["deflect", "lie", "denies", "evades", "betray"]):
-            return CinematicShotRecommendation(
+        elif psych_state.certainty < 0.35 or any(w in act_lower for w in ["deflect", "lie", "denies", "evades", "betray"]):
+            rec = CinematicShotRecommendation(
                 shot_type=ShotType.MEDIUM,
                 camera_angle=CameraAngle.DUTCH_ANGLE,
                 camera_movement="TRACK ->",
@@ -160,8 +161,8 @@ class PsychologicalCameraPlanner:
             )
 
         # 6. Action / Pursuit -> Dynamic Tracking
-        if shot_purpose in (ShotPurpose.ACTION, ShotPurpose.CLIMAX) or any(w in act_lower for w in ["sprint", "run", "pursue", "shoot", "detonate"]):
-            return CinematicShotRecommendation(
+        elif shot_purpose in (ShotPurpose.ACTION, ShotPurpose.CLIMAX) or any(w in act_lower for w in ["sprint", "run", "pursue", "shoot", "detonate"]):
+            rec = CinematicShotRecommendation(
                 shot_type=ShotType.MEDIUM,
                 camera_angle=CameraAngle.LOW_ANGLE if psych_state.power >= 0 else CameraAngle.HIGH_ANGLE,
                 camera_movement="TRACK ->",
@@ -171,12 +172,38 @@ class PsychologicalCameraPlanner:
             )
 
         # Default standard dialogue / scene coverage
-        shot_t = ShotType.CLOSE_UP if last_shot_type == ShotType.MEDIUM else ShotType.MEDIUM
-        return CinematicShotRecommendation(
-            shot_type=shot_t,
-            camera_angle=CameraAngle.EYE_LEVEL,
-            camera_movement="STATIC",
-            lens_feel="50mm portrait standard",
-            composition_guide="Rule of thirds framing, balanced chiaroscuro negative space",
-            psychological_rationale="Balanced eye-level intimacy allowing actor micro-performance to register.",
-        )
+        else:
+            shot_t = ShotType.CLOSE_UP if last_shot_type == ShotType.MEDIUM else ShotType.MEDIUM
+            rec = CinematicShotRecommendation(
+                shot_type=shot_t,
+                camera_angle=CameraAngle.EYE_LEVEL,
+                camera_movement="STATIC",
+                lens_feel="50mm portrait standard",
+                composition_guide="Rule of thirds framing, balanced chiaroscuro negative space",
+                psychological_rationale="Balanced eye-level intimacy allowing actor micro-performance to register.",
+            )
+
+        if core_emotional_objective:
+            desire = core_emotional_objective.get("immediate_desire")
+            obstacle = core_emotional_objective.get("immediate_obstacle")
+            need = core_emotional_objective.get("internal_need")
+            clauses = []
+            if desire:
+                clauses.append(f"pursuing '{desire}'")
+            if obstacle:
+                clauses.append(f"confronting '{obstacle}'")
+            if need:
+                clauses.append(f"need for '{need}'")
+            if clauses:
+                enriched_rationale = f"{rec.psychological_rationale} Reflects focal objective: {', '.join(clauses)}."
+                return CinematicShotRecommendation(
+                    shot_type=rec.shot_type,
+                    camera_angle=rec.camera_angle,
+                    camera_movement=rec.camera_movement,
+                    dutch_angle_deg=rec.dutch_angle_deg,
+                    lens_feel=rec.lens_feel,
+                    composition_guide=rec.composition_guide,
+                    psychological_rationale=enriched_rationale,
+                )
+
+        return rec

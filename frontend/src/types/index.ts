@@ -544,7 +544,92 @@ export interface StoryboardResponse {
   continuity_report?: ContinuityReport;
 }
 
-export type ActiveView = 'home' | 'world' | 'actors' | 'simulation' | 'script' | 'storyboard' | 'export';
+export type StoryStructureType =
+  | 'THREE_ACT'
+  | 'HERO_JOURNEY'
+  | 'FREYTAG'
+  | 'SAVE_THE_CAT'
+  | 'STORY_CIRCLE'
+  | 'KISHOTENKETSU';
+
+export interface BeatDefinition {
+  beat_id: string;
+  name: string;
+  act: string;
+  target_position_pct: number;
+  expected_dramatic_function: string;
+  pressure_signal: string;
+  description: string;
+}
+
+export interface StructureDefinition {
+  structure_type: StoryStructureType;
+  name: string;
+  display_name?: string;
+  description: string;
+  pacing_curve?: string;
+  ideal_for?: string[];
+  beats: BeatDefinition[];
+  compatible_secondary_structures?: StoryStructureType[];
+}
+
+export interface StoryBlueprint {
+  story_title: string;
+  primary_structure: StoryStructureType;
+  secondary_structure?: StoryStructureType | null;
+  presentation_strategy: string;
+  target_duration_minutes: number;
+  expected_beats: BeatDefinition[];
+  thematic_premise: string;
+  dramatic_question: string;
+  central_conflict_type: string;
+  stakes: string;
+  soft_constraints: Record<string, any>;
+  fit_score: number;
+  fit_rationale: string;
+  selection_mode: string;
+}
+
+export interface CharacterArcTurn {
+  tick: number;
+  turn_type: string;
+  summary: string;
+  shift_details: Record<string, any>;
+}
+
+export interface CharacterArcReport {
+  character_id: string;
+  character_name: string;
+  starting_state: Record<string, any>;
+  major_decisions: string[];
+  key_turns: CharacterArcTurn[];
+  relationship_deltas: Record<string, number>;
+  ending_state: Record<string, any>;
+  arc_trajectory: string;
+  is_observed_only: boolean;
+}
+
+export interface CausalTransitionReport {
+  from_id: string;
+  to_id: string;
+  transition_type: 'BUT_THEREFORE' | 'AND_THEN';
+  score: number;
+  rationale: string;
+  tick_interval?: number;
+  spatial_continuity?: boolean;
+}
+
+export interface CausalContinuitySummary {
+  overall_causal_score: number;
+  but_therefore_ratio: number;
+  and_then_count: number;
+  but_therefore_count: number;
+  total_transitions: number;
+  transitions: CausalTransitionReport[];
+  pressure_recommendation: string;
+}
+
+export type ActiveView = 'home' | 'world' | 'actors' | 'arcs' | 'simulation' | 'script' | 'storyboard' | 'export';
 
 export interface EventCausality {
   eventId: string;
@@ -572,4 +657,9 @@ export interface ProjectData {
   storyboard?: StoryboardResponse;
   screenplay_quality?: any;
   storyboard_quality?: any;
+  story_structure?: string;
+  story_blueprint?: StoryBlueprint;
+  scenes?: any[];
+  causal_summary?: CausalContinuitySummary;
+  character_arcs?: Record<string, CharacterArcReport>;
 }

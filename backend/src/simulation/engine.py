@@ -5,6 +5,7 @@ from ..domain import (
     SimulationClock,
     ActionProposal,
     ActionResult,
+    EventLog,
 )
 from .recorder import EventRecorder
 from .actions import ActionValidator, ActionExecutor
@@ -19,12 +20,19 @@ class SimulationEngine:
         world: WorldState,
         clock: Optional[SimulationClock] = None,
         recorder: Optional[EventRecorder] = None,
+        seed: Optional[int] = None,
     ):
+        self.seed = seed
         self.world = world
         self.clock = clock or SimulationClock(
             current_tick=world.current_tick, total_ticks=world.current_tick
         )
-        self.recorder = recorder or EventRecorder(world)
+        if recorder is not None:
+            self.recorder = recorder
+            if seed is not None and getattr(self.recorder, "seed", None) is None:
+                self.recorder.seed = seed
+        else:
+            self.recorder = EventRecorder(world, seed=seed)
         self.validator = ActionValidator()
         self.executor = ActionExecutor()
 
@@ -72,3 +80,7 @@ class SimulationEngine:
             tick_results = self.step(policy_fn=policy_fn)
             all_results.extend(tick_results)
         return all_results
+
+    def get_event_log(self) -> EventLog:
+        """Retrieve the immutable EventLog from the recorder"""
+        return self.recorder.get_event_log()

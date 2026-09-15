@@ -7,6 +7,9 @@ from ..domain import WorldState, Event, EventType
 from ..simulation.recorder import EventRecorder
 
 
+from src.domain.story_structure import StoryBlueprint
+
+
 class DirectorInterventionType(str, Enum):
     """Types of external environmental events the Director can inject"""
 
@@ -33,9 +36,27 @@ class DirectorIntervention(BaseModel):
 class DirectorAgent:
     """Monitors scene tension, repetition, and pacing, injecting environmental pressures without puppeteering characters"""
 
-    def __init__(self, inactivity_threshold: int = 3):
+    def __init__(
+        self,
+        inactivity_threshold: int = 3,
+        blueprint: Optional[StoryBlueprint] = None,
+        target_ticks: int = 20,
+    ):
         self.inactivity_threshold = inactivity_threshold
+        self.blueprint = blueprint
+        self.target_ticks = target_ticks
         self.interventions_history: List[DirectorIntervention] = []
+
+    def get_current_blueprint_pressure(self, current_tick: int) -> Optional[str]:
+        """Read the soft pressure signal for the current normalized progress point."""
+        if not self.blueprint or not self.blueprint.expected_beats:
+            return None
+        norm_pos = min(1.0, current_tick / max(1, self.target_ticks))
+        closest_beat = min(
+            self.blueprint.expected_beats,
+            key=lambda b: abs(b.target_position_pct - norm_pos),
+        )
+        return closest_beat.pressure_signal
 
     def evaluate_pacing(
         self,
@@ -55,34 +76,37 @@ class DirectorAgent:
             if not target_loc_id:
                 target_loc_id = next(iter(world.locations.keys()), "loc_room307")
 
+            pressure_sig = self.get_current_blueprint_pressure(world.current_tick)
+            meta_extra = {"blueprint_pressure_signal": pressure_sig} if pressure_sig else {}
+
             step = len(self.interventions_history) % 4
             if step == 0:
                 return DirectorIntervention(
                     intervention_type=DirectorInterventionType.KNOCK_ON_DOOR,
                     description="A sharp, insistent knock echoes from the hallway outside the door.",
                     target_location_id=target_loc_id,
-                    metadata={"urgency": "high", "incident_type": "KNOCK_ON_DOOR"},
+                    metadata={"urgency": "high", "incident_type": "KNOCK_ON_DOOR", **meta_extra},
                 )
             elif step == 1:
                 return DirectorIntervention(
                     intervention_type=DirectorInterventionType.PHONE_RING,
                     description="The room phone suddenly blares with an incoming outside call.",
                     target_location_id=target_loc_id,
-                    metadata={"urgency": "medium", "incident_type": "PHONE_RING"},
+                    metadata={"urgency": "medium", "incident_type": "PHONE_RING", **meta_extra},
                 )
             elif step == 2:
                 return DirectorIntervention(
                     intervention_type=DirectorInterventionType.POWER_FAILURE,
                     description="The overhead lights flicker violently and plunge the room into dim emergency backup lighting.",
                     target_location_id=target_loc_id,
-                    metadata={"urgency": "high", "incident_type": "POWER_FAILURE"},
+                    metadata={"urgency": "high", "incident_type": "POWER_FAILURE", **meta_extra},
                 )
             else:
                 return DirectorIntervention(
                     intervention_type=DirectorInterventionType.ALARM,
                     description="A muted security alarm begins pulsing from the hallway.",
                     target_location_id=target_loc_id,
-                    metadata={"urgency": "high", "incident_type": "ALARM"},
+                    metadata={"urgency": "high", "incident_type": "ALARM", **meta_extra},
                 )
 
         return None

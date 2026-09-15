@@ -2,5 +2,13 @@
 from .base import LLMProvider
 from .mock import MockLLMProvider
 from .gemini import GeminiProvider
+from .budget import BudgetGovernor, BudgetExceededError, ContentHashCache
 
-__all__ = ["LLMProvider", "MockLLMProvider", "GeminiProvider"]
+__all__ = [
+    "LLMProvider",
+    "MockLLMProvider",
+    "GeminiProvider",
+    "BudgetGovernor",
+    "BudgetExceededError",
+    "ContentHashCache",
+]

@@ -11,6 +11,7 @@ from .memory import Memory
 from .event import Event
 from .fact import DiscoveredFact
 from .continuity import LocationVisualProfile, ObjectVisualProfile
+from .proposition import Proposition, KnowledgeItem
 
 
 class Location(BaseModel):
@@ -123,6 +124,9 @@ class WorldState(BaseModel):
     facts: Dict[str, DiscoveredFact] = Field(
         default_factory=dict, description="All discovered facts indexed by ID"
     )
+    propositions: Dict[str, Proposition] = Field(
+        default_factory=dict, description="All canonical propositions indexed by ID"
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -194,6 +198,18 @@ class WorldState(BaseModel):
         if not char:
             return []
         return [self.facts[fid] for fid in getattr(char, "known_facts", []) if fid in self.facts]
+
+    def register_proposition(self, proposition: Proposition) -> Proposition:
+        """Register a canonical proposition into the world state."""
+        self.propositions[proposition.id] = proposition
+        return proposition
+
+    def get_character_knowledge(self, character_id: str) -> List[KnowledgeItem]:
+        """Resolve all private knowledge items held by a character."""
+        char = self.characters.get(character_id)
+        if not char:
+            return []
+        return list(char.knowledge.values())
 
     def validate_references(self) -> List[str]:
         """Check for dangling references across the canonical state.

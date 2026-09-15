@@ -63,3 +63,19 @@ class Event(BaseModel):
             }
         },
     )
+
+
+class EventLog(BaseModel):
+    """Immutable sequence of events representing the full simulation history."""
+    events: List[Event] = Field(default_factory=list, description="Chronological list of immutable simulation events")
+
+    model_config = ConfigDict(frozen=True)
+
+    def __iter__(self):
+        return iter(self.events)
+
+    def __len__(self) -> int:
+        return len(self.events)
+
+    def __getitem__(self, index):
+        return self.events[index]

@@ -1,5 +1,6 @@
 """MemoryService coordinating working, episodic, and long-term memory for characters"""
 import uuid
+import hashlib
 from typing import List, Optional
 from ..domain import WorldState, Memory
 from .retriever import MemoryRetriever
@@ -9,8 +10,9 @@ from .compressor import MemoryCompressor
 class MemoryService:
     """Service managing memory creation, retrieval, and compression for characters"""
 
-    def __init__(self, world: WorldState):
+    def __init__(self, world: WorldState, seed: Optional[int] = None):
         self.world = world
+        self.seed = seed
 
     def form_memory(
         self,
@@ -23,7 +25,13 @@ class MemoryService:
         tags: Optional[List[str]] = None,
     ) -> Memory:
         """Create a new memory, record canonically in WorldState, and attach ID to character"""
-        mem_id = f"mem_{self.world.current_tick}_{character_id}_{uuid.uuid4().hex[:6]}"
+        if self.seed is not None:
+            slug = hashlib.sha256(
+                f"{self.seed}:{self.world.current_tick}:{character_id}:{len(self.world.memories)}:{summary}".encode()
+            ).hexdigest()[:6]
+        else:
+            slug = uuid.uuid4().hex[:6]
+        mem_id = f"mem_{self.world.current_tick}_{character_id}_{slug}"
         memory = Memory(
             id=mem_id,
             character_id=character_id,

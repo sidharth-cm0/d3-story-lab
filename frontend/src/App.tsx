@@ -11,6 +11,7 @@ import { SimulationTicker } from './components/SimulationTicker';
 import { ScreenplayViewer } from './components/ScreenplayViewer';
 import { StoryboardViewer } from './components/StoryboardViewer';
 import { ExportViewer } from './components/ExportViewer';
+import { StructureAndArcsViewer } from './components/StructureAndArcsViewer';
 
 export const App: React.FC = () => {
   const [projects, setProjects] = useState<ProjectMetadata[]>([]);
@@ -66,17 +67,25 @@ export const App: React.FC = () => {
     seedPrompt: string,
     title?: string,
     inputType?: StoryInputType,
-    targetDuration?: number
+    targetDuration?: number,
+    structureMode?: string,
+    structureType?: string,
+    secondaryStructure?: string,
+    presentationStrategy?: string
   ) => {
     const meta = await api.createProject(
       seedPrompt,
       title,
       inputType || 'beginning',
-      targetDuration || 20
+      targetDuration || 20,
+      structureMode || 'AUTO',
+      structureType,
+      secondaryStructure,
+      presentationStrategy || 'CHRONOLOGICAL'
     );
     await loadProjects();
     setCurrentProjectId(meta.id);
-    setActiveView('simulation');
+    setActiveView('arcs');
   };
 
 
@@ -199,6 +208,21 @@ export const App: React.FC = () => {
           ) : (
             <div className="empty-quiet" style={{ margin: 'auto' }}>
               NO ACTIVE SIMULATION. CREATE OR SELECT A PROJECT TO VIEW ACTORS.
+            </div>
+          )
+        )}
+
+        {activeView === 'arcs' && (
+          projectData ? (
+            <div className="view-page-container full-height">
+              <StructureAndArcsViewer
+                project={projectData}
+                loading={loading}
+              />
+            </div>
+          ) : (
+            <div className="empty-quiet" style={{ margin: 'auto' }}>
+              NO ACTIVE SIMULATION. CREATE OR SELECT A PROJECT TO VIEW STRUCTURE & ARCS.
             </div>
           )
         )}

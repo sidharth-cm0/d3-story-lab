@@ -8,6 +8,7 @@ from ..domain import (
     ActionResultStatus,
     ActionProposal,
     GoalStatus,
+    EventLog,
 )
 from ..domain.simulation import SimulationClock
 from .recorder import EventRecorder
@@ -23,6 +24,9 @@ from ..providers.base import LLMProvider
 from ..providers.mock import MockLLMProvider
 
 
+from src.domain.story_structure import StoryBlueprint
+
+
 class SimulationOrchestrator:
     """Orchestrates multi-agent cyclic simulation execution with cognition, evolution, and pacing"""
 
@@ -35,15 +39,31 @@ class SimulationOrchestrator:
         memory_service: Optional[MemoryService] = None,
         director: Optional[DirectorAgent] = None,
         repetition_tracker: Optional[RepetitionTracker] = None,
+        blueprint: Optional[StoryBlueprint] = None,
+        story_blueprint: Optional[StoryBlueprint] = None,
+        seed: Optional[int] = None,
     ):
+        self.seed = seed
         self.world = world
+        self.blueprint = blueprint or story_blueprint
         self.provider = provider or MockLLMProvider()
-        self.recorder = recorder or EventRecorder(world)
+        if recorder is not None:
+            self.recorder = recorder
+            if seed is not None and getattr(self.recorder, "seed", None) is None:
+                self.recorder.seed = seed
+        else:
+            self.recorder = EventRecorder(world, seed=seed)
+
         self.clock = clock or SimulationClock(
             current_tick=world.current_tick, total_ticks=world.current_tick
         )
-        self.memory_service = memory_service or MemoryService(world)
-        self.director = director or DirectorAgent()
+        self.memory_service = memory_service or MemoryService(world, seed=seed)
+        if director is not None:
+            self.director = director
+            if blueprint and not self.director.blueprint:
+                self.director.blueprint = blueprint
+        else:
+            self.director = DirectorAgent(blueprint=blueprint)
         self.executor = ActionExecutor()
         self.repetition_tracker = repetition_tracker or RepetitionTracker()
 
@@ -54,6 +74,7 @@ class SimulationOrchestrator:
                 provider=self.provider,
                 memory_service=self.memory_service,
                 repetition_tracker=self.repetition_tracker,
+                seed=seed,
             )
             for char_id in world.characters.keys()
         }
@@ -201,6 +222,10 @@ class SimulationOrchestrator:
                     break
 
         return all_results
+
+    def get_event_log(self) -> EventLog:
+        """Retrieve the immutable EventLog from the recorder"""
+        return self.recorder.get_event_log()
 
     def _apply_cognitive_effects(self, actor_id: str, proposal: ActionProposal, result: ActionResult):
         """Deterministically evolve beliefs, memories, relationships, and emotions from actions"""

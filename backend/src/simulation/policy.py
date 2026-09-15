@@ -1,7 +1,13 @@
 """Deterministic rule-based policies for simulation agents"""
 import uuid
+import hashlib
 from typing import Dict, Any, Optional
 from ..domain import WorldState, ActionProposal, ActionType
+
+
+def _det_id(prefix: str, char_id: str, tick: int, tag: str) -> str:
+    slug = hashlib.sha256(f"{char_id}:{tick}:{tag}".encode()).hexdigest()[:6]
+    return f"{prefix}_{char_id}_{tick}_{slug}"
 
 
 class RuleBasedPolicy:
@@ -16,8 +22,9 @@ class RuleBasedPolicy:
         """Deterministically choose an action proposal for a character"""
         char = world.characters.get(character_id)
         if not char:
+            slug = hashlib.sha256(f"{character_id}:{world.current_tick}:not_found".encode()).hexdigest()[:8]
             return ActionProposal(
-                id=f"prop_{uuid.uuid4().hex[:8]}",
+                id=f"prop_{slug}",
                 actor_id=character_id,
                 action_type=ActionType.WAIT,
                 tick_proposed=world.current_tick,
@@ -41,7 +48,7 @@ class RuleBasedPolicy:
         # 1. If documents are sitting in the room unheld, take them to protect the secret
         if docs and docs.location_id == maya.current_location_id and docs.holder_id is None:
             return ActionProposal(
-                id=f"prop_maya_{world.current_tick}_{uuid.uuid4().hex[:6]}",
+                id=_det_id("prop_maya", maya.id, world.current_tick, "take_docs"),
                 actor_id=maya.id,
                 action_type=ActionType.TAKE_OBJECT,
                 target_id=docs.id,
@@ -55,7 +62,7 @@ class RuleBasedPolicy:
             suitcase = world.objects.get("obj_suitcase")
             if suitcase and suitcase.location_id == maya.current_location_id:
                 return ActionProposal(
-                    id=f"prop_maya_{world.current_tick}_{uuid.uuid4().hex[:6]}",
+                    id=_det_id("prop_maya", maya.id, world.current_tick, "inspect_suitcase"),
                     actor_id=maya.id,
                     action_type=ActionType.INSPECT_OBJECT,
                     target_id=suitcase.id,
@@ -68,7 +75,7 @@ class RuleBasedPolicy:
         arjun = world.characters.get("char_arjun")
         if arjun and arjun.current_location_id == maya.current_location_id:
             return ActionProposal(
-                id=f"prop_maya_{world.current_tick}_{uuid.uuid4().hex[:6]}",
+                id=_det_id("prop_maya", maya.id, world.current_tick, "deflect_arjun"),
                 actor_id=maya.id,
                 action_type=ActionType.SPEAK,
                 target_id=arjun.id,
@@ -80,7 +87,7 @@ class RuleBasedPolicy:
 
         # Fallback: wait
         return ActionProposal(
-            id=f"prop_maya_{world.current_tick}_{uuid.uuid4().hex[:6]}",
+            id=_det_id("prop_maya", maya.id, world.current_tick, "wait"),
             actor_id=maya.id,
             action_type=ActionType.WAIT,
             tick_proposed=world.current_tick,
@@ -95,7 +102,7 @@ class RuleBasedPolicy:
         # 1. If documents are in the room, inspect them
         if docs and docs.location_id == arjun.current_location_id and docs.holder_id is None:
             return ActionProposal(
-                id=f"prop_arjun_{world.current_tick}_{uuid.uuid4().hex[:6]}",
+                id=_det_id("prop_arjun", arjun.id, world.current_tick, "inspect_docs"),
                 actor_id=arjun.id,
                 action_type=ActionType.INSPECT_OBJECT,
                 target_id=docs.id,
@@ -113,7 +120,7 @@ class RuleBasedPolicy:
                 else "Maya, I know the CEO was involved in something questionable."
             )
             return ActionProposal(
-                id=f"prop_arjun_{world.current_tick}_{uuid.uuid4().hex[:6]}",
+                id=_det_id("prop_arjun", arjun.id, world.current_tick, "question_maya"),
                 actor_id=arjun.id,
                 action_type=ActionType.SPEAK,
                 target_id=maya.id,
@@ -125,7 +132,7 @@ class RuleBasedPolicy:
 
         # Fallback: observe room
         return ActionProposal(
-            id=f"prop_arjun_{world.current_tick}_{uuid.uuid4().hex[:6]}",
+            id=_det_id("prop_arjun", arjun.id, world.current_tick, "wait"),
             actor_id=arjun.id,
             action_type=ActionType.WAIT,
             tick_proposed=world.current_tick,
@@ -136,7 +143,7 @@ class RuleBasedPolicy:
     def _decide_generic(world: WorldState, char) -> ActionProposal:
         """Generic fallback for unspecialized characters"""
         return ActionProposal(
-            id=f"prop_{char.id}_{world.current_tick}_{uuid.uuid4().hex[:6]}",
+            id=_det_id("prop", char.id, world.current_tick, "generic_wait"),
             actor_id=char.id,
             action_type=ActionType.WAIT,
             tick_proposed=world.current_tick,

@@ -390,7 +390,7 @@ def test_api_capabilities_on_demand():
     assert "Free/limited provider availability" in data.get("pricing_disclaimer", "") or "pricing_disclaimer" in data
 
 
-def test_api_configure_on_demand_provider():
+def test_api_configure_on_demand_provider(monkeypatch):
     """Verify /api/storyboard/configure sets on_demand provider and server key securely."""
     app = create_app()
     client = TestClient(app)

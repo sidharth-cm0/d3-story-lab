@@ -30,6 +30,7 @@ from .image_provider import (
     FallbackComicSvgProvider,
     CloudImagenStoryboardProvider,
     MockStoryboardImageProvider,
+    CachedStoryboardImageProvider,
     ProviderState,
     FallbackReason,
 )
@@ -69,6 +70,7 @@ __all__ = [
     "FallbackComicSvgProvider",
     "CloudImagenStoryboardProvider",
     "MockStoryboardImageProvider",
+    "CachedStoryboardImageProvider",
     "ProviderState",
     "FallbackReason",
     "PropResolver",

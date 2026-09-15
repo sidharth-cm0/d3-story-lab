@@ -107,6 +107,7 @@ class StoryboardPanel(BaseModel):
     narrative_purpose: ShotPurpose = ShotPurpose.ACTION
     lens_feel: str = "35mm cinematic standard, sharp depth of field"
     composition: str = "Rule of thirds, strong diagonal shadows, leading lines"
+    psychological_rationale: Optional[str] = None
     subject_focus: str = ""
     layout_slot: str = "default"
 

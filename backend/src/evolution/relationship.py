@@ -1,5 +1,6 @@
 """Relationship updater for trust, affinity, and interaction history"""
 import uuid
+import hashlib
 from typing import Optional
 from ..domain import WorldState, Relationship
 
@@ -22,7 +23,8 @@ class RelationshipUpdater:
                 return rel
 
         # Create new neutral relationship
-        new_id = f"rel_{char_a_id}_{char_b_id}_{uuid.uuid4().hex[:6]}"
+        slug = hashlib.sha256(f"{char_a_id}:{char_b_id}:{len(world.relationships)}".encode()).hexdigest()[:6]
+        new_id = f"rel_{char_a_id}_{char_b_id}_{slug}"
         new_rel = Relationship(
             id=new_id,
             character_a_id=char_a_id,

@@ -4,7 +4,16 @@ import { StoryInputType } from '../types';
 interface NewProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (seedPrompt: string, title?: string, inputType?: StoryInputType, targetDuration?: number) => Promise<void>;
+  onCreate: (
+    seedPrompt: string,
+    title?: string,
+    inputType?: StoryInputType,
+    targetDuration?: number,
+    structureMode?: string,
+    structureType?: string,
+    secondaryStructure?: string,
+    presentationStrategy?: string
+  ) => Promise<void>;
 }
 
 const PRESETS: Array<{ title: string; prompt: string; type: StoryInputType; duration: number }> = [
@@ -64,6 +73,10 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ isOpen, onClos
   const [prompt, setPrompt] = useState(PRESETS[0].prompt);
   const [inputType, setInputType] = useState<StoryInputType>('beginning');
   const [duration, setDuration] = useState<number>(20);
+  const [structureMode, setStructureMode] = useState<'AUTO' | 'MANUAL'>('AUTO');
+  const [structureType, setStructureType] = useState<string>('THREE_ACT');
+  const [secondaryStructure, setSecondaryStructure] = useState<string>('NONE');
+  const [presentationStrategy, setPresentationStrategy] = useState<string>('CHRONOLOGICAL');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,7 +110,25 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ isOpen, onClos
     setLoading(true);
     setError(null);
     try {
-      await onCreate(prompt.trim(), title.trim() || undefined, inputType, duration);
+      if (structureMode === 'MANUAL' || presentationStrategy !== 'CHRONOLOGICAL') {
+        await onCreate(
+          prompt.trim(),
+          title.trim() || undefined,
+          inputType,
+          duration,
+          structureMode,
+          structureMode === 'MANUAL' ? structureType : undefined,
+          structureMode === 'MANUAL' && secondaryStructure !== 'NONE' ? secondaryStructure : undefined,
+          presentationStrategy
+        );
+      } else {
+        await onCreate(
+          prompt.trim(),
+          title.trim() || undefined,
+          inputType,
+          duration
+        );
+      }
       onClose();
     } catch (err: any) {
       setError(err.message || 'Failed to initialize project');
@@ -207,6 +238,83 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ isOpen, onClos
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* 3. Narrative Dramatic Structure */}
+            <div className="form-group">
+              <label className="form-label">3. STORY STRUCTURE FRAMEWORK</label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <button
+                  type="button"
+                  className={`type-pill-btn ${structureMode === 'AUTO' ? 'active' : ''}`}
+                  onClick={() => setStructureMode('AUTO')}
+                  style={{ flex: 1 }}
+                >
+                  <span className="pill-title">AUTO FIT (RECOMMENDED)</span>
+                </button>
+                <button
+                  type="button"
+                  className={`type-pill-btn ${structureMode === 'MANUAL' ? 'active' : ''}`}
+                  onClick={() => setStructureMode('MANUAL')}
+                  style={{ flex: 1 }}
+                >
+                  <span className="pill-title">MANUAL SELECT</span>
+                </button>
+              </div>
+
+              {structureMode === 'AUTO' ? (
+                <div className="input-type-explainer" style={{ color: 'var(--text-muted)' }}>
+                  The engine will heuristically score prompt keywords and narrative archetype to select the optimal framework (e.g. Three-Act, Hero's Journey, Freytag, Save the Cat, Story Circle, or Kishōtenketsu) and synthesize a non-puppeted soft blueprint.
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '8px' }}>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '11px' }}>PRIMARY STRUCTURE</label>
+                    <select
+                      className="form-select"
+                      value={structureType}
+                      onChange={(e) => setStructureType(e.target.value)}
+                    >
+                      <option value="THREE_ACT">Three-Act (Syd Field)</option>
+                      <option value="HERO_JOURNEY">Hero's Journey (Vogler)</option>
+                      <option value="FREYTAG">Freytag's Pyramid</option>
+                      <option value="SAVE_THE_CAT">Save the Cat! (Snyder)</option>
+                      <option value="STORY_CIRCLE">Story Circle (Harmon)</option>
+                      <option value="KISHOTENKETSU">Kishōtenketsu (4-Part)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '11px' }}>SECONDARY OVERLAY</label>
+                    <select
+                      className="form-select"
+                      value={secondaryStructure}
+                      onChange={(e) => setSecondaryStructure(e.target.value)}
+                    >
+                      <option value="NONE">None (Pure Structure)</option>
+                      {structureType !== 'THREE_ACT' && <option value="THREE_ACT">Three-Act Overlay</option>}
+                      {structureType !== 'HERO_JOURNEY' && <option value="HERO_JOURNEY">Hero's Journey Overlay</option>}
+                      {structureType !== 'FREYTAG' && <option value="FREYTAG">Freytag Overlay</option>}
+                      {structureType !== 'SAVE_THE_CAT' && <option value="SAVE_THE_CAT">Save the Cat Overlay</option>}
+                      {structureType !== 'STORY_CIRCLE' && <option value="STORY_CIRCLE">Story Circle Overlay</option>}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Presentation Strategy */}
+            <div className="form-group">
+              <label className="form-label">4. PRESENTATION STRATEGY</label>
+              <select
+                className="form-select"
+                value={presentationStrategy}
+                onChange={(e) => setPresentationStrategy(e.target.value)}
+              >
+                <option value="CHRONOLOGICAL">Chronological (Linear Real-Time Progression)</option>
+                <option value="IN_MEDIA_RES">In Media Res (Opening Crisis / Flashback Core)</option>
+                <option value="FLASHBACK_FRAME">Flashback Frame (Interrogation / Retrospective)</option>
+                <option value="PARALLEL_TRACKS">Parallel Tracks (Split Temporal Escalation)</option>
+              </select>
             </div>
 
             {/* Title (Optional) */}

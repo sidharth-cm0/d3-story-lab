@@ -7,6 +7,10 @@ import {
   StoryOutline,
   StorySynopsis,
   ProviderStatusResponse,
+  StructureDefinition,
+  StoryBlueprint,
+  CharacterArcReport,
+  CausalContinuitySummary,
 } from './types';
 
 const BASE_URL = '/api';
@@ -27,7 +31,11 @@ export async function createProject(
   seed_prompt: string,
   title?: string,
   input_type: string = 'beginning',
-  target_duration_minutes: number = 20
+  target_duration_minutes: number = 20,
+  structure_mode: string = 'AUTO',
+  structure_type?: string,
+  secondary_structure?: string,
+  presentation_strategy: string = 'CHRONOLOGICAL'
 ): Promise<ProjectMetadata> {
   const res = await fetch(`${BASE_URL}/projects`, {
     method: 'POST',
@@ -37,6 +45,10 @@ export async function createProject(
       title,
       input_type,
       target_duration_minutes,
+      structure_mode,
+      structure_type,
+      secondary_structure,
+      presentation_strategy,
     }),
   });
   if (!res.ok) {
@@ -119,13 +131,19 @@ export function getExportUrl(projectId: string, format: string): string {
 
 export async function fetchStoryboard(projectId: string): Promise<StoryboardResponse> {
   const res = await fetch(`${BASE_URL}/projects/${projectId}/storyboard`);
-  if (!res.ok) throw new Error('Failed to fetch storyboard');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to fetch storyboard' }));
+    throw new Error(err.detail || 'Failed to fetch storyboard');
+  }
   return res.json();
 }
 
 export async function fetchVisualBible(projectId: string): Promise<any> {
   const res = await fetch(`${BASE_URL}/projects/${projectId}/visual-bible`);
-  if (!res.ok) throw new Error('Failed to fetch visual bible');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to fetch visual bible' }));
+    throw new Error(err.detail || 'Failed to fetch visual bible');
+  }
   return res.json();
 }
 
@@ -140,7 +158,10 @@ export async function planStoryboard(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ density_mode: densityMode, panels_per_page: panelsPerPage, render_mode: renderMode }),
   });
-  if (!res.ok) throw new Error('Failed to plan storyboard');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to plan storyboard' }));
+    throw new Error(err.detail || 'Failed to plan storyboard');
+  }
   return res.json();
 }
 
@@ -155,7 +176,10 @@ export async function generateStoryboard(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ provider, render_mode: renderMode, keyframe_budget: keyframeBudget }),
   });
-  if (!res.ok) throw new Error('Failed to generate storyboard');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to generate storyboard' }));
+    throw new Error(err.detail || 'Failed to generate storyboard');
+  }
   return res.json();
 }
 
@@ -312,5 +336,35 @@ export async function externalRenderPage(
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.detail || 'External render for page failed');
   }
+  return res.json();
+}
+
+export async function fetchStructures(): Promise<{ structures: StructureDefinition[]; compatibility: Record<string, boolean> }> {
+  const res = await fetch(`${BASE_URL}/structures`);
+  if (!res.ok) throw new Error('Failed to fetch structures');
+  return res.json();
+}
+
+export async function fetchBlueprint(projectId: string): Promise<StoryBlueprint> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/blueprint`);
+  if (!res.ok) throw new Error('Failed to fetch story blueprint');
+  return res.json();
+}
+
+export async function fetchCharacterArcs(projectId: string): Promise<Record<string, CharacterArcReport>> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/character-arcs`);
+  if (!res.ok) throw new Error('Failed to fetch character arcs');
+  return res.json();
+}
+
+export async function fetchCausalContinuity(projectId: string): Promise<CausalContinuitySummary> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/causal-continuity`);
+  if (!res.ok) throw new Error('Failed to fetch causal continuity');
+  return res.json();
+}
+
+export async function fetchScenes(projectId: string): Promise<any[]> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/scenes`);
+  if (!res.ok) throw new Error('Failed to fetch scenes');
   return res.json();
 }

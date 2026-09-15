@@ -18,6 +18,8 @@ from src.narrative.performance_cues import PerformanceCueGenerator, PerformanceC
 from src.narrative.spatial import SpatialReasoner, SpatialContext
 from src.narrative.framer import NarrativeFramer, FramingMode
 from src.narrative.scene_purpose import ScenePurposeAnalyzer
+from src.narrative.scene_builder import SceneBuilder
+from src.domain.story_structure import ScenePurposeType
 from src.providers.base import LLMProvider
 
 
@@ -31,6 +33,7 @@ class Scribe:
         self.spatial_reasoner = SpatialReasoner()
         self.framer = NarrativeFramer()
         self.purpose_analyzer = ScenePurposeAnalyzer()
+        self.scene_builder = SceneBuilder()
 
     def _format_scene_heading(self, location_id: str, world: WorldState) -> str:
         loc = world.locations.get(location_id)
@@ -128,11 +131,22 @@ class Scribe:
 
                 # Derive scene purpose, goal, and turning points
                 analysis = self.purpose_analyzer.analyze_scene(temp_scene, world)
+                sc_events = [world.events[eid] for eid in current_scene_events if eid in world.events]
+                focal_id = self.scene_builder._determine_focal_character(sc_events, world) or "char_protagonist"
+                purpose_type = ScenePurposeType(analysis.purpose.value) if analysis.purpose.value in ScenePurposeType._value2member_map_ else ScenePurposeType.SETUP
+                ceo = self.scene_builder._derive_core_emotional_objective(
+                    focal_char_id=focal_id,
+                    events=sc_events,
+                    world=world,
+                    scene_purpose=purpose_type,
+                )
+
                 meta = {
                     "scene_purpose": analysis.purpose.value,
+                    "core_emotional_objective": ceo.model_dump(mode="json"),
                     "dramatic_question": analysis.dramatic_question,
-                    "scene_goal": analysis.scene_goal,
-                    "scene_obstacle": analysis.scene_obstacle,
+                    "scene_goal": ceo.immediate_desire,
+                    "scene_obstacle": ceo.immediate_obstacle,
                     "turning_point": analysis.turning_point,
                     "scene_outcome": analysis.scene_outcome,
                 }

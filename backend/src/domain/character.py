@@ -1,7 +1,8 @@
 """Character model"""
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Literal
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from .continuity import ActorVisualProfile
+from .proposition import KnowledgeItem
 
 
 class EmotionalState(BaseModel):
@@ -69,6 +70,9 @@ class Character(BaseModel):
     memories: List[str] = Field(default_factory=list, description="Memory IDs")
     relationships: List[str] = Field(default_factory=list, description="Relationship IDs")
     known_facts: List[str] = Field(default_factory=list, description="Known fact IDs")
+    knowledge: Dict[str, KnowledgeItem] = Field(
+        default_factory=dict, description="Private subjective knowledge held by the character"
+    )
     current_location_id: Optional[str] = Field(
         None, description="Current location ID"
     )
@@ -76,6 +80,59 @@ class Character(BaseModel):
     visual_profile: Optional[ActorVisualProfile] = Field(
         default=None, description="Visual identity profile for continuity"
     )
+
+    def knows(self, proposition_id: str) -> Optional[KnowledgeItem]:
+        """Retrieve private subjective knowledge of a proposition. Returns None if character does not know it."""
+        return self.knowledge.get(proposition_id)
+
+    def acquire_knowledge(
+        self,
+        proposition_id: str,
+        certainty: float = 1.0,
+        acquired_at_event: str = "",
+        source: Literal["observed", "inferred", "told"] = "observed",
+        source_character_id: Optional[str] = None,
+        believed_truth_value: bool = True,
+    ) -> KnowledgeItem:
+        """Acquire or update a subjective KnowledgeItem for this character."""
+        existing = self.knowledge.get(proposition_id)
+        item = KnowledgeItem(
+            proposition_id=proposition_id,
+            holder_id=self.id,
+            certainty=certainty,
+            acquired_at_event=acquired_at_event,
+            source=source,
+            source_character_id=source_character_id,
+            believed_truth_value=believed_truth_value,
+            shared_with=existing.shared_with if existing else [],
+        )
+        self.knowledge[proposition_id] = item
+        return item
+
+    def share_knowledge(
+        self,
+        proposition_id: str,
+        recipient: "Character",
+        acquired_at_event: str = "",
+        believed_truth_value: Optional[bool] = None,
+    ) -> Optional[KnowledgeItem]:
+        """Share knowledge with another character, creating a new KnowledgeItem on recipient with source='told'."""
+        my_knowledge = self.knows(proposition_id)
+        if not my_knowledge:
+            return None
+        if recipient.id not in my_knowledge.shared_with:
+            new_shared = list(my_knowledge.shared_with) + [recipient.id]
+            self.knowledge[proposition_id] = my_knowledge.model_copy(update={"shared_with": new_shared})
+
+        tv = believed_truth_value if believed_truth_value is not None else my_knowledge.believed_truth_value
+        return recipient.acquire_knowledge(
+            proposition_id=proposition_id,
+            certainty=my_knowledge.certainty,
+            acquired_at_event=acquired_at_event,
+            source="told",
+            source_character_id=self.id,
+            believed_truth_value=tv,
+        )
 
     model_config = ConfigDict(
         json_schema_extra={
