@@ -1,6 +1,9 @@
 """Tests for FastAPI backend endpoints."""
 
 import tempfile
+import json
+import concurrent.futures
+from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from src.api.app import create_app
@@ -94,3 +97,59 @@ class TestAPI:
         # Verify not found after deletion
         get_res = client.get(f"/api/projects/{pid}")
         assert get_res.status_code == 404
+
+    def test_concurrent_get_endpoints_no_corruption(self, client):
+        """Verify concurrent GET requests to derived endpoints do not race or corrupt project data."""
+        # 1. Create project
+        create_res = client.post(
+            "/api/projects",
+            json={
+                "seed_prompt": "An archivist uncovers a classified blueprint in a forgotten vault.",
+                "title": "The Vault Archivist",
+            },
+        )
+        assert create_res.status_code == 200
+        pid = create_res.json()["id"]
+
+        # 2. Step once so events exist
+        step_res = client.post(f"/api/projects/{pid}/step", json={"ticks": 1})
+        assert step_res.status_code == 200
+
+        endpoints = [
+            f"/api/projects/{pid}/blueprint",
+            f"/api/projects/{pid}/character-arcs",
+            f"/api/projects/{pid}/causal-continuity",
+            f"/api/projects/{pid}/visual-bible",
+        ]
+
+        def call_endpoint(url: str):
+            return client.get(url)
+
+        # Call all endpoints concurrently across threads 6 times (24 total requests)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            tasks = [executor.submit(call_endpoint, ep) for ep in (endpoints * 6)]
+            results = [t.result() for t in concurrent.futures.as_completed(tasks)]
+
+        for res in results:
+            assert res.status_code == 200, f"Expected 200 but got {res.status_code}: {res.text}"
+
+        # Confirm project remains parseable and valid
+        proj_res = client.get(f"/api/projects/{pid}")
+        assert proj_res.status_code == 200
+        data = proj_res.json()
+        assert data["metadata"]["id"] == pid
+
+    def test_corrupted_project_file_returns_controlled_500(self):
+        """Verify a corrupted project file on disk returns controlled 500 rather than opaque crash."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bad_file = Path(tmpdir) / "corrupt_proj.json"
+            bad_file.write_text('{"schema_version": 2, "metadata": {"id": "corrupt_proj"} EXTRA_GARBAGE', encoding="utf-8")
+
+            app = create_app(store_dir=tmpdir)
+            client = TestClient(app)
+
+            res = client.get("/api/projects/corrupt_proj")
+            assert res.status_code == 500
+            data = res.json()
+            assert "error" in data or "detail" in data
+            assert "ProjectCorruptedError" in str(data) or "corrupted or malformed JSON" in str(data)

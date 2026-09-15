@@ -32,6 +32,7 @@ def _load_env_file() -> None:
 
 _load_env_file()
 from fastapi import FastAPI, HTTPException, Response, Body
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -59,7 +60,13 @@ from src.narrative.blueprint_generator import StoryBlueprintGenerator
 from src.narrative.scene_builder import SceneBuilder
 from src.narrative.causal_analyzer import CausalContinuityAnalyzer
 from src.narrative.arc_tracker import CharacterArcTracker
-from src.storage.project_store import ProjectStore, ProjectData, ProjectMetadata
+from src.storage.project_store import (
+    ProjectStore,
+    ProjectData,
+    ProjectMetadata,
+    ProjectStorageError,
+    ProjectCorruptedError,
+)
 from src.storyboard.models import ShotPlan, StoryboardPanel, StoryboardImageVersion, StoryboardImageStatus
 from src.storyboard.planner import StoryboardPlanner
 from src.storyboard.storyboard_validator import StoryboardQualityValidator
@@ -302,6 +309,20 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(ProjectCorruptedError)
+    def handle_project_corrupted(request, exc: ProjectCorruptedError):
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc), "error": "ProjectCorruptedError"},
+        )
+
+    @app.exception_handler(ProjectStorageError)
+    def handle_project_storage_error(request, exc: ProjectStorageError):
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc), "error": "ProjectStorageError"},
+        )
 
     store = ProjectStore(base_dir=store_dir)
     orchestrator_cache: Dict[str, SimulationOrchestrator] = {}
@@ -750,6 +771,8 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         proj = store.load_project(project_id)
         if not proj:
             raise HTTPException(status_code=404, detail="Project not found")
+        if proj.character_arcs:
+            return {cid: rep.model_dump(mode="json") for cid, rep in proj.character_arcs.items()}
         events = sorted(proj.world.events.values(), key=lambda e: (e.tick, e.id))
         tracker = CharacterArcTracker()
         reports = tracker.track_character_arcs(proj.world, events)
@@ -762,6 +785,8 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         proj = store.load_project(project_id)
         if not proj:
             raise HTTPException(status_code=404, detail="Project not found")
+        if proj.causal_summary:
+            return proj.causal_summary.model_dump(mode="json")
         events = sorted(proj.world.events.values(), key=lambda e: (e.tick, e.id))
         analyzer = CausalContinuityAnalyzer()
         scenes = proj.scenes or []

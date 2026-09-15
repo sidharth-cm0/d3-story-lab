@@ -3,10 +3,12 @@
 from __future__ import annotations
 import os
 import json
+import uuid
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from src.domain.world import WorldState
 from src.domain.event import EventLog
@@ -23,6 +25,16 @@ from src.domain.story_structure import (
     CausalContinuitySummary,
     CharacterArcReport,
 )
+
+
+class ProjectStorageError(Exception):
+    """Base exception for project persistence errors."""
+    pass
+
+
+class ProjectCorruptedError(ProjectStorageError):
+    """Raised when a project file cannot be decoded or fails schema validation."""
+    pass
 
 
 class ProjectMetadata(BaseModel):
@@ -72,6 +84,18 @@ class ProjectData(BaseModel):
 
 class ProjectStore:
     """Manages persistent project storage on the filesystem as JSON."""
+
+    _locks: Dict[str, threading.Lock] = {}
+    _locks_guard: threading.Lock = threading.Lock()
+
+    @classmethod
+    def _get_lock_for_path(cls, path: Path) -> threading.Lock:
+        """Get or create a mutex lock serialized per canonical file path."""
+        key = str(path.resolve())
+        with cls._locks_guard:
+            if key not in cls._locks:
+                cls._locks[key] = threading.Lock()
+            return cls._locks[key]
 
     def __init__(self, base_dir: Optional[str | Path] = None):
         if base_dir is None:
@@ -192,10 +216,21 @@ class ProjectStore:
         )
 
         data_dict = project_to_save.model_dump(mode="json")
-        temp_path = path.with_suffix(".tmp")
-        with open(temp_path, "w", encoding="utf-8") as f:
-            json.dump(data_dict, f, indent=2)
-        os.replace(temp_path, path)
+        lock = self._get_lock_for_path(path)
+        with lock:
+            temp_path = path.parent / f"{path.stem}.{uuid.uuid4().hex}.tmp"
+            try:
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    json.dump(data_dict, f, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(temp_path, path)
+            finally:
+                if temp_path.exists():
+                    try:
+                        temp_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
         return project.metadata.id
 
     def save_project_bundle(self, project: ProjectData, bundle_dir: str | Path) -> Path:
@@ -259,10 +294,21 @@ class ProjectStore:
         )
 
         data_dict = project_to_save.model_dump(mode="json")
-        temp_path = json_path.with_suffix(".tmp")
-        with open(temp_path, "w", encoding="utf-8") as f:
-            json.dump(data_dict, f, indent=2)
-        os.replace(temp_path, json_path)
+        lock = self._get_lock_for_path(json_path)
+        with lock:
+            temp_path = bundle_path / f"project.{uuid.uuid4().hex}.tmp"
+            try:
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    json.dump(data_dict, f, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(temp_path, json_path)
+            finally:
+                if temp_path.exists():
+                    try:
+                        temp_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
         return json_path
 
     def load_project(self, project_id_or_path: str | Path) -> Optional[ProjectData]:
@@ -270,10 +316,25 @@ class ProjectStore:
         path = self._get_project_path(project_id_or_path)
         if not path.exists():
             return None
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        normalized = self.normalize_project_dict(data)
-        return ProjectData.model_validate(normalized)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as exc:
+            raise ProjectCorruptedError(
+                f"Project file at '{path}' contains corrupted or malformed JSON: {exc}"
+            ) from exc
+        except Exception as exc:
+            raise ProjectStorageError(
+                f"Failed to read project file at '{path}': {exc}"
+            ) from exc
+
+        try:
+            normalized = self.normalize_project_dict(data)
+            return ProjectData.model_validate(normalized)
+        except Exception as exc:
+            raise ProjectCorruptedError(
+                f"Project data at '{path}' failed validation: {exc}"
+            ) from exc
 
     def list_projects(self) -> List[ProjectMetadata]:
         """List metadata for all saved projects."""
@@ -296,7 +357,9 @@ class ProjectStore:
     def delete_project(self, project_id: str) -> bool:
         """Delete project file from disk."""
         path = self._get_project_path(project_id)
-        if path.exists():
-            path.unlink()
-            return True
-        return False
+        lock = self._get_lock_for_path(path)
+        with lock:
+            if path.exists():
+                path.unlink()
+                return True
+            return False
