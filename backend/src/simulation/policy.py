@@ -62,7 +62,7 @@ class RuleDecisionPolicy:
             for sc in social_candidates:
                 intent = sc.get("social_intent") or ""
                 prior_evt_id = None
-                if intent in ("answer", "deny", "deflect", "accuse") and view.recent_events:
+                if view.recent_events:
                     for ev in reversed(view.recent_events):
                         if ev.event_type.value == "character_spoke" and other.id in ev.actor_ids:
                             prior_evt_id = ev.id
@@ -130,7 +130,8 @@ class RuleDecisionPolicy:
             elif aff.target_id in view.knowledge:
                 aff_motivation = Motivation(kind="ACT_ON_KNOWLEDGE", knowledge_item_id=aff.target_id)
             elif view.emotional_state.fear > 0.6:
-                aff_motivation = Motivation(kind="AVOID_THREAT")
+                prior_evt_id = view.recent_events[-1].id if view.recent_events else None
+                aff_motivation = Motivation(kind="AVOID_THREAT", prior_event_id=prior_evt_id)
             else:
                 aff_motivation = Motivation(kind="PURSUE_GOAL", goal_id=active_goal_id)
 
