@@ -6,6 +6,7 @@ from src.domain import (
     ActionResult,
     ActionType,
     ActionResultStatus,
+    Motivation,
 )
 
 
@@ -19,6 +20,7 @@ class TestActionProposal:
             actor_id="char_arjun",
             action_type=ActionType.MOVE,
             tick_proposed=1,
+            motivation=Motivation(kind="PURSUE_GOAL", goal_id="goal_1"),
         )
         assert proposal.id == "act_001"
         assert proposal.actor_id == "char_arjun"
@@ -28,6 +30,7 @@ class TestActionProposal:
         assert proposal.location_id is None
         assert proposal.parameters == {}
         assert proposal.reason is None
+        assert proposal.motivation.kind == "PURSUE_GOAL"
 
     def test_all_action_types(self):
         """Test that all ActionType enum values can be used"""
@@ -47,6 +50,7 @@ class TestActionProposal:
                 actor_id="char_001",
                 action_type=action_type,
                 tick_proposed=0,
+                motivation=Motivation(kind="PURSUE_GOAL"),
             )
             assert proposal.action_type == action_type
 
@@ -60,6 +64,7 @@ class TestActionProposal:
             location_id="loc_001",
             parameters={"item_id": "obj_001"},
             tick_proposed=3,
+            motivation=Motivation(kind="PURSUE_GOAL", goal_id="goal_trust"),
             reason="Build trust",
         )
         assert proposal.target_id == "char_002"
@@ -75,6 +80,17 @@ class TestActionProposal:
                 actor_id="c1",
                 action_type=ActionType.MOVE,
                 tick_proposed=-1,
+                motivation=Motivation(kind="PURSUE_GOAL"),
+            )
+
+    def test_action_proposal_requires_motivation(self):
+        """Test that ActionProposal cannot be constructed without motivation"""
+        with pytest.raises(ValidationError):
+            ActionProposal(
+                id="act_no_mot",
+                actor_id="char_001",
+                action_type=ActionType.MOVE,
+                tick_proposed=1,
             )
 
 

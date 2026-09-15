@@ -29,26 +29,38 @@ class SocialDialogueGenerator:
     @staticmethod
     def generate_candidates(
         actor: Character,
-        target: Character,
+        target: Any,
         goals: List[Goal],
-        world: WorldState,
+        world: Any,
     ) -> List[Dict[str, Any]]:
         candidates: List[Dict[str, Any]] = []
 
-        actor_beliefs = world.get_character_beliefs(actor.id)
-        actor_secrets = world.get_character_secrets(actor.id)
-        actor_facts = world.get_character_facts(actor.id)
-        actor_memories = world.get_character_memories(actor.id)
+        is_view = hasattr(world, "perceivable_objects")
+        if is_view:
+            actor_beliefs = []
+            actor_secrets = []
+            actor_facts = []
+            actor_memories = []
+            trust = world.relationship_trust.get(target.id, 0.0)
+            objs = world.perceivable_objects
+            events = world.recent_events
+        else:
+            actor_beliefs = world.get_character_beliefs(actor.id)
+            actor_secrets = world.get_character_secrets(actor.id)
+            actor_facts = world.get_character_facts(actor.id)
+            actor_memories = world.get_character_memories(actor.id)
 
-        relationship = next(
-            (
-                r for r in world.relationships.values()
-                if (r.character_a_id == actor.id and r.character_b_id == target.id)
-                or (r.character_a_id == target.id and r.character_b_id == actor.id)
-            ),
-            None,
-        )
-        trust = relationship.trust if relationship else 0.0
+            relationship = next(
+                (
+                    r for r in getattr(world, "relationships", {}).values()
+                    if (r.character_a_id == actor.id and r.character_b_id == target.id)
+                    or (r.character_a_id == target.id and r.character_b_id == actor.id)
+                ),
+                None,
+            )
+            trust = relationship.trust if relationship else 0.0
+            objs = world.objects
+            events = list(world.events.values())
 
         # Topic extraction from active goals or accessible objects
         primary_topic = "the situation"
@@ -62,14 +74,14 @@ class SocialDialogueGenerator:
                 break
 
         if primary_topic == "the situation":
-            for obj in world.objects.values():
-                if obj.location_id == actor.current_location_id or obj.holder_id == actor.id:
+            for obj in objs.values():
+                if obj.location_id == actor.current_location_id or getattr(obj, "holder_id", None) == actor.id:
                     primary_topic = obj.name.lower()
                     break
 
-        # Check last speech between actor and target from objective history
+        # Check last speech between actor and target from history
         last_speech = None
-        for ev in reversed(list(world.events.values())):
+        for ev in reversed(events):
             if ev.event_type.value == "character_spoke" and actor.id in ev.actor_ids and target.id in ev.actor_ids:
                 last_speech = ev
                 break

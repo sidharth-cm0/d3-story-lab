@@ -3,6 +3,7 @@
 from __future__ import annotations
 import uuid
 import hashlib
+import random
 import logging
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field
@@ -10,7 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field
 logger = logging.getLogger(__name__)
 
 from src.domain.world import WorldState
-from src.domain.action import ActionProposal, ActionType
+from src.domain.action import ActionProposal, ActionType, Motivation
+from src.domain.world_view import CharacterWorldView, project_view
 from src.simulation.perception import KnowledgeFilter
 from src.simulation.actions import ActionValidator
 from src.simulation.affordances import ObjectAffordanceResolver
@@ -20,6 +22,10 @@ from src.providers.mock import MockLLMProvider
 from src.agents.social import SocialDialogueGenerator, SocialIntent
 from src.agents.repetition import RepetitionTracker
 from src.agents.goal_selector import CandidateAction, GoalActionSelector
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from src.simulation.policy import DecisionPolicy, RuleDecisionPolicy, LLMDecisionPolicy
 
 
 class ActorDecision(BaseModel):
@@ -44,6 +50,7 @@ class ActorAgent:
         self,
         character_id: str,
         provider: Optional[LLMProvider] = None,
+        policy: Optional[DecisionPolicy] = None,
         memory_service: Optional[MemoryService] = None,
         repetition_tracker: Optional[RepetitionTracker] = None,
         seed: Optional[int] = None,
@@ -53,8 +60,15 @@ class ActorAgent:
         self.memory_service = memory_service
         self.repetition_tracker = repetition_tracker or RepetitionTracker()
         self.seed = seed
+        self.rng = random.Random(seed) if seed is not None else random.Random(42)
 
-    def propose_action(self, world: WorldState) -> ActionProposal:
+        from src.simulation.policy import RuleDecisionPolicy, LLMDecisionPolicy
+        if policy is not None:
+            self.policy = policy
+        else:
+            self.policy = RuleDecisionPolicy(self.repetition_tracker)
+
+    def propose_action(self, world: WorldState, rng: Optional[random.Random] = None) -> ActionProposal:
         """Execute the cognitive loop:
         Observe -> Retrieve Memory -> Reason -> Propose Action -> Validate -> (Optional single retry)
         """
@@ -66,37 +80,31 @@ class ActorAgent:
                 actor_id=self.character_id,
                 action_type=ActionType.WAIT,
                 tick_proposed=world.current_tick,
+                motivation=Motivation(kind="PURSUE_GOAL"),
+                expected_outcome="Wait",
                 reason="Character not found in world state",
             )
 
-        # 1. Perception
-        obs = KnowledgeFilter.build_observation(world, self.character_id)
+        active_rng = rng or self.rng
 
-        # 2. Memory Retrieval
-        retrieved_memories: List[str] = []
-        if self.memory_service:
-            mems = self.memory_service.retrieve_relevant_memories(
-                self.character_id, query=obs.current_location_name or "current room", limit=4
+        # Special test hook for MockLLMProvider with registered ActorDecision handler
+        if ActorDecision in getattr(self.provider, "_structured_handlers", {}):
+            obs = KnowledgeFilter.build_observation(world, self.character_id)
+            retrieved_memories: List[str] = []
+            if self.memory_service:
+                mems = self.memory_service.retrieve_relevant_memories(
+                    self.character_id, query=obs.current_location_name or "current room", limit=4
+                )
+                retrieved_memories = [f"[{m.tick}] {m.summary}" for m in mems]
+            goals = world.get_character_goals(self.character_id)
+            beliefs = [f"{b.statement} (confidence: {b.confidence})" for b in world.get_character_beliefs(self.character_id)]
+            secrets = [s.statement for s in world.get_character_secrets(self.character_id)]
+            prompt = self._build_prompt(char, obs, [g.description for g in goals], beliefs, secrets, retrieved_memories)
+            system_prompt = (
+                f"You are the autonomous actor agent for '{char.name}' ({char.role}). "
+                "You make proactive, dramatic, and goal-oriented decisions based on what you observe and know. "
+                "Engage with other characters, interact with objects, or explore connected locations."
             )
-            retrieved_memories = [f"[{m.tick}] {m.summary}" for m in mems]
-
-        # 3. Inner State
-        goals = world.get_character_goals(self.character_id)
-        beliefs = [f"{b.statement} (confidence: {b.confidence})" for b in world.get_character_beliefs(self.character_id)]
-        secrets = [s.statement for s in world.get_character_secrets(self.character_id)]
-
-        # 4. Generate decision
-        prompt = self._build_prompt(char, obs, [g.description for g in goals], beliefs, secrets, retrieved_memories)
-        system_prompt = (
-            f"You are the autonomous actor agent for '{char.name}' ({char.role}). "
-            "You make proactive, dramatic, and goal-oriented decisions based on what you observe and know. "
-            "Do NOT wait passively unless there are no other viable actions. Engage with other characters, "
-            "interact with objects, or explore connected locations."
-        )
-
-        if isinstance(self.provider, MockLLMProvider) and ActorDecision not in self.provider._structured_handlers:
-            decision = self._build_deterministic_mock_decision(world)
-        else:
             try:
                 decision = self.provider.generate_structured(ActorDecision, prompt, system_prompt=system_prompt)
             except Exception as e:
@@ -105,15 +113,14 @@ class ActorAgent:
                 )
                 decision = self._build_deterministic_mock_decision(world)
 
-        if not decision or not hasattr(decision, "action_type") or not decision.action_type:
-            decision = self._build_deterministic_mock_decision(world)
+            if not decision or not hasattr(decision, "action_type") or not decision.action_type:
+                decision = self._build_deterministic_mock_decision(world)
 
-        proposal = self._decision_to_proposal(decision, world.current_tick)
+            proposal = self._decision_to_proposal(decision, world.current_tick)
 
-        # 5. Deterministic validation with single-retry fallback
-        is_valid, err_msg = ActionValidator.validate(world, proposal)
-        if not is_valid:
-            if not isinstance(self.provider, MockLLMProvider) or ActorDecision in self.provider._structured_handlers:
+            # Deterministic validation with single-retry fallback
+            is_valid, err_msg = ActionValidator.validate(world, proposal)
+            if not is_valid:
                 retry_prompt = (
                     f"{prompt}\n\nATTENTION: Your previous proposed action '{proposal.action_type.value}' was rejected "
                     f"because: {err_msg}. Please choose a valid alternative action."
@@ -128,18 +135,24 @@ class ActorAgent:
                         proposal = self._build_fallback_action(world)
                 except Exception:
                     proposal = self._build_fallback_action(world)
-            else:
-                proposal = self._build_fallback_action(world)
 
-        # Record action in repetition tracker
-        self.repetition_tracker.record_action(
-            actor_id=self.character_id,
-            action_type=proposal.action_type,
-            target_id=proposal.target_id,
-            location_id=proposal.location_id,
-            intent=decision.intent,
-        )
+            self.repetition_tracker.record_action(
+                actor_id=self.character_id,
+                action_type=proposal.action_type,
+                target_id=proposal.target_id,
+                location_id=proposal.location_id,
+                intent=decision.intent,
+            )
+            return proposal
 
+        # Standard decision path: pure firewall projection through policy
+        view = project_view(world, char)
+        loc = world.locations.get(char.current_location_id) if char.current_location_id else None
+        affordances = []
+        for obj in world.objects.values():
+            if obj.location_id == char.current_location_id or obj.holder_id == char.id:
+                affordances.extend(ObjectAffordanceResolver.resolve_affordances(obj, char, loc))
+        proposal = self.policy.propose(char, view, affordances, active_rng)
         return proposal
 
     def _build_prompt(
@@ -304,6 +317,8 @@ class ActorAgent:
                     location_id=dest,
                     parameters={"destination_id": dest},
                     tick_proposed=world.current_tick,
+                    motivation=Motivation(kind="PURSUE_GOAL"),
+                    expected_outcome=f"Move to {dest}",
                     reason="Moving to adjacent room after previous action rejected",
                 )
 
@@ -316,6 +331,8 @@ class ActorAgent:
             actor_id=self.character_id,
             action_type=ActionType.WAIT,
             tick_proposed=world.current_tick,
+            motivation=Motivation(kind="PURSUE_GOAL"),
+            expected_outcome="Wait",
             reason="Waiting after validation failure",
         )
 
@@ -332,6 +349,8 @@ class ActorAgent:
             location_id=candidate.location_id,
             parameters=dict(candidate.parameters),
             tick_proposed=current_tick,
+            motivation=candidate.motivation or Motivation(kind="PURSUE_GOAL"),
+            expected_outcome=candidate.intent,
             reason=f"{candidate.intent}: {candidate.reasoning}",
         )
 
@@ -349,5 +368,7 @@ class ActorAgent:
             location_id=decision.location_id,
             parameters=dict(decision.parameters),
             tick_proposed=current_tick,
+            motivation=Motivation(kind="PURSUE_GOAL"),
+            expected_outcome=decision.intent,
             reason=f"{decision.intent}: {decision.reasoning_summary}",
         )

@@ -4,7 +4,7 @@
 |-------|------|--------|---------|-------|
 | 0 | Audit | COMPLETE | 1 | Comprehensive read-only architecture audit completed. |
 | 1 | Foundations | COMPLETE | 2 | Seeding/replay, typed propositions/knowledge, bidirectional provenance, unified persistence + migration, and budget governor with hash cache. |
-| 2 | Deterministic decision policy | NOT_STARTED | | |
+| 2 | Deterministic decision policy | COMPLETE | 3 | Omniscience firewall (CharacterWorldView), mandatory Motivation, 4 validator gates, RuleDecisionPolicy with repetition penalty, causal Event.caused_by wiring, and zero-AI simulation verified. |
 | 3 | Story structure engine | NOT_STARTED | | |
 | 4 | Blueprint / beats / director / gate | NOT_STARTED | | |
 | 5 | Observer / scene builder / causality | NOT_STARTED | | |
@@ -23,6 +23,14 @@
   - 1.4 Project persistence enhancements: schema_version=2, media/ directory layout, and lossless migration of legacy unversioned project files.
   - 1.5 BudgetGovernor with token/panel/cost hard limits and ContentHashCache for duplicate prompt caching.
   - Added 9 unit tests in test_phase1_foundations.py. Verification suite passing: 320 backend tests, 49 frontend tests.
+- Session 3: Phase 2 Deterministic Decision Policy complete. Implemented:
+  - 2.1 Carry-over verification: Hardened replay over 100 ticks with AI providers disabled, byte-identical history & final state, seed sensitivity confirmed. Verified round-trip persistence and audited existing scoring/decision components.
+  - 2.2 Omniscience Firewall: Pure projection `project_view(world, character) -> CharacterWorldView` exposing only character's subjective `KnowledgeItem`s, co-located visible entities, and reachable zones. Canonical proposition registry, foreign knowledge, and unheld secrets strictly excluded.
+  - 2.3 ActionProposal with mandatory `motivation: Motivation` (no default value) carrying causal context (`PURSUE_GOAL`, `REACT_TO_EVENT`, `ACT_ON_KNOWLEDGE`, `AVOID_THREAT`).
+  - 2.4 Causal Event wiring: `Event.caused_by: List[str]` and `Event.motivation: Optional[Dict[str, Any]]` populated deterministically by `ActionExecutor` from proposal motivation and `KnowledgeItem.acquired_at_event`.
+  - 2.5 Four validator gates (`KnowledgeGate`, `SpatialGate`, `CanonGate` stub, `AffordanceGate`) with `ActionRejection` logged outside immutable event history.
+  - 2.6 `@runtime_checkable` `DecisionPolicy` protocol with formal `RuleDecisionPolicy` (zero AI calls, repetition penalty anti-stall, scoring tie-breaks) and swappable `LLMDecisionPolicy`.
+  - Added 17 unit tests in test_phase2_decision_policy.py. Verification suite passing: 346 backend tests, 49 frontend tests. Zero regressions.
 
 ## Open decisions awaiting human input
 1. **Knowledge & Proposition Modeling Migration Strategy**:

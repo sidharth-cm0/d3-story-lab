@@ -1,7 +1,17 @@
 """Action proposal and result models"""
 from enum import Enum
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Literal
 from pydantic import BaseModel, Field, ConfigDict
+
+
+class Motivation(BaseModel):
+    """The causal and psychological reason driving a proposed action."""
+    kind: Literal["PURSUE_GOAL", "REACT_TO_EVENT", "ACT_ON_KNOWLEDGE", "AVOID_THREAT"]
+    knowledge_item_id: Optional[str] = None
+    prior_event_id: Optional[str] = None
+    goal_id: Optional[str] = None
+
+    model_config = ConfigDict(frozen=True)
 
 
 class ActionType(str, Enum):
@@ -39,6 +49,8 @@ class ActionProposal(BaseModel):
         default_factory=dict, description="Additional parameters"
     )
     tick_proposed: int = Field(..., ge=0, description="Simulation tick when proposed")
+    motivation: Motivation = Field(..., description="Mandatory motivation driving this proposal")
+    expected_outcome: str = Field(default="", description="Expected outcome of the action")
     reason: Optional[str] = Field(
         None, description="Why the actor proposes this action"
     )
@@ -53,10 +65,23 @@ class ActionProposal(BaseModel):
                 "location_id": "loc_hallway",
                 "parameters": {"from": "loc_room307", "to": "loc_hallway"},
                 "tick_proposed": 1,
+                "motivation": {"kind": "PURSUE_GOAL", "goal_id": "goal_search"},
+                "expected_outcome": "Reach the hallway",
                 "reason": "Search for Maya",
             }
         }
     )
+
+
+class ActionRejection(BaseModel):
+    """Immutable record of an action proposal rejected by a validator gate."""
+    tick: int = Field(..., ge=0, description="Simulation tick when rejected")
+    actor_id: str = Field(..., description="Actor who proposed the rejected action")
+    proposal: ActionProposal = Field(..., description="The rejected ActionProposal")
+    gate: str = Field(..., description="Name of the gate that rejected the action")
+    reason: str = Field(..., description="Human-readable reason for rejection")
+
+    model_config = ConfigDict(frozen=True)
 
 
 class ActionResultStatus(str, Enum):

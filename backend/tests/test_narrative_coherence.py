@@ -12,6 +12,7 @@ from src.domain import (
     ActionProposal,
     EventType,
     DiscoveredFact,
+    Motivation,
 )
 from src.simulation.actions import ActionValidator, ActionExecutor
 from src.simulation.recorder import EventRecorder
@@ -28,10 +29,10 @@ class TestSpatialStateConsistencyAndAudit:
 
     def test_speak_requires_colocation_or_communication_channel(self):
         """Direct dialogue must be rejected if characters are in different rooms and have no channel."""
-        loc1 = Location(id="loc_suite", name="Suite", connected_locations=["loc_hall"])
-        loc2 = Location(id="loc_hall", name="Hall", connected_locations=["loc_suite"])
-        c1 = Character(id="c1", name="Jordan", role="Journalist", current_location_id="loc_suite")
-        c2 = Character(id="c2", name="Morgan", role="Source", current_location_id="loc_hall")
+        loc1 = Location(id="loc_suite", name="Suite 307")
+        loc2 = Location(id="loc_hall", name="Hallway")
+        c1 = Character(id="c1", name="Arjun", role="Investigator", current_location_id="loc_suite")
+        c2 = Character(id="c2", name="Maya", role="Executive", current_location_id="loc_hall")
 
         world = WorldState(
             id="w1",
@@ -48,6 +49,7 @@ class TestSpatialStateConsistencyAndAudit:
             target_id="c2",
             parameters={"dialogue": "Can you hear me from the other room?"},
             tick_proposed=0,
+            motivation=Motivation(kind="PURSUE_GOAL"),
         )
         valid, err = ActionValidator.validate(world, prop_remote)
         assert not valid
@@ -221,6 +223,7 @@ class TestActionConsequencesAndInformationState:
             action_type=ActionType.INSPECT_OBJECT,
             target_id="obj_ledger",
             tick_proposed=0,
+            motivation=Motivation(kind="PURSUE_GOAL"),
         )
         res = orch.executor.execute(world, proposal, orch.recorder)
         assert res.status.value == "success"

@@ -7,6 +7,7 @@ from src.domain import (
     ActionResultStatus,
     EventType,
     WorldObject,
+    Motivation,
 )
 from src.simulation import (
     SimulationEngine,
@@ -32,6 +33,7 @@ class TestActionValidatorAndExecutor:
             action_type=ActionType.MOVE,
             location_id="loc_hallway",
             tick_proposed=0,
+            motivation=Motivation(kind="PURSUE_GOAL"),
         )
 
         is_valid, err = ActionValidator.validate(world, proposal)
@@ -59,6 +61,7 @@ class TestActionValidatorAndExecutor:
             action_type=ActionType.MOVE,
             location_id="loc_penthouse_999",
             tick_proposed=0,
+            motivation=Motivation(kind="PURSUE_GOAL"),
         )
         is_valid, err = ActionValidator.validate(world, proposal)
         assert is_valid is False
@@ -80,6 +83,7 @@ class TestActionValidatorAndExecutor:
             action_type=ActionType.TAKE_OBJECT,
             target_id="obj_documents",
             tick_proposed=0,
+            motivation=Motivation(kind="PURSUE_GOAL"),
         )
         take_res = ActionExecutor.execute(world, take_prop, recorder)
         assert take_res.status == ActionResultStatus.SUCCESS
@@ -93,6 +97,7 @@ class TestActionValidatorAndExecutor:
             action_type=ActionType.DROP_OBJECT,
             target_id="obj_documents",
             tick_proposed=0,
+            motivation=Motivation(kind="PURSUE_GOAL"),
         )
         drop_res = ActionExecutor.execute(world, drop_prop, recorder)
         assert drop_res.status == ActionResultStatus.SUCCESS
@@ -112,6 +117,7 @@ class TestActionValidatorAndExecutor:
             action_type=ActionType.TAKE_OBJECT,
             target_id="obj_door",
             tick_proposed=0,
+            motivation=Motivation(kind="PURSUE_GOAL"),
         )
         is_valid, err = ActionValidator.validate(world, door_prop)
         assert is_valid is False
@@ -126,6 +132,7 @@ class TestActionValidatorAndExecutor:
                 action_type=ActionType.TAKE_OBJECT,
                 target_id="obj_documents",
                 tick_proposed=0,
+                motivation=Motivation(kind="PURSUE_GOAL"),
             ),
             recorder,
         )
@@ -137,6 +144,7 @@ class TestActionValidatorAndExecutor:
             action_type=ActionType.TAKE_OBJECT,
             target_id="obj_documents",
             tick_proposed=0,
+            motivation=Motivation(kind="PURSUE_GOAL"),
         )
         is_valid, err = ActionValidator.validate(world, arjun_take)
         assert is_valid is False
@@ -156,6 +164,7 @@ class TestActionValidatorAndExecutor:
                 action_type=ActionType.TAKE_OBJECT,
                 target_id="obj_documents",
                 tick_proposed=0,
+                motivation=Motivation(kind="PURSUE_GOAL"),
             ),
             recorder,
         )
@@ -168,6 +177,7 @@ class TestActionValidatorAndExecutor:
             target_id="char_arjun",
             parameters={"object_id": "obj_documents"},
             tick_proposed=0,
+            motivation=Motivation(kind="PURSUE_GOAL"),
         )
         res = ActionExecutor.execute(world, give_prop, recorder)
         assert res.status == ActionResultStatus.SUCCESS

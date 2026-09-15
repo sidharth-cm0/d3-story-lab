@@ -11,7 +11,14 @@ from .fact import DiscoveredFact
 from .proposition import Proposition, KnowledgeItem
 from .world import Location, WorldObject, WorldState
 from .character import Character, EmotionalState
-from .action import ActionProposal, ActionResult, ActionType, ActionResultStatus
+from .action import ActionProposal, ActionResult, ActionType, ActionResultStatus, Motivation, ActionRejection
+from .world_view import (
+    CharacterWorldView,
+    ObservableCharacter,
+    ObservableObject,
+    ObservableLocation,
+    project_view,
+)
 from .continuity import ActorVisualProfile, ObjectVisualProfile, LocationVisualProfile
 
 __all__ = [
@@ -38,6 +45,13 @@ __all__ = [
     "ActionResult",
     "ActionType",
     "ActionResultStatus",
+    "Motivation",
+    "ActionRejection",
+    "CharacterWorldView",
+    "ObservableCharacter",
+    "ObservableObject",
+    "ObservableLocation",
+    "project_view",
     "ActorVisualProfile",
     "ObjectVisualProfile",
     "LocationVisualProfile",

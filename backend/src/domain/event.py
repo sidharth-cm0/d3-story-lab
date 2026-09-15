@@ -35,6 +35,12 @@ class Event(BaseModel):
         None, description="Location where event occurred"
     )
     description: str = Field(..., description="Human-readable description")
+    caused_by: List[str] = Field(
+        default_factory=list, description="IDs of events that causally motivated or triggered this event"
+    )
+    motivation: Optional[Dict[str, Any]] = Field(
+        default=None, description="Snapshot of the motivation driving this event"
+    )
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional event data"
     )

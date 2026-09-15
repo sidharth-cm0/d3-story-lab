@@ -1,6 +1,6 @@
 """Simulation Orchestrator coordinating multi-agent steps, cognition, evolution, and pacing."""
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 from ..domain import (
     WorldState,
     ActionType,
@@ -9,12 +9,14 @@ from ..domain import (
     ActionProposal,
     GoalStatus,
     EventLog,
+    DiscoveredFact,
 )
 from ..domain.simulation import SimulationClock
 from .recorder import EventRecorder
 from .actions import ActionValidator, ActionExecutor
 from ..memory.service import MemoryService
-from ..agents.actor import ActorAgent
+if TYPE_CHECKING:
+    from ..agents.actor import ActorAgent
 from ..agents.director import DirectorAgent
 from ..agents.repetition import RepetitionTracker
 from ..evolution.belief import BeliefUpdater
@@ -64,10 +66,13 @@ class SimulationOrchestrator:
                 self.director.blueprint = blueprint
         else:
             self.director = DirectorAgent(blueprint=blueprint)
-        self.executor = ActionExecutor()
+        self.validator = ActionValidator()
+        self.executor = ActionExecutor(validator=self.validator)
         self.repetition_tracker = repetition_tracker or RepetitionTracker()
 
         # Agents registry per character
+        from ..agents.actor import ActorAgent
+
         self.agents: Dict[str, ActorAgent] = {
             char_id: ActorAgent(
                 char_id,
@@ -86,6 +91,11 @@ class SimulationOrchestrator:
         self._recent_action_signatures: List[str] = []
         self._is_paused = False
         self.scene_resolution_status: Optional[str] = None
+
+    @property
+    def rejection_log(self) -> List[Any]:
+        """Access the rejection log containing all actions rejected by validator gates."""
+        return self.validator.rejections
 
     @property
     def is_paused(self) -> bool:

@@ -4,8 +4,9 @@ from __future__ import annotations
 from typing import List, Dict, Any, Optional
 from src.domain.world import WorldState
 from src.domain.character import Character
-from src.domain.action import ActionType, ActionProposal
+from src.domain.action import ActionType, ActionProposal, Motivation
 from src.domain.goal import Goal
+from src.domain.world_view import CharacterWorldView
 from src.agents.repetition import RepetitionTracker
 
 
@@ -21,6 +22,7 @@ class CandidateAction:
         intent: str = "",
         reasoning: str = "",
         base_utility: float = 0.5,
+        motivation: Optional[Motivation] = None,
     ):
         self.action_type = action_type
         self.target_id = target_id
@@ -29,6 +31,7 @@ class CandidateAction:
         self.intent = intent
         self.reasoning = reasoning
         self.base_utility = base_utility
+        self.motivation = motivation
         self.final_score: float = base_utility
 
 
@@ -40,20 +43,40 @@ class GoalActionSelector:
         candidate: CandidateAction,
         actor: Character,
         goals: List[Goal],
-        world: WorldState,
+        world: WorldState | CharacterWorldView,
         repetition_tracker: Optional[RepetitionTracker] = None,
     ) -> float:
         score = candidate.base_utility
 
+        # Extract views/state flexibly
+        if isinstance(world, CharacterWorldView):
+            objs = world.perceivable_objects
+            events = world.recent_events
+            chars = world.perceivable_characters
+            trust_map = world.relationship_trust
+        else:
+            objs = world.objects
+            events = list(world.events.values())
+            chars = world.characters
+            trust_map = {}
+            for r in getattr(world, "relationships", {}).values():
+                if r.character_a_id == actor.id:
+                    trust_map[r.character_b_id] = r.trust
+                elif r.character_b_id == actor.id:
+                    trust_map[r.character_a_id] = r.trust
+
         # 1. Inspecting already-inspected objects has negligible novelty
         if candidate.action_type == ActionType.INSPECT_OBJECT and candidate.target_id:
-            target_obj = world.objects.get(candidate.target_id)
-            if target_obj and actor.id in target_obj.inspected_by:
+            target_obj = objs.get(candidate.target_id)
+            if target_obj and actor.id in getattr(target_obj, "inspected_by", []):
                 score = 0.05
+            elif target_obj and not actor.knows(candidate.target_id):
+                # Knowledge-gap bonus: reward inspecting unknown/unheld clue
+                score += 0.25
 
         # 2. Conversational response priority: if co-located partner just spoke, answer them
         last_speech = None
-        for ev in reversed(list(world.events.values())):
+        for ev in reversed(events):
             if ev.event_type.value == "character_spoke" and ev.location_id == actor.current_location_id:
                 last_speech = ev
                 break
@@ -65,10 +88,10 @@ class GoalActionSelector:
 
         # 3. Movement preference: don't wander away if engaged in active dialogue or uninspected clues exist
         if candidate.action_type == ActionType.MOVE:
-            co_located = [c for c in world.characters.values() if c.id != actor.id and c.current_location_id == actor.current_location_id]
+            co_located = [c for c in chars.values() if c.id != actor.id and getattr(c, "current_location_id", None) == actor.current_location_id]
             uninspected_here = [
-                o for o in world.objects.values()
-                if (o.location_id == actor.current_location_id or o.holder_id == actor.id)
+                o for o in objs.values()
+                if (o.location_id == actor.current_location_id or getattr(o, "holder_id", None) == actor.id)
                 and actor.id not in getattr(o, "inspected_by", [])
             ]
             if co_located or uninspected_here:
@@ -78,7 +101,7 @@ class GoalActionSelector:
         if candidate.action_type in (ActionType.TAKE_OBJECT, ActionType.PICKUP) and len(actor.inventory) >= 1:
             score -= 0.40
 
-        # 4. Goal alignment
+        # 5. Goal alignment
         goal_boost = 0.0
         for g in goals:
             g_desc = g.description.lower()
@@ -115,23 +138,36 @@ class GoalActionSelector:
 
         score += goal_boost
 
-        # 5. Emotional state drive
+        # 6. Emotional state drive & Relationship scores
         emo = actor.emotional_state
         if candidate.action_type == ActionType.SPEAK:
-            if candidate.parameters.get("social_intent") == "accuse" and emo.anger > 0.3:
-                score += 0.15
-            elif candidate.parameters.get("social_intent") == "question" and emo.curiosity > 0.5:
-                score += 0.15
+            social_intent = candidate.parameters.get("social_intent") or candidate.parameters.get("speech_act") or ""
+            target_trust = trust_map.get(candidate.target_id, 0.0) if candidate.target_id else 0.0
+
+            if social_intent == "accuse":
+                if emo.anger > 0.3:
+                    score += 0.15
+                if emo.fear > 0.4:
+                    score -= 0.25  # Fear suppresses confrontation
+                if target_trust < 0:
+                    score += (-target_trust) * 0.15  # Hostility enables accusation
+            elif social_intent == "question":
+                if emo.curiosity > 0.5:
+                    score += 0.15
+            elif social_intent in ("cooperate", "reveal", "share"):
+                if target_trust > 0:
+                    score += target_trust * 0.15  # Trust enables disclosure
+
         elif candidate.action_type == ActionType.INSPECT_OBJECT and emo.curiosity > 0.5:
             score += 0.15
-        elif candidate.action_type == ActionType.MOVE and emo.fear > 0.6:
-            score += 0.20
+        elif candidate.action_type == ActionType.MOVE and emo.fear > 0.4:
+            score += 0.25  # Fear encourages changing location / fleeing
 
-        # 6. Severe penalty for WAIT when active alternatives exist
+        # 7. Severe penalty for WAIT when active alternatives exist
         if candidate.action_type == ActionType.WAIT:
             score = 0.05
 
-        # 7. Deduct repetition penalty
+        # 8. Deduct repetition penalty
         if repetition_tracker:
             topic = candidate.parameters.get("topic")
             speech_act = candidate.parameters.get("speech_act") or candidate.parameters.get("social_intent")
