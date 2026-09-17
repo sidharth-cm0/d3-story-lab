@@ -14,6 +14,8 @@ from ..domain import (
 from ..domain.simulation import SimulationClock
 from .recorder import EventRecorder
 from .actions import ActionValidator, ActionExecutor
+from .differ import StateSnapshotDiffer
+from ..narrative.sufficiency_gate import NarrativeSufficiencyGate
 from ..memory.service import MemoryService
 if TYPE_CHECKING:
     from ..agents.actor import ActorAgent
@@ -24,9 +26,7 @@ from ..evolution.relationship import RelationshipUpdater
 from ..evolution.emotion import EmotionUpdater
 from ..providers.base import LLMProvider
 from ..providers.mock import MockLLMProvider
-
-
-from src.domain.story_structure import StoryBlueprint
+from ..story.models import StoryBlueprint, SufficiencyReport
 
 
 class SimulationOrchestrator:
@@ -49,6 +49,10 @@ class SimulationOrchestrator:
         self.world = world
         self.blueprint = blueprint or story_blueprint
         self.provider = provider or MockLLMProvider()
+        self.total_ticks = 20
+        self.differ = StateSnapshotDiffer(world)
+        self.sufficiency_gate = NarrativeSufficiencyGate()
+        self.last_sufficiency_report: Optional[SufficiencyReport] = None
         if recorder is not None:
             self.recorder = recorder
             if seed is not None and getattr(self.recorder, "seed", None) is None:
@@ -62,10 +66,10 @@ class SimulationOrchestrator:
         self.memory_service = memory_service or MemoryService(world, seed=seed)
         if director is not None:
             self.director = director
-            if blueprint and not self.director.blueprint:
-                self.director.blueprint = blueprint
+            if self.blueprint and not self.director.blueprint:
+                self.director.blueprint = self.blueprint
         else:
-            self.director = DirectorAgent(blueprint=blueprint)
+            self.director = DirectorAgent(blueprint=self.blueprint)
         self.validator = ActionValidator()
         self.executor = ActionExecutor(validator=self.validator)
         self.repetition_tracker = repetition_tracker or RepetitionTracker()
@@ -162,60 +166,111 @@ class SimulationOrchestrator:
         else:
             self._stagnation_count = 0
 
-        # 4. Director evaluates pacing and potentially intervenes
-        intervention = self.director.evaluate_pacing(
-            self.world, self._inactivity_count, stagnation_count=self._stagnation_count
-        )
-        if intervention:
-            int_event = self.director.inject_intervention(self.world, self.recorder, intervention)
-            self._inactivity_count = 0  # Pressure breaks inactivity
-            self._stagnation_count = 0
+        # 4. Capture snapshot for state diffing and evaluate blueprint beat predicates
+        self.differ.capture_snapshot(self.world.current_tick, self.world)
 
-            # Form memory and emotional jolt for actors present at location
-            if intervention.target_location_id:
-                for c in self.world.characters.values():
-                    if c.current_location_id == intervention.target_location_id:
-                        self.memory_service.form_memory(
-                            character_id=c.id,
-                            summary=intervention.description,
-                            importance=0.9,
-                            emotional_weight=-0.3,
-                            event_id=int_event.id,
-                            tags=["director_intervention", intervention.intervention_type.value],
+        if self.blueprint and hasattr(self.blueprint, "beats"):
+            for beat in self.blueprint.beats:
+                if beat.status not in ("PENDING", "PARTIAL") or getattr(beat, "unevaluable", False):
+                    continue
+                start_tick = int(beat.target_window[0] * self.total_ticks)
+                end_tick = max(start_tick, int(round(beat.target_window[1] * self.total_ticks)))
+
+                if self.world.current_tick >= start_tick:
+                    is_sat = False
+                    if beat.satisfaction_predicate.any_of:
+                        is_sat = any(
+                            self.differ.evaluate_clause(self.world, c, start_tick, self.world.current_tick)
+                            for c in beat.satisfaction_predicate.any_of
                         )
-                        EmotionUpdater.adjust_emotion(c, delta_fear=0.3, delta_curiosity=0.3)
+                    elif beat.satisfaction_predicate.all_of:
+                        is_sat = all(
+                            self.differ.evaluate_clause(self.world, c, start_tick, self.world.current_tick)
+                            for c in beat.satisfaction_predicate.all_of
+                        )
+                    if is_sat:
+                        beat.status = "SATISFIED"
+                    elif self.world.current_tick > end_tick:
+                        beat.status = "UNSATISFIED"
+                        beat.deviation_note = (
+                            f"Beat window [{beat.target_window[0]:.2f}, {beat.target_window[1]:.2f}] "
+                            f"closed without satisfaction predicate being met."
+                        )
 
-            # Record discovered fact from director environmental intervention
-            int_fact_id = f"fact_dir_{self.world.current_tick}_{intervention.intervention_type.value}"
-            if int_fact_id not in self.world.facts:
-                self.world.facts[int_fact_id] = DiscoveredFact(
-                    id=int_fact_id,
-                    statement=intervention.description,
-                    source="observation",
-                    confidence=1.0,
-                    discovered_by="environment",
-                    tick=self.world.current_tick,
-                    related_entities=[intervention.target_location_id] if intervention.target_location_id else [],
-                    metadata={"incident_type": intervention.intervention_type.value},
+            # Director beat escalation check
+            if self.director and hasattr(self.director, "evaluate_beat_escalation"):
+                self.director.evaluate_beat_escalation(
+                    self.world, self.recorder, self.validator, self.total_ticks
                 )
 
-        # 5. Check scene resolution criteria
+        # 5. Director evaluates pacing and potentially intervenes
+        if hasattr(self.director, "evaluate_pacing"):
+            intervention = self.director.evaluate_pacing(
+                self.world, self._inactivity_count, stagnation_count=self._stagnation_count
+            )
+            if intervention:
+                int_event = self.director.inject_intervention(self.world, self.recorder, intervention, validator=self.validator)
+                if int_event:
+                    self._inactivity_count = 0  # Pressure breaks inactivity
+                    self._stagnation_count = 0
+
+                    # Form memory and emotional jolt for actors present at location
+                    if intervention.target_location_id:
+                        for c in self.world.characters.values():
+                            if c.current_location_id == intervention.target_location_id:
+                                self.memory_service.form_memory(
+                                    character_id=c.id,
+                                    summary=intervention.description,
+                                    importance=0.9,
+                                    emotional_weight=-0.3,
+                                    event_id=int_event.id,
+                                    tags=["director_intervention", getattr(intervention, "intervention_type", "other")],
+                                )
+                                EmotionUpdater.adjust_emotion(c, delta_fear=0.3, delta_curiosity=0.3)
+
+                    # Record discovered fact from director environmental intervention
+                    int_type = getattr(intervention, "intervention_type", "other")
+                    int_type_val = int_type.value if hasattr(int_type, "value") else str(int_type)
+                    int_fact_id = f"fact_dir_{self.world.current_tick}_{int_type_val}"
+                    if int_fact_id not in self.world.facts:
+                        self.world.facts[int_fact_id] = DiscoveredFact(
+                            id=int_fact_id,
+                            statement=intervention.description,
+                            source="observation",
+                            confidence=1.0,
+                            discovered_by="environment",
+                            tick=self.world.current_tick,
+                            related_entities=[intervention.target_location_id] if intervention.target_location_id else [],
+                            metadata={"incident_type": int_type_val},
+                        )
+
+        # 6. Check scene resolution criteria
         for g in self.world.goals.values():
             if g.status in (GoalStatus.ACHIEVED, GoalStatus.COMPLETED):
                 if not self.scene_resolution_status:
                     actor_name = self.world.characters[g.character_id].name if g.character_id in self.world.characters else g.character_id
                     self.scene_resolution_status = f"GOAL_ACHIEVED: {actor_name} accomplished '{g.description}'"
 
-        # 6. Advance clock
+        # 7. Advance clock
         self.clock.advance()
         self.world.current_tick = self.clock.current_tick
 
         return results
 
-    def run(self, max_ticks: int = 5, stop_on_resolution: bool = False) -> List[ActionResult]:
-        """Execute multiple steps until max_ticks or termination criteria"""
+    def run(
+        self,
+        max_ticks: int = 5,
+        stop_on_resolution: bool = False,
+        hard_cap: Optional[int] = None,
+        use_sufficiency_gate: bool = False,
+    ) -> List[ActionResult]:
+        """Execute multiple steps until max_ticks, hard_cap, or sufficiency gate termination."""
         all_results: List[ActionResult] = []
-        for _ in range(max_ticks):
+        current_budget = max_ticks
+        self.total_ticks = current_budget
+        effective_hard_cap = hard_cap if hard_cap is not None else max(max_ticks, 100)
+
+        while self.world.current_tick < current_budget and self.world.current_tick < effective_hard_cap:
             if self._is_paused:
                 break
             tick_results = self.step()
@@ -230,6 +285,44 @@ class SimulationOrchestrator:
                 if len(set(last_six)) <= 1:
                     self._stagnation_count += 3
                     break
+
+            # Narrative Sufficiency Gate evaluation
+            if use_sufficiency_gate and self.blueprint:
+                report = self.sufficiency_gate.evaluate(
+                    self.blueprint,
+                    self.world,
+                    self.world.current_tick,
+                    current_budget,
+                    effective_hard_cap,
+                )
+                self.last_sufficiency_report = report
+
+                if report.recommendation == "PROCEED":
+                    break
+                elif report.recommendation == "HALT_INSUFFICIENT":
+                    break
+                elif report.recommendation == "ADJUST_PRESSURE_AND_CONTINUE":
+                    old_budget = current_budget
+                    increment = self.sufficiency_gate.extension_increment_ticks
+                    current_budget = min(effective_hard_cap, current_budget + increment)
+                    self.total_ticks = current_budget
+                    # Window recomputation for still PENDING beats (§B.4)
+                    ext_ratio = current_budget / max(1, old_budget)
+                    for beat in self.blueprint.beats:
+                        if beat.status == "PENDING":
+                            beat.target_window = (
+                                beat.target_window[0],
+                                min(1.0, beat.target_window[1] * ext_ratio),
+                            )
+
+        if use_sufficiency_gate and self.blueprint and not self.last_sufficiency_report:
+            self.last_sufficiency_report = self.sufficiency_gate.evaluate(
+                self.blueprint,
+                self.world,
+                self.world.current_tick,
+                current_budget,
+                effective_hard_cap,
+            )
 
         return all_results
 

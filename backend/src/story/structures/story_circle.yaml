@@ -1,0 +1,64 @@
+id: story_circle
+axis: MACRO
+display_name: "Story Circle"
+description: "Harmon's eight-stage circular journey of transformation and return"
+acts:
+  - { id: act_comfort, name: "Comfort Zone (1-2)", position: [0.00, 0.25] }
+  - { id: act_descent, name: "Descent (3-4)",      position: [0.25, 0.50] }
+  - { id: act_ordeal,  name: "Ordeal (5-6)",       position: [0.50, 0.75] }
+  - { id: act_return,  name: "Return (7-8)",       position: [0.75, 1.00] }
+beats:
+  - id: comfort_zone
+    dramatic_function: SETUP
+    window: [0.00, 0.15]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: need_disruption
+    dramatic_function: INCITING_INCIDENT
+    window: [0.10, 0.25]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+        - { type: SECRET_LEARNED }
+  - id: search_adapt
+    dramatic_function: INVESTIGATION
+    window: [0.25, 0.50]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: SECRET_LEARNED }
+        - { type: POSSESSION_CHANGE }
+  - id: find_and_take
+    dramatic_function: DISCOVERY
+    window: [0.50, 0.70]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: POSSESSION_CHANGE }
+        - { type: SECRET_LEARNED }
+  - id: heavy_price
+    dramatic_function: CRISIS
+    window: [0.65, 0.80]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+  - id: return_changed
+    dramatic_function: RESOLUTION
+    window: [0.80, 1.00]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+        - { type: GOAL_ADOPTED }
+compatible_beat_frameworks: [story_circle_stations]
+affinity:
+  return_to_origin: 0.9
+  transformation_expected: 0.8
+  conflict_axis.internal: 0.7
+  twist_or_juxtaposition_driven: -0.2
+disqualifiers: []
+manual_only: false

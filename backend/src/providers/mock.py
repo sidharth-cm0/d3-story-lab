@@ -14,6 +14,10 @@ class MockLLMProvider(LLMProvider):
         self._text_handlers: Dict[str, str] = {}
         self.call_history = []
 
+    @property
+    def call_count(self) -> int:
+        return len(self.call_history)
+
     def register_structured_handler(
         self,
         schema: Type[T],

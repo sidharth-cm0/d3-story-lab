@@ -5,8 +5,8 @@
 | 0 | Audit | COMPLETE | 1 | Comprehensive read-only architecture audit completed. |
 | 1 | Foundations | COMPLETE | 2 | Seeding/replay, typed propositions/knowledge, bidirectional provenance, unified persistence + migration, and budget governor with hash cache. |
 | 2 | Deterministic decision policy | COMPLETE | 3 | Omniscience firewall (CharacterWorldView), mandatory Motivation, 4 validator gates, RuleDecisionPolicy with repetition penalty, causal Event.caused_by wiring, and zero-AI simulation verified. |
-| 3 | Story structure engine | NOT_STARTED | | |
-| 4 | Blueprint / beats / director / gate | NOT_STARTED | | |
+| 3 | Story structure engine | COMPLETE | 4 | Data-driven YAML structures, unified DramaticFunction, flat PredicateSpec, pure rubric score, Kishōtenketsu sensitivity, and compatibility matrix. |
+| 4 | Blueprint / beats / director / gate | COMPLETE | 4 | Role bindings, StateSnapshotDiffer, CanonGate enforcement, Director intervention validation, and NarrativeSufficiencyGate. |
 | 5 | Observer / scene builder / causality | NOT_STARTED | | |
 | 6 | Arcs / subtext / performance cues | NOT_STARTED | | |
 | 7 | Scribe / formatting / quality | NOT_STARTED | | |
@@ -31,6 +31,39 @@
   - 2.5 Four validator gates (`KnowledgeGate`, `SpatialGate`, `CanonGate` stub, `AffordanceGate`) with `ActionRejection` logged outside immutable event history.
   - 2.6 `@runtime_checkable` `DecisionPolicy` protocol with formal `RuleDecisionPolicy` (zero AI calls, repetition penalty anti-stall, scoring tie-breaks) and swappable `LLMDecisionPolicy`.
   - Added 17 unit tests in test_phase2_decision_policy.py. Verification suite passing: 346 backend tests, 49 frontend tests. Zero regressions.
+- Session 4: Phases 3 & 4 (Story Structure Engine + Blueprint / Director / Sufficiency Gate) complete:
+  - Phase 3 Story Structure Engine:
+    - 3.1 Three orthogonal axes separated: MACRO (three_act, kishotenketsu, freytag, story_circle, heros_journey), BEAT (save_the_cat, freytag_beats, story_circle_stations, virgins_promise), and FRAMING (chronological, in_medias_res, flashback, intercut, parallel_action, reveal_delay). in_medias_res strictly excluded from MACRO candidates. virgins_promise set to manual_only.
+    - 3.2 Unified 13-member `DramaticFunction` enum defined once and aligned with `ScenePurposeType` for Phase 5 reuse.
+    - 3.3 Zero-code-change YAML data structures in `src/story/structures/*.yaml` with startup validation failing loudly on malformed syntax/schemas.
+    - 3.4 Flat `PredicateSpec` / `PredicateClause` schema validating `any_of` xor `all_of` without nested composition.
+    - 3.5 External `src/story/compatibility.yaml` matrix with reason strings rejecting `freytag + save_the_cat` and `kishotenketsu + conflict beats`.
+    - 3.6 `StoryFeatures` extraction (Site #1) with pure keyword/heuristic fallback sensitive to twist/juxtaposition, allowing Kishōtenketsu to score competitively on non-conflict material.
+    - 3.7 Pure `score()` rubric function with transparent criterion contributions (0.0-1.0 fit scores) and `select_structure()` preserving user overrides.
+    - Added 10 unit tests in test_phase3_story_structure.py. Verification suite passing: 356 backend tests, 49 frontend tests. Zero regressions.
+  - Phase 4 Blueprint, Director, and Narrative Sufficiency Gate:
+    - 4.1 `Proposition.enforced: bool = False` added. Replaced `CanonGate` stub with mechanical check rejecting actions contradicting `enforced=True` propositions (possession, locations, locked states). Non-enforced propositions remain un-policed for character deception.
+    - 4.2 `StoryRoleBindings` resolves protagonist, focal object, central proposition, antagonist, and mentor from input analysis. Unresolvable symbolic references degrade gracefully by dropping the clause or marking beat `unevaluable=True` without crashing.
+    - 4.3 `StateSnapshotDiffer` caches world state snapshots across ticks to evaluate predicates over replay (`GOAL_ADOPTED`, `BELIEF_FLIP`, `POSSESSION_CHANGE`, `RELATIONSHIP_THRESHOLD_CROSSED`, `SECRET_LEARNED`). Genuine threshold crossing correctly distinguished from already-above conditions. Phase 6 arc reuse comment included.
+    - 4.4 `compile_blueprint()` generates `StoryBlueprint` with `BeatPressure`s bound to concrete world entities and normalized `target_window`s. Unmet beats whose windows expire transition cleanly to `UNSATISFIED` with `deviation_note` without stalling simulation.
+    - 4.5 `DirectorAgent` constrained strictly to `DirectorIntervention` enum. Interventions routed through `ActionValidator` and rejected identically to character proposals if violating gates. Puppetry prevented: external interventions produce `actor_ids = []` and `source = "DIRECTOR"`. Asymmetric escalation ladders populated for obstacles and empty for setup/revelation/resolution.
+    - 4.6 `NarrativeSufficiencyGate` evaluates beat satisfaction, climax detection, and arc emergence, producing all 4 recommendation values (`PROCEED`, `CONTINUE`, `ADJUST_PRESSURE_AND_CONTINUE`, `HALT_INSUFFICIENT`).
+    - 4.7 `SimulationOrchestrator` integrates differ, beat predicate evaluations, Director pacing/beat escalation, and dynamically extends tick budget on `ADJUST_PRESSURE_AND_CONTINUE` with pending beat window recomputations up to `hard_cap`, halting cleanly on `HALT_INSUFFICIENT` without exceptions.
+    - Full pipeline verified end-to-end with zero AI calls.
+    - Added 19 unit tests in test_phase4_blueprint_director.py. Verification suite passing: 375 backend tests, 49 frontend tests. Zero regressions.
+- Session 5: Phase 3 (Phase 3A + Phase 3B: Story Structure Definitions, Taxonomy, Compatibility, Features, Rubric Scoring, and Selection) complete:
+  - Phase 3A: Formalized 3 orthogonal narrative axes (`MACRO`, `BEAT`, `FRAMING`), single shared 13-member `DramaticFunction` vocabulary (`ScenePurposeType = DramaticFunction`), YAML data definitions across all 9 canonical structures, `PredicateClause`/`PredicateSpec`, and external `compatibility.yaml` with typed verdicts (`ALLOW`, `WARN`, `REJECT`) and human-readable reasons.
+  - Phase 3B: Extended `StoryFeatures` with explicit `material_driver` (`CONFLICT_ESCALATION` vs `TWIST_JUXTAPOSITION`) allowing Kishōtenketsu to score fairly. Implemented dual extraction (AI call site #1 + deterministic rule fallback with providers disabled). Implemented pure explainable rubric scoring `score(features, definitions)` with 0.0-1.0 FIT SCORE, mandatory `criterion_contributions`, and zero I/O. Hardened `select_structure()` to preserve manual overrides across rescoring, filter invalid compatibility pairings, and restrict `in_medias_res` to framing only.
+  - Verified on real premises A (The Missing Dossier), B (Low-conflict juxtaposition/twist), and C (Transformation/journey).
+- Session 6: Phase 4 (Blueprint, Canon, Beat Pressure, Director, and Sufficiency Gate) complete:
+  - 4.1 Canon extends Proposition: `Proposition.enforced: bool = False` verified. `CanonFact` metadata links `proposition_id`, `source_span`, and `role_tag`. `CanonGate` mechanically enforces possession, location, and lock invariants for `enforced=True` propositions while allowing unenforced propositions to mutate freely.
+  - 4.2 Symbolic Role Bindings: `StoryRoleBindings` resolves protagonist, focal object, and central proposition from prompt analysis. Unresolvable symbolic references degrade gracefully by dropping clauses or setting `unevaluable=True` without raising exceptions.
+  - 4.3 StateSnapshotDiffer: Deterministic replay state-diffing implemented for `GOAL_ADOPTED`, `BELIEF_FLIP`, `POSSESSION_CHANGE`, `RELATIONSHIP_THRESHOLD_CROSSED` (with true-crossing vs already-above boundary semantics), and `SECRET_LEARNED`. Marked with reuse comment for Phase 6 `CharacterArcTracker`.
+  - 4.4 Director Guardrails: Director interventions strictly constrained to 7 non-dialogue environmental types (`INTRODUCE_OBSTACLE`, `CHANGE_DOOR_STATE`, `MOVE_NPC`, `REVEAL_CLUE`, `ANNOUNCE_DEADLINE`, `ENVIRONMENTAL_EVENT`, `INCREASE_TIME_PRESSURE`). Interventions convert to `ActionProposal(actor_id="DIRECTOR")` and route through identical `ActionValidator` gates (`KnowledgeGate`, `SpatialGate`, `CanonGate`, `AffordanceGate`). Direct dialogue forcing strictly forbidden by `AffordanceGate`. Configurable `max_interventions_total` and `min_ticks_between_interventions` cooldown enforced.
+  - 4.5 Beat Pressure & Pacing: Asymmetric escalation ladders populated for obstacles and empty for setup/revelation/resolution. Normalized beat windows trigger escalation at >=60% progress if unsatisfied; closed unsatisfied windows set `status = "UNSATISFIED"` with `deviation_note` without stalling simulation.
+  - 4.6 Narrative Sufficiency Gate: Explicit `SufficiencyReport` evaluated across 4 recommendations (`CONTINUE`, `ADJUST_PRESSURE_AND_CONTINUE`, `PROCEED`, `HALT_INSUFFICIENT`). `SimulationOrchestrator` dynamically extends running tick budget on `ADJUST_PRESSURE_AND_CONTINUE` bounded by `hard_cap`, halting cleanly on `HALT_INSUFFICIENT` without throwing exceptions.
+  - 4.7 The Missing Dossier Scenario Integration: End-to-end zero-AI verification on detective/courier premise confirming structure selection (`three_act`), role bindings, canonical truth, omniscience firewall protection (0 knowledge leaks), lack of puppetry violations (0 character events sourced to Director), immutable event history (0 event rewrites), and byte-identical deterministic replay.
+  - Full verification suite passing: 402 backend tests (34 in `test_phase4_blueprint_director.py`), 49 frontend tests (`npm test -- --run`), `npm run build` succeeds, `npx tsc --noEmit` succeeds, `git diff --check` clean. Phase 4 COMPLETE.
 
 ## Open decisions awaiting human input
 1. **Knowledge & Proposition Modeling Migration Strategy**:

@@ -1,0 +1,52 @@
+id: kishotenketsu
+axis: MACRO
+display_name: "Kishōtenketsu"
+description: "Four-act East Asian structure: Introduction, Development, Twist, Harmonization (juxtaposition, not escalation)"
+acts:
+  - { id: ki,    name: "Ki (Introduction)",           position: [0.00, 0.25] }
+  - { id: sho,   name: "Shō (Development)",           position: [0.25, 0.50] }
+  - { id: ten,   name: "Ten (Twist / Juxtaposition)", position: [0.50, 0.75] }
+  - { id: ketsu, name: "Ketsu (Harmonization)",       position: [0.75, 1.00] }
+beats:
+  - id: ki_intro
+    dramatic_function: SETUP
+    window: [0.00, 0.25]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: sho_development
+    dramatic_function: INVESTIGATION
+    window: [0.25, 0.50]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: SECRET_LEARNED }
+        - { type: GOAL_ADOPTED }
+  - id: ten_twist
+    dramatic_function: REVERSAL
+    window: [0.50, 0.75]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+        - { type: SECRET_LEARNED }
+        - { type: POSSESSION_CHANGE }
+  - id: ketsu_harmonize
+    dramatic_function: RESOLUTION
+    window: [0.75, 1.00]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: RELATIONSHIP_THRESHOLD_CROSSED, threshold: 0.5 }
+        - { type: GOAL_ADOPTED }
+compatible_beat_frameworks: []
+affinity:
+  twist_or_juxtaposition_driven: 0.9
+  conflict_axis.internal: 0.7
+  conflict_axis.social: 0.6
+  conflict_axis.external: -0.6
+  scope.intimate: 0.7
+  transformation_expected: 0.4
+disqualifiers: []
+manual_only: false

@@ -7,21 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.narrative.fountain import ScreenplayScene, ScreenplayBlockType
 from src.domain.world import WorldState
-
-
-class ScenePurposeType(str, Enum):
-    """Dramatic function of a screenplay scene."""
-    SETUP = "SETUP"
-    INVESTIGATION = "INVESTIGATION"
-    DISCOVERY = "DISCOVERY"
-    NEGOTIATION = "NEGOTIATION"
-    CONFRONTATION = "CONFRONTATION"
-    ESCALATION = "ESCALATION"
-    REVERSAL = "REVERSAL"
-    CHASE = "CHASE"
-    REVELATION = "REVELATION"
-    CLIMAX = "CLIMAX"
-    RESOLUTION = "RESOLUTION"
+from src.domain.story_structure import DramaticFunction, ScenePurposeType
 
 
 class SceneDramaticAnalysis(BaseModel):

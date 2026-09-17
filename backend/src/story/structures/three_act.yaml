@@ -1,0 +1,66 @@
+id: three_act
+axis: MACRO
+display_name: "Three-Act Structure"
+description: "Classic narrative shape with Setup, Confrontation, and Resolution"
+acts:
+  - { id: act_1, name: "Setup",         position: [0.00, 0.25] }
+  - { id: act_2, name: "Confrontation", position: [0.25, 0.75] }
+  - { id: act_3, name: "Resolution",    position: [0.75, 1.00] }
+beats:
+  - id: setup
+    dramatic_function: SETUP
+    window: [0.00, 0.12]
+    required: false
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: inciting_incident
+    dramatic_function: INCITING_INCIDENT
+    window: [0.08, 0.20]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+        - { type: SECRET_LEARNED }
+  - id: midpoint_reversal
+    dramatic_function: REVERSAL
+    window: [0.45, 0.60]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP, subject: central_proposition }
+        - { type: POSSESSION_CHANGE, object: focal_object }
+        - { type: RELATIONSHIP_THRESHOLD_CROSSED, threshold: 0.5 }
+        - { type: SECRET_LEARNED }
+  - id: crisis
+    dramatic_function: CRISIS
+    window: [0.65, 0.80]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+        - { type: GOAL_ADOPTED }
+  - id: climax
+    dramatic_function: CLIMAX
+    window: [0.80, 0.95]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: POSSESSION_CHANGE, object: focal_object }
+        - { type: BELIEF_FLIP, subject: central_proposition }
+        - { type: RELATIONSHIP_THRESHOLD_CROSSED, threshold: 0.7 }
+  - id: resolution
+    dramatic_function: RESOLUTION
+    window: [0.90, 1.00]
+    required: false
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+compatible_beat_frameworks: [save_the_cat, story_circle_stations]
+affinity:
+  conflict_axis.external: 0.8
+  transformation_expected: 0.6
+  protagonist_count.single: 0.7
+  twist_or_juxtaposition_driven: -0.4
+disqualifiers: []
+manual_only: false

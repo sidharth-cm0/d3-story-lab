@@ -1,0 +1,72 @@
+id: story_circle_stations
+axis: BEAT
+display_name: "Story Circle 8 Stations"
+description: "Dan Harmon's eight sequential stations of character transformation"
+acts:
+  - { id: quadrant_1, name: "Order (You / Need)",      position: [0.00, 0.25] }
+  - { id: quadrant_2, name: "Chaos (Go / Search)",     position: [0.25, 0.50] }
+  - { id: quadrant_3, name: "Transformation (Find / Take)", position: [0.50, 0.75] }
+  - { id: quadrant_4, name: "Integration (Return / Change)", position: [0.75, 1.00] }
+beats:
+  - id: station_1_you
+    dramatic_function: SETUP
+    window: [0.00, 0.12]
+    required: false
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: station_2_need
+    dramatic_function: INCITING_INCIDENT
+    window: [0.10, 0.25]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: station_3_go
+    dramatic_function: ESCALATION
+    window: [0.25, 0.38]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: station_4_search
+    dramatic_function: INVESTIGATION
+    window: [0.38, 0.50]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: SECRET_LEARNED }
+  - id: station_5_find
+    dramatic_function: DISCOVERY
+    window: [0.50, 0.62]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: POSSESSION_CHANGE }
+  - id: station_6_take
+    dramatic_function: CRISIS
+    window: [0.62, 0.75]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+  - id: station_7_return
+    dramatic_function: REVERSAL
+    window: [0.75, 0.88]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: RELATIONSHIP_THRESHOLD_CROSSED, threshold: 0.5 }
+  - id: station_8_change
+    dramatic_function: RESOLUTION
+    window: [0.88, 1.00]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+compatible_beat_frameworks: []
+affinity:
+  return_to_origin: 0.9
+  transformation_expected: 0.8
+disqualifiers: []
+manual_only: false

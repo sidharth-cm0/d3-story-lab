@@ -20,6 +20,9 @@ class KnowledgeGate:
 
     @staticmethod
     def validate(world: WorldState, proposal: ActionProposal) -> Tuple[bool, Optional[str]]:
+        if proposal.actor_id == "DIRECTOR":
+            return True, None
+
         actor = world.characters.get(proposal.actor_id)
         if not actor:
             return False, f"Actor '{proposal.actor_id}' does not exist"
@@ -65,9 +68,18 @@ class SpatialGate:
 
     @staticmethod
     def validate(world: WorldState, proposal: ActionProposal) -> Tuple[bool, Optional[str]]:
-        actor = world.characters.get(proposal.actor_id)
-        if not actor:
-            return False, f"Actor '{proposal.actor_id}' does not exist"
+        if proposal.actor_id == "DIRECTOR":
+            if proposal.action_type == ActionType.MOVE:
+                target_char_id = proposal.target_id or proposal.parameters.get("target_entity_id")
+                actor = world.characters.get(target_char_id)
+                if not actor:
+                    return False, f"Target NPC '{target_char_id}' does not exist"
+            else:
+                return True, None
+        else:
+            actor = world.characters.get(proposal.actor_id)
+            if not actor:
+                return False, f"Actor '{proposal.actor_id}' does not exist"
 
         action_type = proposal.action_type
 
@@ -185,7 +197,8 @@ class SpatialGate:
 
 class CanonGate:
     """Validates that an action does not contradict established canon facts.
-    TODO: Phase 4 - Implement full CanonFact validation when StoryBlueprint is integrated.
+    Mechanically rejects any action whose executed mutation would violate
+    or contradict a Proposition where enforced=True.
     """
 
     test_rejection_reason: Optional[str] = None
@@ -194,6 +207,61 @@ class CanonGate:
     def validate(cls, world: WorldState, proposal: ActionProposal) -> Tuple[bool, Optional[str]]:
         if cls.test_rejection_reason is not None:
             return False, cls.test_rejection_reason
+
+        # Mechanical check against all enforced canonical propositions
+        for prop in world.propositions.values():
+            if not getattr(prop, "enforced", False):
+                continue
+
+            # 1. Possession / custody enforcement
+            if prop.predicate in ("has", "holds", "possesses"):
+                # Case A: Another actor attempts to seize an enforced object
+                if proposal.action_type in (ActionType.TAKE_OBJECT, ActionType.PICKUP):
+                    target = proposal.target_id or proposal.parameters.get("object_id")
+                    if target == prop.object and proposal.actor_id != prop.subject and prop.truth_value:
+                        return False, f"Contradicts canon: proposition '{prop.id}' enforces {prop.subject} holds {prop.object}"
+                # Case B: The enforced holder attempts to drop the enforced object
+                elif proposal.action_type in (ActionType.DROP_OBJECT, ActionType.DROP):
+                    target = proposal.target_id or proposal.parameters.get("object_id")
+                    if target == prop.object and proposal.actor_id == prop.subject and prop.truth_value:
+                        return False, f"Contradicts canon: proposition '{prop.id}' enforces {prop.subject} holds {prop.object}"
+                # Case C: Transferring the object away from the enforced holder
+                elif proposal.action_type in (ActionType.GIVE_OBJECT, ActionType.GIVE):
+                    target = proposal.parameters.get("object_id") or proposal.target_id
+                    recipient = proposal.parameters.get("recipient_id") or proposal.target_id
+                    if target == prop.object and recipient != prop.subject and prop.truth_value:
+                        return False, f"Contradicts canon: proposition '{prop.id}' enforces {prop.subject} holds {prop.object}"
+
+            # 2. Location / containment enforcement
+            elif prop.predicate in ("location", "in", "at"):
+                if proposal.action_type in (ActionType.TAKE_OBJECT, ActionType.PICKUP):
+                    target = proposal.target_id or proposal.parameters.get("object_id")
+                    if target == prop.subject and prop.truth_value:
+                        return False, f"Contradicts canon: proposition '{prop.id}' enforces {prop.subject} remains at {prop.object}"
+                elif proposal.action_type == ActionType.MOVE and proposal.actor_id == prop.subject:
+                    dest = proposal.location_id or proposal.parameters.get("destination_id") or proposal.parameters.get("to")
+                    if dest != prop.object and prop.truth_value:
+                        return False, f"Contradicts canon: proposition '{prop.id}' enforces {prop.subject} remains at {prop.object}"
+
+            # 3. State / lock enforcement
+            elif prop.predicate in ("locked", "closed") and prop.truth_value:
+                if proposal.action_type in (ActionType.OPEN_OBJECT, ActionType.OPEN_DOOR):
+                    target = proposal.target_id or proposal.parameters.get("target_id")
+                    if target == prop.subject:
+                        return False, f"Contradicts canon: proposition '{prop.id}' enforces {prop.subject} is locked/closed"
+
+        # 4. Direct proposition mutation parameters
+        if proposal.parameters:
+            direct_prop_id = proposal.parameters.get("proposition_id") or proposal.parameters.get("contradicts_proposition")
+            if direct_prop_id and direct_prop_id in world.propositions:
+                target_prop = world.propositions[direct_prop_id]
+                if getattr(target_prop, "enforced", False):
+                    proposed_truth = proposal.parameters.get("truth_value")
+                    if proposed_truth is not None and proposed_truth != target_prop.truth_value:
+                        return False, f"Contradicts canon: proposition '{target_prop.id}' is enforced with truth_value={target_prop.truth_value}"
+                    if proposal.parameters.get("contradicts_proposition"):
+                        return False, f"Contradicts canon: proposition '{target_prop.id}' is enforced"
+
         return True, None
 
 
@@ -202,6 +270,16 @@ class AffordanceGate:
 
     @staticmethod
     def validate(world: WorldState, proposal: ActionProposal) -> Tuple[bool, Optional[str]]:
+        if proposal.actor_id == "DIRECTOR":
+            if proposal.action_type == ActionType.SPEAK:
+                return False, "Director cannot perform speech actions or force dialogue"
+            target_id = proposal.target_id or proposal.parameters.get("target_id")
+            if target_id and (target_id in world.objects or target_id in world.locations or target_id in world.characters):
+                return True, None
+            elif not target_id:
+                return True, None
+            return False, f"Target object '{target_id}' does not exist"
+
         actor = world.characters.get(proposal.actor_id)
         if not actor:
             return False, f"Actor '{proposal.actor_id}' does not exist"

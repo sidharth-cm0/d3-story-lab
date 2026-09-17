@@ -1,0 +1,50 @@
+id: virgins_promise
+axis: BEAT
+display_name: "Virgin's Promise"
+description: "Kim Hudson's 13-stage archetype of creative awakening and authentic self-realization"
+acts:
+  - { id: dependent_world, name: "Dependent World", position: [0.00, 0.30] }
+  - { id: secret_world,    name: "Secret World",    position: [0.30, 0.70] }
+  - { id: kingdom_shining, name: "Kingdom Shining", position: [0.70, 1.00] }
+beats:
+  - id: dependent_world_beat
+    dramatic_function: SETUP
+    window: [0.00, 0.15]
+    required: false
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: price_of_conformity
+    dramatic_function: INCITING_INCIDENT
+    window: [0.10, 0.25]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: secret_world_awakening
+    dramatic_function: DISCOVERY
+    window: [0.30, 0.50]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: SECRET_LEARNED }
+  - id: kingdom_threatened
+    dramatic_function: CRISIS
+    window: [0.65, 0.80]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+  - id: authentic_shine
+    dramatic_function: RESOLUTION
+    window: [0.80, 1.00]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: RELATIONSHIP_THRESHOLD_CROSSED, threshold: 0.7 }
+compatible_beat_frameworks: []
+affinity:
+  conflict_axis.internal: 0.9
+  transformation_expected: 0.9
+disqualifiers: []
+manual_only: true

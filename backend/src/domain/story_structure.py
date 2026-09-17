@@ -11,7 +11,7 @@ Enforces:
 
 from __future__ import annotations
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Literal, Tuple
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -41,19 +41,90 @@ class StructureSelectionMode(str, Enum):
     MANUAL = "MANUAL"
 
 
-class ScenePurposeType(str, Enum):
-    """Dramatic purpose of an individual scene."""
+class NarrativeAxis(str, Enum):
+    """The three orthogonal narrative axes."""
+    MACRO = "MACRO"
+    BEAT = "BEAT"
+    FRAMING = "FRAMING"
+
+
+class MacroStructure(str, Enum):
+    """Macro dramatic narrative structures."""
+    THREE_ACT = "three_act"
+    KISHOTENKETSU = "kishotenketsu"
+    FREYTAG = "freytag"
+    STORY_CIRCLE = "story_circle"
+    HEROS_JOURNEY = "heros_journey"
+
+
+class BeatFramework(str, Enum):
+    """Beat sheet frameworks."""
+    SAVE_THE_CAT = "save_the_cat"
+    FREYTAG_BEATS = "freytag_beats"
+    STORY_CIRCLE_STATIONS = "story_circle_stations"
+    VIRGINS_PROMISE = "virgins_promise"
+
+
+class FramingStrategy(str, Enum):
+    """Presentation / framing strategies. Note: IN_MEDIAS_RES is framing, never macro."""
+    CHRONOLOGICAL = "chronological"
+    IN_MEDIAS_RES = "in_medias_res"
+    FLASHBACK = "flashback"
+    INTERCUT = "intercut"
+    PARALLEL_ACTION = "parallel_action"
+    REVEAL_DELAY = "reveal_delay"
+
+
+MACRO_STRUCTURES: Tuple[str, ...] = tuple(m.value for m in MacroStructure)
+BEAT_FRAMEWORKS: Tuple[str, ...] = tuple(b.value for b in BeatFramework)
+FRAMING_STRATEGIES: Tuple[str, ...] = tuple(f.value for f in FramingStrategy)
+
+
+def normalize_beat_framework(name: str) -> str:
+    """Normalize beat framework identifier, collapsing aliases such as fifteen_beat."""
+    cleaned = name.strip().lower()
+    if cleaned == "fifteen_beat":
+        return BeatFramework.SAVE_THE_CAT.value
+    return cleaned
+
+
+def normalize_structure_id(structure_id: str) -> str:
+    """Normalize any structure ID, collapsing aliases such as fifteen_beat."""
+    cleaned = structure_id.strip().lower()
+    if cleaned == "fifteen_beat":
+        return BeatFramework.SAVE_THE_CAT.value
+    return cleaned
+
+
+class CompatibilityVerdict(str, Enum):
+    """Verdict for structure pairing compatibility."""
+    ALLOW = "ALLOW"
+    WARN = "WARN"
+    REJECT = "REJECT"
+
+
+# Single shared dramatic function vocabulary reusable by Scene Builder
+class DramaticFunction(str, Enum):
+    """Shared dramatic function vocabulary across structures, beats, and scenes."""
     SETUP = "SETUP"
+    INCITING_INCIDENT = "INCITING_INCIDENT"
     INVESTIGATION = "INVESTIGATION"
     DISCOVERY = "DISCOVERY"
-    NEGOTIATION = "NEGOTIATION"
-    CONFRONTATION = "CONFRONTATION"
     ESCALATION = "ESCALATION"
+    NEGOTIATION = "NEGOTIATION"
     REVERSAL = "REVERSAL"
+    CONFRONTATION = "CONFRONTATION"
+    CRISIS = "CRISIS"
     CHASE = "CHASE"
     REVELATION = "REVELATION"
     CLIMAX = "CLIMAX"
     RESOLUTION = "RESOLUTION"
+
+
+DRAMATIC_FUNCTIONS: Tuple[str, ...] = tuple(d.value for d in DramaticFunction)
+
+# ScenePurposeType is an exact 1:1 alias to DramaticFunction ensuring single shared vocabulary
+ScenePurposeType = DramaticFunction
 
 
 class CausalTransitionType(str, Enum):

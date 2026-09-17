@@ -21,6 +21,7 @@ class EventRecorder:
         location_id: Optional[str] = None,
         caused_by: Optional[List[str]] = None,
         motivation: Optional[Dict[str, Any]] = None,
+        source: str = "SIMULATION",
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Event:
         """Create and canonically register an immutable Event"""
@@ -41,6 +42,7 @@ class EventRecorder:
             description=description,
             caused_by=caused_by or [],
             motivation=motivation,
+            source=source,
             metadata=metadata or {},
         )
         self.world.events[event.id] = event

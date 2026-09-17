@@ -1,0 +1,64 @@
+id: heros_journey
+axis: MACRO
+display_name: "Hero's Journey"
+description: "Campbell/Vogler mythic archetype: Departure, Initiation, Return"
+acts:
+  - { id: act_departure,  name: "Departure",  position: [0.00, 0.30] }
+  - { id: act_initiation, name: "Initiation", position: [0.30, 0.75] }
+  - { id: act_return,     name: "Return",     position: [0.75, 1.00] }
+beats:
+  - id: ordinary_world
+    dramatic_function: SETUP
+    window: [0.00, 0.12]
+    required: false
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: call_to_adventure
+    dramatic_function: INCITING_INCIDENT
+    window: [0.08, 0.25]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+        - { type: SECRET_LEARNED }
+  - id: crossing_threshold
+    dramatic_function: ESCALATION
+    window: [0.25, 0.40]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: ordeal
+    dramatic_function: CRISIS
+    window: [0.55, 0.75]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+        - { type: SECRET_LEARNED }
+  - id: climax_battle
+    dramatic_function: CLIMAX
+    window: [0.75, 0.90]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: POSSESSION_CHANGE }
+        - { type: BELIEF_FLIP }
+  - id: master_of_two_worlds
+    dramatic_function: RESOLUTION
+    window: [0.85, 1.00]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+        - { type: RELATIONSHIP_THRESHOLD_CROSSED, threshold: 0.7 }
+compatible_beat_frameworks: [story_circle_stations]
+affinity:
+  scope.epic: 0.8
+  transformation_expected: 0.8
+  conflict_axis.external: 0.7
+  return_to_origin: 0.7
+  twist_or_juxtaposition_driven: -0.4
+disqualifiers: []
+manual_only: false

@@ -14,6 +14,7 @@ class Proposition(BaseModel):
     object: str = Field(..., description="Object entity ID, name, or claim")
     truth_value: bool = Field(default=True, description="Canonical objective truth in the world")
     is_secret: bool = Field(default=False, description="Whether this proposition is private/secret knowledge")
+    enforced: bool = Field(default=False, description="True only for propositions seeded from CanonFact")
 
 
 class KnowledgeItem(BaseModel):

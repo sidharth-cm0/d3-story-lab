@@ -1,0 +1,62 @@
+id: save_the_cat
+axis: BEAT
+display_name: "Save the Cat Beat Sheet"
+description: "Blake Snyder 15-beat screenplay structure with Midpoint and All is Lost"
+acts:
+  - { id: act_1, name: "Act I",   position: [0.00, 0.25] }
+  - { id: act_2, name: "Act II",  position: [0.25, 0.75] }
+  - { id: act_3, name: "Act III", position: [0.75, 1.00] }
+beats:
+  - id: opening_image
+    dramatic_function: SETUP
+    window: [0.00, 0.05]
+    required: false
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: catalyst
+    dramatic_function: INCITING_INCIDENT
+    window: [0.08, 0.15]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+        - { type: SECRET_LEARNED }
+  - id: break_into_two
+    dramatic_function: ESCALATION
+    window: [0.20, 0.28]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: midpoint
+    dramatic_function: REVERSAL
+    window: [0.48, 0.58]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+        - { type: POSSESSION_CHANGE }
+  - id: all_is_lost
+    dramatic_function: CRISIS
+    window: [0.70, 0.78]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+        - { type: SECRET_LEARNED }
+  - id: finale
+    dramatic_function: CLIMAX
+    window: [0.82, 0.95]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: POSSESSION_CHANGE }
+        - { type: BELIEF_FLIP }
+compatible_beat_frameworks: []
+affinity:
+  conflict_axis.external: 0.8
+  genre.heist: 0.8
+  genre.thriller: 0.7
+disqualifiers: []
+manual_only: false

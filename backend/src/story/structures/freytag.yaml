@@ -1,0 +1,63 @@
+id: freytag
+axis: MACRO
+display_name: "Freytag's Pyramid"
+description: "Five-part dramatic pyramid with central climax and tragic/inevitable arc"
+acts:
+  - { id: act_1, name: "Exposition",              position: [0.00, 0.20] }
+  - { id: act_2, name: "Rising Action",            position: [0.20, 0.50] }
+  - { id: act_3, name: "Climax",                   position: [0.50, 0.65] }
+  - { id: act_4, name: "Falling Action",           position: [0.65, 0.85] }
+  - { id: act_5, name: "Catastrophe / Denouement", position: [0.85, 1.00] }
+beats:
+  - id: exposition
+    dramatic_function: SETUP
+    window: [0.00, 0.20]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: inciting_incident
+    dramatic_function: INCITING_INCIDENT
+    window: [0.15, 0.30]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: SECRET_LEARNED }
+        - { type: GOAL_ADOPTED }
+  - id: rising_confrontation
+    dramatic_function: ESCALATION
+    window: [0.30, 0.50]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: RELATIONSHIP_THRESHOLD_CROSSED, threshold: 0.5 }
+  - id: central_climax
+    dramatic_function: CLIMAX
+    window: [0.50, 0.65]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+        - { type: POSSESSION_CHANGE }
+  - id: falling_action
+    dramatic_function: REVERSAL
+    window: [0.65, 0.85]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: RELATIONSHIP_THRESHOLD_CROSSED, threshold: 0.6 }
+  - id: catastrophe
+    dramatic_function: RESOLUTION
+    window: [0.85, 1.00]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+compatible_beat_frameworks: [freytag_beats]
+affinity:
+  conflict_axis.external: 0.7
+  moral_polarity.negative: 0.8
+  scope.epic: 0.6
+  twist_or_juxtaposition_driven: -0.5
+disqualifiers: []
+manual_only: false

@@ -1,0 +1,93 @@
+# Compatibility rules between Macro structures, Beat frameworks, and Framing strategies.
+# Each entry specifies macro, beat_layer, verdict (ALLOW | WARN | REJECT), and human-readable reason.
+
+rules:
+  - macro: three_act
+    beat_layer: save_the_cat
+    verdict: ALLOW
+    reason: "Save the Cat is a three-act beat sheet"
+
+  - macro: three_act
+    beat_layer: story_circle_stations
+    verdict: ALLOW
+    reason: "1–2 → Act I, 3–6 → Act II, 7–8 → Act III"
+
+  - macro: three_act
+    beat_layer: virgins_promise
+    verdict: ALLOW
+    reason: "Virgin's Promise can map onto classic three-act progression"
+
+  - macro: heros_journey
+    beat_layer: save_the_cat
+    verdict: WARN
+    reason: "Both are complete beat systems; collision likely"
+
+  - macro: heros_journey
+    beat_layer: story_circle_stations
+    verdict: ALLOW
+    reason: "Story Circle stations map directly onto Departure, Initiation, and Return"
+
+  - macro: heros_journey
+    beat_layer: virgins_promise
+    verdict: WARN
+    reason: "Feminine awakening archetype contrasts with Campbellian hero myth"
+
+  - macro: freytag
+    beat_layer: save_the_cat
+    verdict: REJECT
+    reason: "Freytag is five-part with a central climax; positions conflict"
+
+  - macro: freytag
+    beat_layer: freytag_beats
+    verdict: ALLOW
+    reason: "Native Freytag beat progression aligns with 5-part pyramid"
+
+  - macro: freytag
+    beat_layer: story_circle_stations
+    verdict: REJECT
+    reason: "Circular transformation clashes with 5-act tragic descent"
+
+  - macro: freytag
+    beat_layer: virgins_promise
+    verdict: REJECT
+    reason: "Awakening arc incompatible with 5-part catastrophe structure"
+
+  - macro: story_circle
+    beat_layer: story_circle_stations
+    verdict: ALLOW
+    reason: "Native Harmon 8-station circular progression"
+
+  - macro: story_circle
+    beat_layer: save_the_cat
+    verdict: WARN
+    reason: "Circular journey overlaid on linear three-act screenplay beats"
+
+  - macro: story_circle
+    beat_layer: virgins_promise
+    verdict: ALLOW
+    reason: "Internal awakening maps cleanly to Harmon circular stations"
+
+  # Kishōtenketsu specific rules:
+  - macro: kishotenketsu
+    beat_layer: save_the_cat
+    verdict: REJECT
+    reason: "The ten is juxtaposition, not escalation"
+
+  - macro: kishotenketsu
+    beat_layer: freytag_beats
+    verdict: REJECT
+    reason: "The ten is juxtaposition, not escalation"
+
+  - macro: kishotenketsu
+    beat_layer: story_circle_stations
+    verdict: REJECT
+    reason: "The ten is juxtaposition, not escalation"
+
+  - macro: kishotenketsu
+    beat_layer: virgins_promise
+    verdict: REJECT
+    reason: "The ten is juxtaposition, not escalation"
+
+# Global rule fallbacks:
+# 1. kishotenketsu + any conflict-based beat layer -> REJECT ("The ten is juxtaposition, not escalation")
+# 2. any MACRO + any FRAMING -> ALLOW ("Framing is orthogonal to shape")

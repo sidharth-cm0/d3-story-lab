@@ -1,0 +1,44 @@
+id: freytag_beats
+axis: BEAT
+display_name: "Freytag's 5 Dramatic Beats"
+description: "Detailed five-phase dramatic beat layer for Freytag's pyramid"
+acts:
+  - { id: exposition_phase, name: "Exposition Phase", position: [0.00, 0.20] }
+  - { id: rising_phase,     name: "Rising Phase",     position: [0.20, 0.50] }
+  - { id: climax_phase,     name: "Climax Phase",     position: [0.50, 0.65] }
+  - { id: falling_phase,    name: "Falling Phase",    position: [0.65, 0.85] }
+  - { id: catastrophe_phase,name: "Catastrophe Phase",position: [0.85, 1.00] }
+beats:
+  - id: beat_exposition
+    dramatic_function: SETUP
+    window: [0.00, 0.20]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+  - id: beat_inciting
+    dramatic_function: INCITING_INCIDENT
+    window: [0.15, 0.30]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: SECRET_LEARNED }
+  - id: beat_climax
+    dramatic_function: CLIMAX
+    window: [0.50, 0.65]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: BELIEF_FLIP }
+  - id: beat_catastrophe
+    dramatic_function: RESOLUTION
+    window: [0.85, 1.00]
+    required: true
+    satisfaction:
+      any_of:
+        - { type: GOAL_ADOPTED }
+compatible_beat_frameworks: []
+affinity:
+  moral_polarity.negative: 0.8
+disqualifiers: []
+manual_only: false

@@ -276,18 +276,30 @@ class TestPhase2DecisionPolicy:
             motivation=Motivation(kind="PURSUE_GOAL"),
         )
 
-        # Default stub passes
+        # Non-contradicting action passes
         valid, err = CanonGate.validate(world, proposal)
         assert valid is True
 
-        # Test rejection via hook
-        CanonGate.test_rejection_reason = "Contradicts established canon fact"
-        try:
-            valid_fail, err_fail = CanonGate.validate(world, proposal)
-            assert valid_fail is False
-            assert "Contradicts established canon fact" in err_fail
-        finally:
-            CanonGate.test_rejection_reason = None
+        # Real mechanical rejection against enforced proposition
+        world.propositions["prop_canon_maya_dossier"] = Proposition(
+            id="prop_canon_maya_dossier",
+            subject="char_maya",
+            predicate="has",
+            object="obj_dossier",
+            truth_value=True,
+            enforced=True,
+        )
+        take_prop = ActionProposal(
+            id="prop_seize_canon",
+            actor_id="char_arjun",
+            action_type=ActionType.TAKE_OBJECT,
+            target_id="obj_dossier",
+            tick_proposed=0,
+            motivation=Motivation(kind="PURSUE_GOAL"),
+        )
+        valid_mech, err_mech = CanonGate.validate(world, take_prop)
+        assert valid_mech is False
+        assert "Contradicts canon" in err_mech
 
     # 10. AffordanceGate rejects non-portable take
     def test_gate_affordance_rejects_non_portable_take(self):

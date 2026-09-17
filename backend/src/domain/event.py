@@ -41,6 +41,9 @@ class Event(BaseModel):
     motivation: Optional[Dict[str, Any]] = Field(
         default=None, description="Snapshot of the motivation driving this event"
     )
+    source: str = Field(
+        default="SIMULATION", description="Origin of event, e.g. 'SIMULATION' or 'DIRECTOR'"
+    )
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional event data"
     )
