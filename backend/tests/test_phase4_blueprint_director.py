@@ -234,17 +234,23 @@ class TestPhase4BlueprintDirectorGate:
         differ = StateSnapshotDiffer(world)
 
         differ.capture_snapshot(0, world)
-        # Arjun adopts a goal in the window
+        differ.capture_snapshot(1, world)
+        # Arjun adopts a goal in the window [1, 5]
         char = world.characters["char_arjun"]
         char.goals.append("goal_new_secret_investigation")
         differ.capture_snapshot(5, world)
 
-        clause = PredicateClause(type="GOAL_ADOPTED", character="char_arjun")
-        assert differ.evaluate_clause(world, clause, start_tick=0, end_tick=5) is True
+        # Initial seeded goal satisfies opening beat starting at tick 0
+        clause_initial = PredicateClause(type="GOAL_ADOPTED", character="char_maya")
+        assert differ.evaluate_clause(world, clause_initial, start_tick=0, end_tick=1) is True
 
-        # Maya has not adopted a goal
+        # Arjun adopted a goal in the later window [1, 5]
+        clause = PredicateClause(type="GOAL_ADOPTED", character="char_arjun")
+        assert differ.evaluate_clause(world, clause, start_tick=1, end_tick=5) is True
+
+        # Maya has not adopted a new goal in the later window [1, 5]
         clause_other = PredicateClause(type="GOAL_ADOPTED", character="char_maya")
-        assert differ.evaluate_clause(world, clause_other, start_tick=0, end_tick=5) is False
+        assert differ.evaluate_clause(world, clause_other, start_tick=1, end_tick=5) is False
 
     def test_08_predicate_belief_flip(self):
         """8. Predicate evaluation: BELIEF_FLIP."""

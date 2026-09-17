@@ -64,6 +64,23 @@
   - 4.6 Narrative Sufficiency Gate: Explicit `SufficiencyReport` evaluated across 4 recommendations (`CONTINUE`, `ADJUST_PRESSURE_AND_CONTINUE`, `PROCEED`, `HALT_INSUFFICIENT`). `SimulationOrchestrator` dynamically extends running tick budget on `ADJUST_PRESSURE_AND_CONTINUE` bounded by `hard_cap`, halting cleanly on `HALT_INSUFFICIENT` without throwing exceptions.
   - 4.7 The Missing Dossier Scenario Integration: End-to-end zero-AI verification on detective/courier premise confirming structure selection (`three_act`), role bindings, canonical truth, omniscience firewall protection (0 knowledge leaks), lack of puppetry violations (0 character events sourced to Director), immutable event history (0 event rewrites), and byte-identical deterministic replay.
   - Full verification suite passing: 402 backend tests (34 in `test_phase4_blueprint_director.py`), 49 frontend tests (`npm test -- --run`), `npm run build` succeeds, `npx tsc --noEmit` succeeds, `git diff --check` clean. Phase 4 COMPLETE.
+- Session 7: Pre-Phase-5 Carry-Over Stabilization complete:
+  - 7.1 Early-Beat Satisfaction Diagnostic & Fix:
+    - Analyzed `setup` and `inciting_incident` in The Missing Dossier scenario.
+    - Classified `setup` as **B. BASELINE SEMANTIC BUG**: `StateSnapshotDiffer.evaluate_goal_adopted` checked delta from tick 0 against tick 0 where initial seeded goals were already established, preventing pre-seeded goals from satisfying opening beats starting at tick 0.
+    - Classified `inciting_incident` (window `[0.08, 0.20]`) as **A. CORRECT EMERGENT UNSATISFIED**: characters legitimately explored rather than discovering secrets or adopting new goals during ticks 1-4; beat expired cleanly with a logged deviation note without halting simulation.
+    - Applied the smallest generic correction in `StateSnapshotDiffer.evaluate_goal_adopted`: when `start_tick == 0`, initial seeded goals are recognized as adopted for opening beats, while for later windows (`start_tick > 0`), genuine adoption transitions within `[start_tick, end_tick]` remain strictly required.
+    - Added `satisfaction_tick: Optional[int] = None` to `BeatPressure` and populated it upon satisfaction in `SimulationOrchestrator`. Fixed tick boundary rounding to `int(round(...))` across `SimulationOrchestrator` and `DirectorAgent`.
+    - Added 3 regression tests in `tests/test_pre_phase5_stabilization.py`.
+  - 7.2 Legacy Knowledge & Subtext Audit and Migration:
+    - Audited all reads of `Character.known_facts` and `Character.beliefs` across `backend/src/`.
+    - Enumerated and classified occurrences across 7 architectural categories (`MIGRATION_ONLY`, `BACKWARD_COMPATIBILITY_ONLY`, `DISPLAY_DEBUG_ONLY`, `ACTIVE_DECISION_INPUT`, `ACTIVE_VALIDATION_INPUT`, `ACTIVE_SUBTEXT_INPUT`, `ACTIVE_WORLD_TRUTH_INPUT`).
+    - Migrated `SubtextAnalyzer` (`src/narrative/subtext.py`) to read typed `Character.knowledge` (`KnowledgeItem`) with subjective perspective-relative truth vs canonical objective truth comparison, preserving backward-compatibility fallback when `character.knowledge` is empty.
+    - Added 7 regression tests in `tests/test_pre_phase5_stabilization.py` verifying typed driving, false belief perspective retention, unheld secret firewall, isolation between characters, isolation from legacy fields, and legacy project backward compatibility.
+  - 7.3 Scenario Re-run & Invariants:
+    - Re-ran The Missing Dossier: `setup` SATISFIED at tick 0, `save_the_cat_opening_image` SATISFIED at tick 0, `save_the_cat_midpoint` SATISFIED at tick 5, `climax` SATISFIED at tick 22.
+    - Re-verified all 6 architectural invariants: zero AI calls in CI/offline verification (`provider.call_count == 0`), canonical truth inviolate, zero knowledge leaks, zero puppetry violations, zero event rewrites, and byte-identical replay over 204 events.
+  - Full verification suite passing: 412 backend tests (`pytest -q`), 49 frontend tests (`npm test -- --run`), `npm run build` succeeds, `npx tsc --noEmit` succeeds, `git diff --check` clean. Working tree is NOT committed and NOT pushed.
 
 ## Open decisions awaiting human input
 1. **Knowledge & Proposition Modeling Migration Strategy**:

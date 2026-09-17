@@ -247,6 +247,7 @@ class BeatPressure(BaseModel):
     deviation_note: Optional[str] = None
     unevaluable: bool = False
     required: bool = True
+    satisfaction_tick: Optional[int] = None
 
 
 class StoryBlueprint(BaseModel):

@@ -173,7 +173,7 @@ class SimulationOrchestrator:
             for beat in self.blueprint.beats:
                 if beat.status not in ("PENDING", "PARTIAL") or getattr(beat, "unevaluable", False):
                     continue
-                start_tick = int(beat.target_window[0] * self.total_ticks)
+                start_tick = int(round(beat.target_window[0] * self.total_ticks))
                 end_tick = max(start_tick, int(round(beat.target_window[1] * self.total_ticks)))
 
                 if self.world.current_tick >= start_tick:
@@ -190,6 +190,7 @@ class SimulationOrchestrator:
                         )
                     if is_sat:
                         beat.status = "SATISFIED"
+                        beat.satisfaction_tick = self.world.current_tick
                     elif self.world.current_tick > end_tick:
                         beat.status = "UNSATISFIED"
                         beat.deviation_note = (

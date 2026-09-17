@@ -250,8 +250,8 @@ class DirectorAgent:
             if beat.status not in ("PENDING", "PARTIAL"):
                 continue
 
-            win_start = int(beat.target_window[0] * total_ticks)
-            win_end = int(beat.target_window[1] * total_ticks)
+            win_start = int(round(beat.target_window[0] * total_ticks))
+            win_end = max(win_start, int(round(beat.target_window[1] * total_ticks)))
 
             # Check if within window
             if win_start <= current_tick <= win_end:

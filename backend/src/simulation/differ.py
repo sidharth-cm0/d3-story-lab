@@ -143,7 +143,12 @@ class StateSnapshotDiffer:
         end_tick: int,
         character_id: Optional[str] = None,
     ) -> bool:
-        """Evaluates GOAL_ADOPTED: whether a new goal was adopted within the window."""
+        """Evaluates GOAL_ADOPTED: whether a new goal was adopted within the window.
+
+        For opening beat windows starting at tick 0 (start_tick == 0), initial-state
+        goals established at world initialization count as adopted for the opening setup.
+        For later windows (start_tick > 0), only goals newly adopted within the window qualify.
+        """
         snap_start = self.get_or_create_snapshot(start_tick, world)
         snap_end = self.get_or_create_snapshot(end_tick, world)
 
@@ -154,6 +159,9 @@ class StateSnapshotDiffer:
             end_goals = set(snap_end.character_goals.get(cid, []))
             if end_goals - start_goals:
                 return True
+            # For opening beats starting at tick 0, initial-state goals held at tick 0 count as adopted
+            if start_tick == 0 and end_goals:
+                return True
 
         # Also check world goals for created_at_event falling in window
         for goal in world.goals.values():
@@ -163,6 +171,8 @@ class StateSnapshotDiffer:
                 evt = world.events.get(goal.created_at_event)
                 if evt and start_tick <= evt.tick <= end_tick:
                     return True
+            elif start_tick == 0:
+                return True
 
         return False
 

@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.domain.character import Character
 from src.domain.world import WorldState
+from src.domain.proposition import Proposition, KnowledgeItem
 
 
 class DeceptionClassification(str, Enum):
@@ -72,45 +73,76 @@ class SubtextAnalyzer:
         text_lower = dialogue.lower()
         classifications: List[DeceptionClassification] = []
 
-        # 1. Gather private knowledge (secrets, facts, beliefs)
-        private_secrets = [
-            s for s in world.secrets.values()
-            if s.character_id == speaker.id or speaker.id in s.known_by
-        ]
-        private_facts = []
-        if hasattr(world, "facts") and world.facts:
-            for f in world.facts.values():
-                if f.discovered_by == speaker.id or (hasattr(speaker, "known_facts") and f.id in (speaker.known_facts or [])):
-                    private_facts.append(f.statement.lower())
-
-        speaker_beliefs = [
-            b.statement.lower() for b in world.beliefs.values()
-            if b.character_id == speaker.id
-        ]
-
-        # Check for matching secret topics
+        # 1. Gather private knowledge (typed KnowledgeItem or legacy secrets/facts/beliefs)
+        secret_nouns = ["dossier", "ledger", "key", "safe", "money", "stolen", "bribe", "murder", "weapon", "vault", "cabinet"]
         matched_secret = None
+        matched_kitem: Optional[KnowledgeItem] = None
+        matched_prop: Optional[Proposition] = None
         focus_object = None
         focus_location = None
 
-        for sec in private_secrets:
-            s_stmt = sec.statement.lower()
-            # Check for shared key nouns (e.g. dossier, ledger, key, stolen, money, safe)
-            for word in ["dossier", "ledger", "key", "safe", "money", "stolen", "bribe", "murder", "weapon", "vault", "cabinet"]:
-                if word in s_stmt:
-                    matched_secret = sec
-                    if word in ["dossier", "ledger", "key", "safe", "money", "cabinet", "vault"]:
-                        focus_object = word
-                    break
-            if matched_secret:
-                break
+        has_typed_knowledge = bool(getattr(speaker, "knowledge", None))
 
-        loc_id = getattr(speaker, "current_location_id", None) or getattr(speaker, "location_id", None)
-        if not focus_object and loc_id and loc_id in world.locations:
-            for obj_id, obj in world.objects.items():
-                if obj.location_id == loc_id:
-                    focus_object = obj.name.lower()
+        if has_typed_knowledge:
+            # TYPED KNOWLEDGE MODE (Rules 4 & 5 compliance):
+            # Only examine the speaker's own KnowledgeItem entries.
+            # Never examine other characters' knowledge or unheld world propositions.
+            # Do NOT read legacy known_facts or beliefs when typed knowledge is present.
+            for pid, k_item in speaker.knowledge.items():
+                prop = world.propositions.get(pid)
+                if not prop:
+                    continue
+                prop_text = f"{prop.subject} {prop.predicate} {prop.object} {prop.id}".lower()
+                for word in secret_nouns:
+                    if word in prop_text:
+                        matched_kitem = k_item
+                        matched_prop = prop
+                        if word in ["dossier", "ledger", "key", "safe", "money", "cabinet", "vault"]:
+                            focus_object = word
+                        break
+                if matched_kitem:
                     break
+
+            loc_id = getattr(speaker, "current_location_id", None) or getattr(speaker, "location_id", None)
+            if not focus_object and loc_id and loc_id in world.locations:
+                for obj_id, obj in world.objects.items():
+                    if obj.location_id == loc_id:
+                        focus_object = obj.name.lower()
+                        break
+        else:
+            # LEGACY FALLBACK MODE (Backward compatibility for legacy projects):
+            private_secrets = [
+                s for s in world.secrets.values()
+                if s.character_id == speaker.id or speaker.id in s.known_by
+            ]
+            private_facts = []
+            if hasattr(world, "facts") and world.facts:
+                for f in world.facts.values():
+                    if f.discovered_by == speaker.id or (hasattr(speaker, "known_facts") and f.id in (speaker.known_facts or [])):
+                        private_facts.append(f.statement.lower())
+
+            speaker_beliefs = [
+                b.statement.lower() for b in world.beliefs.values()
+                if b.character_id == speaker.id
+            ]
+
+            for sec in private_secrets:
+                s_stmt = sec.statement.lower()
+                for word in secret_nouns:
+                    if word in s_stmt:
+                        matched_secret = sec
+                        if word in ["dossier", "ledger", "key", "safe", "money", "cabinet", "vault"]:
+                            focus_object = word
+                        break
+                if matched_secret:
+                    break
+
+            loc_id = getattr(speaker, "current_location_id", None) or getattr(speaker, "location_id", None)
+            if not focus_object and loc_id and loc_id in world.locations:
+                for obj_id, obj in world.objects.items():
+                    if obj.location_id == loc_id:
+                        focus_object = obj.name.lower()
+                        break
 
         # 2. Check for Denial / Lying / Concealment
         denial_patterns = [
@@ -155,23 +187,68 @@ class SubtextAnalyzer:
         dissonance = 0.0
 
         # Assess conflict with private knowledge
-        if matched_secret and is_denial:
-            classifications.append(DeceptionClassification.LYING)
-            classifications.append(DeceptionClassification.CONCEALING)
-            dissonance = 0.85
-        elif matched_secret and is_evasion:
-            classifications.append(DeceptionClassification.EVASIVE)
-            classifications.append(DeceptionClassification.DEFLECTING)
-            dissonance = 0.70
-        elif matched_secret and is_misdirection:
-            classifications.append(DeceptionClassification.MISDIRECTING)
-            classifications.append(DeceptionClassification.CONCEALING)
-            dissonance = 0.75
-        elif matched_secret and is_half_truth:
-            classifications.append(DeceptionClassification.HALF_TRUTH)
-            classifications.append(DeceptionClassification.CONCEALING)
-            dissonance = 0.60
+        if has_typed_knowledge and matched_kitem and matched_prop:
+            believed_val = matched_kitem.believed_truth_value
+            # Compare subjective belief against canonical world truth (records false belief perspective)
+            matches_canonical = (believed_val == matched_prop.truth_value)
+
+            if believed_val is True:
+                # Subjectively believes proposition is true; denying or concealing it constitutes deception
+                if is_denial:
+                    classifications.append(DeceptionClassification.LYING)
+                    classifications.append(DeceptionClassification.CONCEALING)
+                    dissonance = 0.85
+                elif is_evasion:
+                    classifications.append(DeceptionClassification.EVASIVE)
+                    classifications.append(DeceptionClassification.DEFLECTING)
+                    dissonance = 0.70
+                elif is_misdirection:
+                    classifications.append(DeceptionClassification.MISDIRECTING)
+                    classifications.append(DeceptionClassification.CONCEALING)
+                    dissonance = 0.75
+                elif is_half_truth:
+                    classifications.append(DeceptionClassification.HALF_TRUTH)
+                    classifications.append(DeceptionClassification.CONCEALING)
+                    dissonance = 0.60
+            else:
+                # Subjectively believes proposition is FALSE; denying it is truthful from character's perspective
+                if is_misdirection:
+                    classifications.append(DeceptionClassification.MISDIRECTING)
+                    dissonance = 0.50
+        elif matched_secret:
+            if is_denial:
+                classifications.append(DeceptionClassification.LYING)
+                classifications.append(DeceptionClassification.CONCEALING)
+                dissonance = 0.85
+            elif is_evasion:
+                classifications.append(DeceptionClassification.EVASIVE)
+                classifications.append(DeceptionClassification.DEFLECTING)
+                dissonance = 0.70
+            elif is_misdirection:
+                classifications.append(DeceptionClassification.MISDIRECTING)
+                classifications.append(DeceptionClassification.CONCEALING)
+                dissonance = 0.75
+            elif is_half_truth:
+                classifications.append(DeceptionClassification.HALF_TRUTH)
+                classifications.append(DeceptionClassification.CONCEALING)
+                dissonance = 0.60
         else:
+            if is_threatening:
+                classifications.append(DeceptionClassification.THREATENING)
+            if is_manipulative:
+                classifications.append(DeceptionClassification.MANIPULATIVE)
+            if is_evasion:
+                classifications.append(DeceptionClassification.EVASIVE)
+                classifications.append(DeceptionClassification.DEFLECTING)
+            if is_vulnerable:
+                classifications.append(DeceptionClassification.VULNERABLE)
+            if is_half_truth:
+                classifications.append(DeceptionClassification.HALF_TRUTH)
+            if is_misdirection:
+                classifications.append(DeceptionClassification.MISDIRECTING)
+
+        # If no classifications were added by the deception check (e.g. false belief denial), check tone/style
+        if not classifications:
             if is_threatening:
                 classifications.append(DeceptionClassification.THREATENING)
             if is_manipulative:
@@ -215,7 +292,12 @@ class SubtextAnalyzer:
         else:
             motive = "Direct, transparent communication of observations."
 
-        private_truth = matched_secret.statement if matched_secret else None
+        if has_typed_knowledge and matched_prop:
+            private_truth = f"{matched_prop.subject} {matched_prop.predicate} {matched_prop.object}"
+        elif matched_secret:
+            private_truth = matched_secret.statement
+        else:
+            private_truth = None
 
         return SubtextAnalysis(
             speaker_id=speaker.id,
