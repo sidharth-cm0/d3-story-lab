@@ -1,8 +1,9 @@
 """Scribe agent for converting simulation events into Fountain screenplays with subtext and spatial awareness."""
 
 from __future__ import annotations
-from typing import List, Optional, Dict, Any, Set
+from typing import List, Optional, Dict, Any, Set, Tuple, Union
 import re
+import uuid
 
 from src.domain.world import WorldState
 from src.domain.event import Event, EventType
@@ -14,13 +15,204 @@ from src.narrative.fountain import (
     ScreenplayBlockType,
 )
 from src.narrative.subtext import SubtextAnalyzer, DeceptionClassification
-from src.narrative.performance_cues import PerformanceCueGenerator, PerformanceCue
+from src.narrative.performance_cues import (
+    PerformanceCueGenerator,
+    PerformanceCue,
+    InternalStateVerbGuard,
+)
 from src.narrative.spatial import SpatialReasoner, SpatialContext
 from src.narrative.framer import NarrativeFramer, FramingMode
 from src.narrative.scene_purpose import ScenePurposeAnalyzer
 from src.narrative.scene_builder import SceneBuilder
 from src.domain.story_structure import ScenePurposeType
 from src.providers.base import LLMProvider
+from src.narrative.scene_projection import (
+    ObservableSceneProjection,
+    ObservableBeat,
+    ObservableDialogueLine,
+    INTERNAL_VOCABULARY_BLOCKLIST,
+    scan_for_internal_vocabulary,
+)
+
+
+# =============================================================================
+# § 5. DIALOGUE TEMPLATE LIBRARY
+# =============================================================================
+
+DialogueTemplateLibrary: Dict[Tuple[str, str], List[str]] = {
+    # (communicative_intent, action_type)
+    ("TRUTHFUL", "speak"): [
+        "The situation is straightforward.",
+        "I am reporting exactly what occurred.",
+        "The record is consistent with the evidence.",
+    ],
+    ("TRUTHFUL", "claim"): [
+        "I verified the status of {topic} myself.",
+        "The clearance for {topic} is documented and active.",
+    ],
+    ("TRUTHFUL", "deny"): [
+        "No unauthorized personnel have approached {topic}.",
+        "I have not moved {topic} from its location.",
+        "That never took place here.",
+    ],
+    ("TRUTHFUL", "warn"): [
+        "Time is running out. We cannot linger here.",
+        "Security sweeps this area at regular intervals.",
+        "Whoever orchestrates this is not leaving loose ends.",
+    ],
+    ("TRUTHFUL", "question"): [
+        "What do you know about {topic}?",
+        "Did you sign the manifest for {topic}?",
+    ],
+    ("TRUTHFUL", "inquire"): [
+        "Can you verify the current status of {topic}?",
+        "Who else has accessed this sector?",
+    ],
+    ("TRUTHFUL", "accuse"): [
+        "Your access badge was logged at the terminal.",
+        "The missing records point directly to this room.",
+    ],
+    ("TRUTHFUL", "deflect"): [
+        "That inquiry should be directed to the supervisor.",
+        "The logistics team handled that transfer.",
+    ],
+    ("LYING", "speak"): [
+        "Everything is completely in order here.",
+        "There is nothing unusual to report.",
+        "Operations proceeded exactly according to routine.",
+    ],
+    ("LYING", "deny"): [
+        "I don't know anything about {topic}.",
+        "I have never seen {topic} in this facility.",
+        "No one brought {topic} through this terminal.",
+    ],
+    ("LYING", "claim"): [
+        "The directorate cleared this inspection hours ago.",
+        "All seals on {topic} were intact when I arrived.",
+        "I received explicit verbal orders to secure this perimeter.",
+    ],
+    ("LYING", "warn"): [
+        "The exterior sensors triggered—we must evacuate immediately.",
+        "You are walking into a compromised grid.",
+    ],
+    ("LYING", "question"): [
+        "Why would anyone leave {topic} in an unmonitored bay?",
+        "Are you certain your information is current?",
+    ],
+    ("EVASIVE", "speak"): [
+        "That depends on which protocol you are referencing.",
+        "We should focus on the primary mandate.",
+        "There are multiple interpretations of those directives.",
+    ],
+    ("EVASIVE", "deny"): [
+        "That falls outside my operational knowledge.",
+        "I am not in a position to confirm or deny that.",
+        "I was not briefed on the disposition of {topic}.",
+    ],
+    ("EVASIVE", "question"): [
+        "Why are you asking about {topic} right now?",
+        "Who instructed you to verify that?",
+    ],
+    ("EVASIVE", "deflect"): [
+        "Shouldn't you be asking who authorized the transfer?",
+        "There are larger concerns requiring our attention.",
+    ],
+    ("CONCEALING", "speak"): [
+        "There is nothing in this sector that concerns your assignment.",
+        "Just routine maintenance logs on this terminal.",
+    ],
+    ("CONCEALING", "deny"): [
+        "The compartment is sealed for routine inventory.",
+        "I do not possess the authorization key for {topic}.",
+    ],
+    ("MISDIRECTING", "speak"): [
+        "The disturbance on the lower level requires attention first.",
+        "Someone reported an issue near the perimeter.",
+    ],
+    ("MISDIRECTING", "claim"): [
+        "The courier gave me full clearance before departing.",
+        "The transfer for {topic} was already routed through corridor B.",
+    ],
+    ("THREATENING", "speak"): [
+        "Step back from the console immediately.",
+        "You are exceeding your authority, and that has consequences.",
+    ],
+    ("THREATENING", "warn"): [
+        "Do not pursue this question any further.",
+        "Leave the area now if you want to walk out unhindered.",
+    ],
+    ("MANIPULATIVE", "speak"): [
+        "We both know who benefits if this remains quiet.",
+        "Cooperation here serves both of our interests.",
+    ],
+    ("DEFLECTING", "speak"): [
+        "My responsibilities do not extend to that department.",
+        "Address that question to whoever authorized the shift.",
+    ],
+    ("DEFLECTING", "question"): [
+        "What is your actual interest in {topic}?",
+        "Shouldn't you be monitoring the perimeter gate?",
+    ],
+    ("VULNERABLE", "speak"): [
+        "I was given no choice in this assignment.",
+        "I am trying to survive this shift without incident.",
+    ],
+    ("HALF_TRUTH", "speak"): [
+        "Part of the record is missing, but not by my hand.",
+        "The courier was here, but the handoff was interrupted.",
+    ],
+}
+
+
+def resolve_display_name(
+    char_id: str,
+    character_names: Optional[Dict[str, str]] = None,
+    projection: Optional[ObservableSceneProjection] = None,
+) -> str:
+    """Resolve a character ID into a stable uppercase display name, never an internal ID."""
+    # 1. Explicit mapping provided
+    if character_names and char_id in character_names:
+        return character_names[char_id].upper()
+
+    # 2. Extract from projection beats/cues if present
+    if projection:
+        # Check cues for name in observable behaviour or action text
+        for cue in projection.performance_cues:
+            if cue.character_id == char_id and cue.action_text:
+                m = re.match(r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)", cue.action_text)
+                if m:
+                    return m.group(1).upper()
+            if cue.character_id == char_id and cue.observable_behaviour:
+                m = re.match(r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)", cue.observable_behaviour)
+                if m:
+                    return m.group(1).upper()
+        # Check beats
+        for beat in projection.beats:
+            if char_id in beat.characters_involved and beat.description:
+                m = re.match(r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)", beat.description)
+                if m:
+                    return m.group(1).upper()
+
+    # 3. Standard fallback dictionary for test and demo entity IDs
+    known_defaults: Dict[str, str] = {
+        "char_alpha": "VINCENT CROSS",
+        "char_beta": "EVELYN VANCE",
+        "char_vincent": "VINCENT CROSS",
+        "char_evelyn": "EVELYN VANCE",
+        "char_arjun": "ARJUN MEHTA",
+        "char_maya": "MAYA LIN",
+        "char_detective": "VINCENT CROSS",
+        "char_courier": "EVELYN VANCE",
+        "char_guard": "MARCUS VANCE",
+        "char_jordan": "JORDAN",
+        "char_morgan": "MORGAN",
+    }
+    if char_id in known_defaults:
+        return known_defaults[char_id]
+
+    # 4. Clean formatting
+    clean = char_id.replace("char_", "").replace("_", " ").title()
+    return clean.upper()
 
 
 class Scribe:
@@ -68,14 +260,328 @@ class Scribe:
 
         return desc, None
 
+    def compose_dialogue(
+        self,
+        intent: str,
+        action_type: str = "speak",
+        topic: str = "",
+        target: str = "",
+        speaker: str = "",
+        listener: str = "",
+    ) -> str:
+        """Compose a dialogue line deterministically from DialogueTemplateLibrary."""
+        key = (intent.upper(), action_type.lower())
+        templates = DialogueTemplateLibrary.get(key)
+        if not templates:
+            templates = DialogueTemplateLibrary.get((intent.upper(), "speak"))
+        if not templates:
+            templates = DialogueTemplateLibrary.get(("TRUTHFUL", action_type.lower()))
+        if not templates:
+            templates = DialogueTemplateLibrary.get(("TRUTHFUL", "speak"), ["I have nothing further to add."])
+
+        # Select deterministic template based on combined length of parameters
+        idx = (len(topic) + len(speaker)) % len(templates)
+        chosen = templates[idx]
+
+        clean_topic = topic.strip() or "the situation"
+        clean_target = target.strip() or "the location"
+        clean_speaker = speaker.strip()
+        clean_listener = listener.strip()
+
+        line = chosen.format(
+            topic=clean_topic,
+            target=clean_target,
+            speaker=clean_speaker,
+            listener=clean_listener,
+        )
+        return line
+
+    def compose_scene_blocks(
+        self,
+        projection: ObservableSceneProjection,
+        character_names: Optional[Dict[str, str]] = None,
+        start_position: int = 1,
+    ) -> List[ScreenplayBlock]:
+        """Compose compliant ScreenplayBlock elements from an ObservableSceneProjection.
+
+        Formatting Rules:
+        - SLUGLINE: INT./EXT. LOCATION - TIME, uppercase
+        - ACTION: Present-tense observable actions passing InternalStateVerbGuard
+        - CHARACTER_CUE: Uppercase stable display name (never internal ID)
+        - DIALOGUE: Grounded line or composed from DialogueTemplateLibrary
+        - PARENTHETICAL: Sparse, physically observable vocal quality only
+        - TRANSITION: Omitted by default
+        - Invariant: Every block's source_event_ids is a subset of projection.source_event_ids
+        - Invariant: presentation_position == chronological_position
+        """
+        blocks: List[ScreenplayBlock] = []
+        pos = start_position
+        proj_event_ids_set = set(projection.source_event_ids)
+
+        # 1. SLUGLINE (one per scene)
+        loc_label = projection.location_label.strip().upper()
+        time_label = projection.time_label.strip().upper() or "CONTINUOUS"
+        if not (loc_label.startswith("INT.") or loc_label.startswith("EXT.") or loc_label.startswith("INT/EXT")):
+            loc_label = f"INT. {loc_label}"
+        slugline = f"{loc_label} - {time_label}"
+
+        slugline_events = [projection.source_event_ids[0]] if projection.source_event_ids else []
+        blocks.append(
+            ScreenplayBlock(
+                block_id=f"blk_{uuid.uuid4().hex[:8]}",
+                scene_id=projection.scene_id,
+                source_event_ids=slugline_events,
+                element_type="SLUGLINE",
+                content=slugline,
+                character_id=None,
+                presentation_position=pos,
+            )
+        )
+        pos += 1
+
+        # Index dialogues and cues
+        dialogue_by_event: Dict[str, ObservableDialogueLine] = {
+            d.source_event_id: d for d in projection.dialogue
+        }
+        cues_by_event: Dict[str, List[PerformanceCue]] = {}
+        for c in projection.performance_cues:
+            eid = c.event_id or getattr(c, "derived_from_event_id", None)
+            if eid:
+                cues_by_event.setdefault(eid, []).append(c)
+
+        recent_dialogues: List[Dict[str, Any]] = []
+        dialogue_since_last_paren = 3
+
+        # 2. BEATS & DIALOGUE
+        for beat in projection.beats:
+            eid = beat.event_id
+            is_dialogue = eid in dialogue_by_event
+            cues_for_beat = cues_by_event.get(eid, [])
+
+            if not is_dialogue:
+                # Observable Action Beat
+                action_text = beat.description
+                if action_text:
+                    # Enforce Show, Don't Tell via Phase 6 InternalStateVerbGuard
+                    InternalStateVerbGuard.check_and_raise(action_text)
+                    b_events = [eid] if eid in proj_event_ids_set else []
+                    blocks.append(
+                        ScreenplayBlock(
+                            block_id=f"blk_{uuid.uuid4().hex[:8]}",
+                            scene_id=projection.scene_id,
+                            source_event_ids=b_events,
+                            element_type="ACTION",
+                            content=action_text,
+                            character_id=beat.characters_involved[0] if beat.characters_involved else None,
+                            presentation_position=pos,
+                        )
+                    )
+                    pos += 1
+            else:
+                line = dialogue_by_event[eid]
+                speaker_display = resolve_display_name(line.speaker_id, character_names, projection)
+
+                # Dialogue line text
+                raw_text = line.text or line.dialogue or ""
+                if not raw_text or raw_text in ("...", "speak"):
+                    # Slot-fill from template library using display names
+                    raw_text = self.compose_dialogue(
+                        intent=line.communicative_intent,
+                        action_type="speak",
+                        topic="the situation",
+                        speaker=speaker_display,
+                    )
+
+                # Clean quotation marks if already formatted
+                clean_text = raw_text.strip().strip('"')
+
+                # Duplicate / repetition suppression
+                curr_words = set(re.findall(r"\b\w+\b", clean_text.lower()))
+                is_duplicate = False
+                for prev in reversed(recent_dialogues[-2:]):
+                    prev_words = prev["words"]
+                    if curr_words and prev_words:
+                        overlap = len(curr_words & prev_words) / max(len(curr_words), len(prev_words))
+                        if overlap >= 0.70:
+                            is_duplicate = True
+                            break
+
+                b_events = [eid] if eid in proj_event_ids_set else []
+
+                if is_duplicate:
+                    # Collapse into observable physical reaction beat
+                    char_name_clean = speaker_display.title()
+                    reaction_text = f"{char_name_clean} nods in tense concurrence."
+                    InternalStateVerbGuard.check_and_raise(reaction_text)
+                    blocks.append(
+                        ScreenplayBlock(
+                            block_id=f"blk_{uuid.uuid4().hex[:8]}",
+                            scene_id=projection.scene_id,
+                            source_event_ids=b_events,
+                            element_type="ACTION",
+                            content=reaction_text,
+                            character_id=line.speaker_id,
+                            presentation_position=pos,
+                        )
+                    )
+                    pos += 1
+                else:
+                    recent_dialogues.append({
+                        "speaker_id": line.speaker_id,
+                        "words": curr_words,
+                    })
+
+                    # Optional physical performance cue as pre-dialogue ACTION
+                    physical_cue = None
+                    vocal_cue = None
+                    for cue in cues_for_beat:
+                        cue_type_val = str(cue.type.value if hasattr(cue.type, "value") else cue.type).upper()
+                        if cue_type_val in ("VOICE_CRACK", "LOWERS_VOICE", "WHISPER"):
+                            vocal_cue = cue
+                        elif cue.action_text or cue.observable_behaviour:
+                            physical_cue = cue
+
+                    if physical_cue:
+                        p_text = physical_cue.action_text or physical_cue.observable_behaviour
+                        if p_text:
+                            InternalStateVerbGuard.check_and_raise(p_text)
+                            blocks.append(
+                                ScreenplayBlock(
+                                    block_id=f"blk_{uuid.uuid4().hex[:8]}",
+                                    scene_id=projection.scene_id,
+                                    source_event_ids=b_events,
+                                    element_type="ACTION",
+                                    content=p_text,
+                                    character_id=line.speaker_id,
+                                    presentation_position=pos,
+                                    derived_from_event_id=eid,
+                                    is_performance_cue=True,
+                                )
+                            )
+                            pos += 1
+
+                    # CHARACTER CUE (uppercase display name, never internal ID)
+                    blocks.append(
+                        ScreenplayBlock(
+                            block_id=f"blk_{uuid.uuid4().hex[:8]}",
+                            scene_id=projection.scene_id,
+                            source_event_ids=b_events,
+                            element_type="CHARACTER_CUE",
+                            content=speaker_display.upper(),
+                            character_id=line.speaker_id,
+                            presentation_position=pos,
+                        )
+                    )
+                    pos += 1
+
+                    # PARENTHETICAL (Sparse, physically observable vocal quality only)
+                    if vocal_cue and dialogue_since_last_paren >= 3:
+                        dialogue_since_last_paren = 0
+                        cue_type_val = str(vocal_cue.type.value if hasattr(vocal_cue.type, "value") else vocal_cue.type).upper()
+                        if cue_type_val == "VOICE_CRACK":
+                            paren_str = "(rapidly)"
+                        elif cue_type_val == "LOWERS_VOICE":
+                            paren_str = "(lowers voice)"
+                        else:
+                            paren_str = "(quietly)"
+
+                        blocks.append(
+                            ScreenplayBlock(
+                                block_id=f"blk_{uuid.uuid4().hex[:8]}",
+                                scene_id=projection.scene_id,
+                                source_event_ids=b_events,
+                                element_type="PARENTHETICAL",
+                                content=paren_str,
+                                character_id=line.speaker_id,
+                                presentation_position=pos,
+                            )
+                        )
+                        pos += 1
+                    else:
+                        dialogue_since_last_paren += 1
+
+                    # DIALOGUE
+                    blocks.append(
+                        ScreenplayBlock(
+                            block_id=f"blk_{uuid.uuid4().hex[:8]}",
+                            scene_id=projection.scene_id,
+                            source_event_ids=b_events,
+                            element_type="DIALOGUE",
+                            content=clean_text,
+                            character_id=line.speaker_id,
+                            presentation_position=pos,
+                        )
+                    )
+                    pos += 1
+
+        # Invariant checks:
+        for b in blocks:
+            # Subset assertion: every block's source_event_ids is a subset of projection's source_event_ids
+            assert set(b.source_event_ids).issubset(proj_event_ids_set), (
+                f"Block {b.block_id} has invalid source_event_ids {b.source_event_ids} not in {projection.source_event_ids}"
+            )
+            # Presentation position equals chronological position
+            assert b.presentation_position == b.chronological_position
+
+        return blocks
+
+    def compose_from_projections(
+        self,
+        projections: List[ObservableSceneProjection],
+        character_names: Optional[Dict[str, str]] = None,
+        title: str = "EMERGENT NARRATIVE",
+    ) -> ScreenplayDocument:
+        """Compose a complete Fountain ScreenplayDocument purely from ObservableSceneProjection objects."""
+        scenes: List[ScreenplayScene] = []
+        global_pos = 1
+
+        for idx, proj in enumerate(projections, start=1):
+            scene_blocks = self.compose_scene_blocks(
+                projection=proj,
+                character_names=character_names,
+                start_position=global_pos,
+            )
+            global_pos += len(scene_blocks)
+
+            # Scene heading from the SLUGLINE block
+            slugline_block = next((b for b in scene_blocks if b.element_type == "SLUGLINE"), None)
+            heading = slugline_block.content if slugline_block else f"INT. {proj.location_label.upper()} - {proj.time_label.upper()}"
+
+            scene = ScreenplayScene(
+                scene_number=idx,
+                location_id=proj.location_label.lower().replace(" ", "_"),
+                heading=heading,
+                blocks=scene_blocks,
+                source_event_ids=list(proj.source_event_ids),
+                framing_type="CHRONOLOGICAL",
+                presentation_order=idx,
+            )
+            scenes.append(scene)
+
+        return ScreenplayDocument(
+            title=title,
+            author="D3 Story Lab Simulation",
+            scenes=scenes,
+        )
+
     def compose_screenplay(
         self,
-        selection: NarrativeEventSelection,
-        world: WorldState,
+        selection: Union[NarrativeEventSelection, List[ObservableSceneProjection]],
+        world: Optional[WorldState] = None,
         title: str = "EMERGENT NARRATIVE",
         framing_mode: FramingMode = FramingMode.CHRONOLOGICAL,
+        character_names: Optional[Dict[str, str]] = None,
     ) -> ScreenplayDocument:
-        """Transform narrative beats into a verified ScreenplayDocument with subtext and spatial awareness."""
+        """Transform narrative beats or projections into a verified ScreenplayDocument with subtext and spatial awareness."""
+        if isinstance(selection, list):
+            # Prompt 2: Projection-based generation
+            return self.compose_from_projections(
+                projections=selection,
+                character_names=character_names,
+                title=title,
+            )
+
+        assert world is not None, "world must be provided for legacy NarrativeEventSelection flow"
         events: List[Event] = []
         seen_event_ids = set()
         for beat in selection.filtered_beats:

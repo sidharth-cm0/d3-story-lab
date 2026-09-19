@@ -418,10 +418,13 @@ class StoryboardPlanner:
 
                     dia_lower = dialogue_text.lower()
                     bubble_type = "speech"
+                    purpose = ShotPurpose.DIALOGUE
                     if any(w in dia_lower for w in ["listen", "warn", "threat", "kill", "die", "watch out"]):
+
                         purpose = ShotPurpose.THREAT
                     elif any(w in dia_lower for w in ["know", "secret", "truth", "confess", "evidence", "lying"]):
                         purpose = ShotPurpose.REVELATION
+
                     elif any(w in dia_lower for w in ["shh", "quiet", "whisper", "softly"]):
                         bubble_type = "whisper"
                     elif any(w in dia_lower for w in ["stop!", "freeze!", "no!", "get back!"]):

@@ -1,7 +1,8 @@
-"""Story Completion Layer driven by Director / Narrative Engine.
+"""[LEGACY / DEPRECATED] Story Completion Layer.
 
-Accepts incomplete narrative input from ANY point (beginning, midpoint, ending, full concept)
-and synthesizes a complete 20-minute episode structure.
+NOTE: This module is superseded by the Phase 5-7 grounded narrative pipeline
+(SceneBuilder -> ObservableSceneProjector -> Scribe). It is retained only for
+backward-compatible deserialization and fallback outline generation in legacy tests.
 """
 
 from __future__ import annotations
@@ -135,7 +136,7 @@ class StoryCompletionEngine:
         question = "Will the protagonist secure the truth before the perimeter is breached and the truth buried?"
 
         act_1 = f"Act I: Setup. {seed}. The protagonist arrives, establishing the stakes and noting anomalies in the environment."
-        act_2 = "Act II: Escalation & Reversal. A second sovereign actor is discovered inside; an encrypted asset creates intense mutual distrust when external alarms trip."
+        act_2 = "Act II: Escalation & Reversal. A second operative is discovered inside; an encrypted asset creates intense mutual distrust when external alarms trip."
         act_3 = "Act III: Climax & Resolution. Under severe environmental crisis, the actors make a desperate choice: alliance or betrayal, escaping as the truth is irrevocably transformed."
 
         key_scenes = [
@@ -170,7 +171,7 @@ class StoryCompletionEngine:
                 beat_number=4,
                 act="Act II",
                 title="Environmental Breach",
-                description="The Director triggers an external crisis (power failure, locked blast doors, incoming security).",
+                description="An external crisis triggers (power failure, locked blast doors, incoming security).",
                 conflict="Time running out as outside forces close in",
                 location_hint="Central Chamber",
                 tension_level=0.85,
@@ -261,7 +262,7 @@ class StoryCompletionEngine:
                 beat_number=5,
                 act="Act III",
                 title="The Direct Confrontation",
-                description="Director intervention triggers building alarm; guns drawn, ultimatums delivered.",
+                description="An environmental alarm triggers; tension reaches a breaking point with ultimatums delivered.",
                 conflict="Direct showdown before the arrival of authorities",
                 location_hint="Corridor Staging",
                 tension_level=0.98,
@@ -416,7 +417,7 @@ class StoryCompletionEngine:
                 beat_number=4,
                 act="Act II",
                 title="External Shock",
-                description="Director triggers an environmental disruption (phone ring, blackout, or knocking).",
+                description="An environmental disruption occurs (phone ring, blackout, or knocking).",
                 conflict="Shared external panic shifting internal power dynamics",
                 location_hint="Main Suite Threshold",
                 tension_level=0.88,

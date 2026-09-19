@@ -560,6 +560,7 @@ export interface BeatDefinition {
   expected_dramatic_function: string;
   pressure_signal: string;
   description: string;
+  status?: string;
 }
 
 export interface StructureDefinition {
@@ -578,16 +579,18 @@ export interface StoryBlueprint {
   primary_structure: StoryStructureType;
   secondary_structure?: StoryStructureType | null;
   presentation_strategy: string;
-  target_duration_minutes: number;
+  target_duration_minutes?: number;
   expected_beats: BeatDefinition[];
-  thematic_premise: string;
+  thematic_premise?: string;
+  theme?: string;
   dramatic_question: string;
-  central_conflict_type: string;
+  central_conflict_type?: string;
   stakes: string;
   soft_constraints: Record<string, any>;
-  fit_score: number;
-  fit_rationale: string;
-  selection_mode: string;
+  fit_score?: number;
+  fit_rationale?: string;
+  selection_mode?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface CharacterArcTurn {
@@ -603,7 +606,7 @@ export interface CharacterArcReport {
   starting_state: Record<string, any>;
   major_decisions: string[];
   key_turns: CharacterArcTurn[];
-  relationship_deltas: Record<string, number>;
+  relationship_deltas: Record<string, string | number>;
   ending_state: Record<string, any>;
   arc_trajectory: string;
   is_observed_only: boolean;
@@ -612,7 +615,7 @@ export interface CharacterArcReport {
 export interface CausalTransitionReport {
   from_id: string;
   to_id: string;
-  transition_type: 'BUT_THEREFORE' | 'AND_THEN';
+  transition_type: 'BUT_THEREFORE' | 'THEREFORE' | 'BUT' | 'AND_THEN' | 'MEANWHILE' | string;
   score: number;
   rationale: string;
   tick_interval?: number;

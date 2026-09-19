@@ -5463,3 +5463,200 @@ summary:focus-visible,
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* Beat Status Badges */
+.beat-status-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.beat-status-badge.status-satisfied {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.beat-status-badge.status-pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.beat-status-badge.status-unsatisfied {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.beat-status-badge.status-partial {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+/* Error, Loading, and No-Data States */
+.structure-error-container, .structure-loading-container, .structure-empty-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 260px;
+  padding: 32px;
+}
+
+.error-card {
+  background: var(--surface-elevated);
+  border: 1px solid #ef4444;
+  border-radius: var(--radius-md);
+  padding: 24px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  max-width: 480px;
+}
+
+.error-icon {
+  font-size: 28px;
+  color: #ef4444;
+}
+
+.error-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.error-message {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.btn-retry {
+  background: var(--accent-amber);
+  color: #000;
+  border: none;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 12px;
+  padding: 8px 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: opacity var(--trans-micro);
+}
+
+.btn-retry:hover {
+  opacity: 0.85;
+}
+
+/* Scene Breakdown with Subtext & Cues */
+.scenes-breakdown-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.scenes-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scene-card-item {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scene-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 8px;
+}
+
+.scene-heading-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.scene-purpose-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent-amber);
+  background: rgba(216, 156, 56, 0.1);
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.scene-objective-box {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-subtle);
+  padding: 10px 14px;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.scene-subtext-box, .scene-cues-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.subtext-header, .cues-header {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.subtext-item, .cue-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 3px;
+}
+
+.subtext-intent, .cue-type {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #60a5fa;
+  font-weight: 700;
+}
+
+.subtext-dialogue {
+  font-style: italic;
+  color: var(--text-primary);
+}
+
+.subtext-truth {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.cue-action {
+  color: var(--text-secondary);
+}

@@ -1,23 +1,69 @@
 """Provenance Service providing bidirectional traversal between panels, screenplay blocks, and world events."""
 from __future__ import annotations
 from typing import List, Optional, Set, Dict, Any
-from ..domain import WorldState, Event
+from ..domain import WorldState, Event, Scene, SceneLink
 from .fountain import ScreenplayDocument, ScreenplayBlock
 from ..storyboard.models import ShotPlan, StoryboardPanel
 
 
 class ProvenanceService:
-    """Bidirectional provenance index traversing World Events <-> Screenplay Blocks <-> Storyboard Panels."""
+    """Bidirectional provenance index traversing World Events <-> Scenes <-> SceneLinks <-> Screenplay Blocks <-> Storyboard Panels."""
 
     def __init__(
         self,
         world: WorldState,
         screenplay: Optional[ScreenplayDocument] = None,
         shot_plan: Optional[ShotPlan] = None,
+        scenes: Optional[List[Scene]] = None,
+        scene_links: Optional[List[SceneLink]] = None,
     ):
         self.world = world
         self.screenplay = screenplay
         self.shot_plan = shot_plan
+        self.scenes = scenes or []
+        self.scene_links = scene_links or []
+
+    def register_scenes(self, scenes: List[Scene]) -> None:
+        """Register narrative scenes for Event <-> Scene bidirectional provenance."""
+        self.scenes = scenes
+
+    def register_scene_links(self, scene_links: List[SceneLink]) -> None:
+        """Register causal scene links for Event <-> Scene <-> SceneLink bidirectional provenance."""
+        self.scene_links = scene_links
+
+    def links_for_scene(self, scene_id: str) -> List[SceneLink]:
+        """Retrieve all causal scene links involving a specific scene (as source or destination)."""
+        if not self.scene_links:
+            return []
+        return [l for l in self.scene_links if l.from_scene_id == scene_id or l.to_scene_id == scene_id]
+
+    def links_for_event(self, event_id: str) -> List[SceneLink]:
+        """Retrieve all causal scene links where this event serves as causal evidence."""
+        if not self.scene_links:
+            return []
+        return [l for l in self.scene_links if event_id in l.evidence_event_ids]
+
+    def evidence_events_for_link(self, link: SceneLink) -> List[Event]:
+        """Retrieve all canonical world events supporting a specific causal scene link."""
+        events = [self.world.events[eid] for eid in link.evidence_event_ids if eid in self.world.events]
+        return sorted(events, key=lambda e: (e.tick, e.id))
+
+    def scenes_for_event(self, event_id: str) -> List[Scene]:
+        """Retrieve all narrative scenes containing or derived from a specific world event."""
+        if not self.scenes:
+            return []
+        return [sc for sc in self.scenes if event_id in sc.source_event_ids]
+
+    def events_for_scene(self, scene_id: str) -> List[Event]:
+        """Retrieve all canonical world events that constitute a specific narrative scene."""
+        if not self.scenes:
+            return []
+        target = next((sc for sc in self.scenes if sc.scene_id == scene_id), None)
+        if not target:
+            return []
+        events = [self.world.events[eid] for eid in target.source_event_ids if eid in self.world.events]
+        return sorted(events, key=lambda e: (e.tick, e.id))
+
 
     def events_for_block(self, block_id: str) -> List[Event]:
         """Retrieve all canonical world events that triggered a screenplay block."""

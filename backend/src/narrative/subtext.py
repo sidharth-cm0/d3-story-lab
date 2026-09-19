@@ -17,7 +17,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import List, Dict, Any, Optional
 import re
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.domain.character import Character
 from src.domain.world import WorldState
@@ -40,18 +40,69 @@ class DeceptionClassification(str, Enum):
 
 class SubtextAnalysis(BaseModel):
     """Detailed diagnostic of spoken line intent vs internal cognition."""
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     speaker_id: str
+    listener_ids: List[str] = Field(default_factory=list)
     listener_id: Optional[str] = None
     dialogue: str
-    classifications: List[DeceptionClassification]
-    primary_classification: DeceptionClassification
-    underlying_motive: str
+    spoken_intent: DeceptionClassification = DeceptionClassification.TRUTHFUL
+    classifications: List[DeceptionClassification] = Field(default_factory=list)
+    primary_classification: DeceptionClassification = DeceptionClassification.TRUTHFUL
+    underlying_motive: str = ""
+    private_truth: Optional[str] = None
     private_truth_summary: Optional[str] = None
+    tension_source: Optional[str] = None
     cognitive_dissonance_score: float = Field(ge=0.0, le=1.0, default=0.0)
     conflict_focus_object: Optional[str] = None
     conflict_focus_location: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def sync_subtext_inputs(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            # spoken_intent <-> primary_classification
+            if "spoken_intent" in data and "primary_classification" not in data:
+                data["primary_classification"] = data["spoken_intent"]
+            elif "primary_classification" in data and "spoken_intent" not in data:
+                data["spoken_intent"] = data["primary_classification"]
+
+            # listener_id <-> listener_ids
+            if "listener_ids" in data and data["listener_ids"] and "listener_id" not in data:
+                data["listener_id"] = data["listener_ids"][0]
+            elif "listener_id" in data and data["listener_id"] and "listener_ids" not in data:
+                data["listener_ids"] = [data["listener_id"]]
+
+            # private_truth <-> private_truth_summary
+            if "private_truth" in data and "private_truth_summary" not in data:
+                data["private_truth_summary"] = data["private_truth"]
+            elif "private_truth_summary" in data and "private_truth" not in data:
+                data["private_truth"] = data["private_truth_summary"]
+
+            # tension_source <-> conflict_focus_object
+            if "tension_source" in data and "conflict_focus_object" not in data:
+                data["conflict_focus_object"] = data["tension_source"]
+            elif "conflict_focus_object" in data and "tension_source" not in data:
+                data["tension_source"] = data["conflict_focus_object"]
+        return data
+
+    @model_validator(mode="after")
+    def sync_subtext_after(self) -> "SubtextAnalysis":
+        if not self.spoken_intent and self.primary_classification:
+            object.__setattr__(self, "spoken_intent", self.primary_classification)
+        if not self.primary_classification and self.spoken_intent:
+            object.__setattr__(self, "primary_classification", self.spoken_intent)
+        if not self.listener_ids and self.listener_id:
+            object.__setattr__(self, "listener_ids", [self.listener_id])
+        if not self.listener_id and self.listener_ids:
+            object.__setattr__(self, "listener_id", self.listener_ids[0])
+        if not self.private_truth and self.private_truth_summary:
+            object.__setattr__(self, "private_truth", self.private_truth_summary)
+        if not self.private_truth_summary and self.private_truth:
+            object.__setattr__(self, "private_truth_summary", self.private_truth)
+        if not self.tension_source and self.conflict_focus_object:
+            object.__setattr__(self, "tension_source", self.conflict_focus_object)
+        return self
 
 
 class SubtextAnalyzer:
@@ -66,6 +117,7 @@ class SubtextAnalyzer:
         dialogue: str,
         world: WorldState,
         listener_id: Optional[str] = None,
+        listener_ids: Optional[List[str]] = None,
         event_metadata: Optional[Dict[str, Any]] = None,
     ) -> SubtextAnalysis:
         """Compare actor's spoken line against private secrets, beliefs, and emotional tension."""
@@ -299,14 +351,21 @@ class SubtextAnalyzer:
         else:
             private_truth = None
 
+        resolved_listener_ids = listener_ids or ([listener_id] if listener_id else [])
+        resolved_listener_id = listener_id or (resolved_listener_ids[0] if resolved_listener_ids else None)
+
         return SubtextAnalysis(
             speaker_id=speaker.id,
-            listener_id=listener_id,
+            listener_id=resolved_listener_id,
+            listener_ids=resolved_listener_ids,
             dialogue=dialogue,
+            spoken_intent=primary,
             classifications=classifications,
             primary_classification=primary,
             underlying_motive=motive,
+            private_truth=private_truth,
             private_truth_summary=private_truth,
+            tension_source=focus_object or private_truth,
             cognitive_dissonance_score=round(dissonance, 2),
             conflict_focus_object=focus_object,
             conflict_focus_location=focus_location,

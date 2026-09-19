@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { StructureAndArcsViewer } from '../components/StructureAndArcsViewer';
+import { StructureAndArcsViewer, StructureErrorBoundary } from '../components/StructureAndArcsViewer';
 import { Header } from '../components/Header';
 import { ProjectData } from '../types';
 
@@ -210,5 +210,156 @@ describe('StructureAndArcsViewer Component', () => {
     expect(screen.getAllByText(/SCREENPLAY/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('SHOT PLAN').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('EXPORT READY')).toBeDefined();
+  });
+
+  it('regression: handles string-formatted relationship deltas from real Phase 6 backend without blank screen crash', () => {
+    const realBackendProjectData: ProjectData = {
+      ...mockProjectData,
+      character_arcs: {
+        char_alpha: {
+          character_id: 'char_alpha',
+          character_name: 'Vincent Cross',
+          starting_state: { role: 'Infiltrator' },
+          major_decisions: ['[Tick 1] Vincent Cross said to Evelyn Vance: "What do you know about dossier?"'],
+          key_turns: [],
+          relationship_deltas: {
+            'Evelyn Vance': 'Affinity: +0.4, Trust: +0.5',
+          },
+          ending_state: {
+            total_decisions_made: 9,
+            dominant_emotion: 'Balanced',
+          },
+          arc_trajectory: 'NO_ARC_DETECTED',
+          is_observed_only: true,
+        },
+      },
+    };
+
+    render(<StructureAndArcsViewer project={realBackendProjectData} />);
+
+    const arcsBtn = screen.getByText(/CHARACTER ARCS/);
+    fireEvent.click(arcsBtn);
+
+    expect(screen.getAllByText('Vincent Cross').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('RELATIONSHIP AFFINITY DELTAS')).toBeDefined();
+    expect(screen.getByText('Evelyn Vance:')).toBeDefined();
+    expect(screen.getByText('Affinity: +0.4, Trust: +0.5')).toBeDefined();
+  });
+
+  it('supports LOADING and NO_DATA lifecycle states safely without blank screen', () => {
+    // 1. NO_DATA state when project is null
+    const { unmount } = render(<StructureAndArcsViewer project={null} loading={false} />);
+    expect(screen.getByText('NO ACTIVE SIMULATION')).toBeDefined();
+    expect(screen.getByText(/The narrative framework requires an active simulation project/)).toBeDefined();
+    unmount();
+
+    // 2. LOADING state
+    render(<StructureAndArcsViewer project={null} loading={true} />);
+    expect(screen.getByText(/Analyzing narrative structure/)).toBeDefined();
+  });
+
+  it('renders beat status badges on expected beats when present', () => {
+    const projectWithBeatStatuses: ProjectData = {
+      ...mockProjectData,
+      story_blueprint: {
+        ...mockProjectData.story_blueprint!,
+        expected_beats: [
+          {
+            beat_id: 'beat_1',
+            name: 'Status Quo & Setup',
+            act: 'Act I',
+            target_position_pct: 0.1,
+            expected_dramatic_function: 'Establish primary operative and environment.',
+            pressure_signal: 'Low environmental pressure.',
+            description: 'Setup beat.',
+            status: 'SATISFIED',
+          },
+          {
+            beat_id: 'beat_2',
+            name: 'Inciting Incident',
+            act: 'Act I',
+            target_position_pct: 0.2,
+            expected_dramatic_function: 'Disrupt status quo.',
+            pressure_signal: 'Patrolling guard.',
+            description: 'Inciting beat.',
+            status: 'PENDING',
+          },
+        ],
+      },
+    };
+
+    render(<StructureAndArcsViewer project={projectWithBeatStatuses} />);
+
+    expect(screen.getByText('SATISFIED')).toBeDefined();
+    expect(screen.getByText('PENDING')).toBeDefined();
+  });
+
+  it('renders scene objectives, subtext analyses, and performance cues under causal continuity', () => {
+    const projectWithScenesAndCues: ProjectData = {
+      ...mockProjectData,
+      scenes: [
+        {
+          scene_id: 'scene_01',
+          heading: 'INT. ABANDONED BAY - MIDNIGHT',
+          purpose: 'CONFRONTATION',
+          objective: {
+            pov_character_id: 'char_alpha',
+            wants: 'Secure the transit dossier',
+            obstacle: 'Guarded perimeter',
+            outcome: 'PARTIAL',
+          },
+          subtext_analyses: [
+            {
+              spoken_intent: 'CONCEALING',
+              spoken_dialogue: 'I have nothing for you.',
+              private_truth: 'Dossier is hidden in desk.',
+            },
+          ],
+          performance_cues: [
+            {
+              cue_type: 'EYE_MOVEMENT',
+              observable_action: 'Glances toward the desk before making direct eye contact.',
+            },
+          ],
+        },
+      ],
+    };
+
+    render(<StructureAndArcsViewer project={projectWithScenesAndCues} />);
+
+    const causalBtn = screen.getByText('CAUSAL CONTINUITY');
+    fireEvent.click(causalBtn);
+
+    expect(screen.getByText('SCENES & DRAMATIC GROUNDING (1)')).toBeDefined();
+    expect(screen.getByText('INT. ABANDONED BAY - MIDNIGHT')).toBeDefined();
+    expect(screen.getByText('CONFRONTATION')).toBeDefined();
+    expect(screen.getByText(/Secure the transit dossier/)).toBeDefined();
+    expect(screen.getByText('DIALOGUE SUBTEXT (1)')).toBeDefined();
+    expect(screen.getByText('[CONCEALING]')).toBeDefined();
+    expect(screen.getByText('"I have nothing for you."')).toBeDefined();
+    expect(screen.getByText(/Truth: Dossier is hidden in desk/)).toBeDefined();
+    expect(screen.getByText('PERFORMANCE CUES (1)')).toBeDefined();
+    expect(screen.getByText('EYE_MOVEMENT:')).toBeDefined();
+    expect(screen.getByText(/Glances toward the desk/)).toBeDefined();
+  });
+
+  it('StructureErrorBoundary safely catches runtime exceptions without blank screen', () => {
+    const BadComponent = () => {
+      throw new Error('Simulated runtime render crash');
+    };
+
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <StructureErrorBoundary>
+        <BadComponent />
+      </StructureErrorBoundary>
+    );
+
+    expect(screen.getByText('STRUCTURE & ARCS DIAGNOSTIC ERROR')).toBeDefined();
+    expect(screen.getByText('Simulated runtime render crash')).toBeDefined();
+    expect(screen.getByText('RETRY DIAGNOSTICS')).toBeDefined();
+
+    spy.mockRestore();
   });
 });

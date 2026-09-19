@@ -7,9 +7,12 @@
 | 2 | Deterministic decision policy | COMPLETE | 3 | Omniscience firewall (CharacterWorldView), mandatory Motivation, 4 validator gates, RuleDecisionPolicy with repetition penalty, causal Event.caused_by wiring, and zero-AI simulation verified. |
 | 3 | Story structure engine | COMPLETE | 4 | Data-driven YAML structures, unified DramaticFunction, flat PredicateSpec, pure rubric score, Kishōtenketsu sensitivity, and compatibility matrix. |
 | 4 | Blueprint / beats / director / gate | COMPLETE | 4 | Role bindings, StateSnapshotDiffer, CanonGate enforcement, Director intervention validation, and NarrativeSufficiencyGate. |
-| 5 | Observer / scene builder / causality | NOT_STARTED | | |
-| 6 | Arcs / subtext / performance cues | NOT_STARTED | | |
-| 7 | Scribe / formatting / quality | NOT_STARTED | | |
+| 5 | Observer / scene builder / causality | COMPLETE | 8 | Phase 5A (Observer, SceneBuilder, SceneObjective) & Phase 5B (CausalContinuityAnalyzer, SceneLink taxonomy, Provenance traversal) complete. |
+| 6 | Arcs / subtext / performance cues | COMPLETE | 9 | CharacterArcTracker (5 arc types, persistent vs transient shifts), SubtextAnalyzer (10 intents, subjective belief preservation), PerformanceCueGenerator (8 types), InternalStateVerbGuard ("Show, Don't Tell"), and SceneBuilder Phase 6 enrichment. |
+| 7.1 | Scribe contract & scene projection | COMPLETE | 11 | Omniscience firewall, ObservableSceneProjection, blocklist scanner, exact event matching, and zero-internal-leak verification. |
+| 7.2 | Scribe screenplay generation | COMPLETE | 12 | Deterministic screenplay generation behind firewall, DialogueTemplateLibrary, InternalStateVerbGuard enforcement, sparse parentheticals, and Missing Dossier acceptance. |
+| 7.3 | Quality validator & legacy migration | COMPLETE | 13 | ScreenplayQualityValidator (inspectable rules), legacy completion/synopsis migration, vocabulary cleanup, and full Phase 7 acceptance gate. |
+| **7** | **Overall Scribe & Screenplay Phase** | **COMPLETE** | **11-13** | **Prompts 1, 2, and 3 all COMPLETE. Screenplay grounded in canonical truth with 0 leaks/inventions.** |
 | 8 | Shot planner / visual bible / storyboard | NOT_STARTED | | |
 | 9 | Frontend | NOT_STARTED | | |
 | 10 | Export / demo / metrics / cleanup | NOT_STARTED | | |
@@ -81,6 +84,105 @@
     - Re-ran The Missing Dossier: `setup` SATISFIED at tick 0, `save_the_cat_opening_image` SATISFIED at tick 0, `save_the_cat_midpoint` SATISFIED at tick 5, `climax` SATISFIED at tick 22.
     - Re-verified all 6 architectural invariants: zero AI calls in CI/offline verification (`provider.call_count == 0`), canonical truth inviolate, zero knowledge leaks, zero puppetry violations, zero event rewrites, and byte-identical replay over 204 events.
   - Full verification suite passing: 412 backend tests (`pytest -q`), 49 frontend tests (`npm test -- --run`), `npm run build` succeeds, `npx tsc --noEmit` succeeds, `git diff --check` clean. Working tree is NOT committed and NOT pushed.
+- Session 8: Phase 5 (Phase 5A: Observer + Scene Builder + Scene Objective, and Phase 5B: Scene Causal Continuity + Phase 5 Acceptance) complete:
+  - Phase 5A:
+    - 5A.1 Shared Dramatic Vocabulary: Ensured `DramaticFunction` (13 members) is the canonical shared enum definition for `BeatPressure.dramatic_function`, `ScenePurpose`, and `ScenePurposeType`. Exported from `domain.story_structure` and `domain`.
+    - 5A.2 Observer Salience Scoring: Implemented deterministic `EventSalience` with non-empty `signals` dict (`state_delta_magnitude`, `knowledge_change_magnitude`, `relationship_change_magnitude`, `goal_progress_delta`, `beat_binding_bonus`, `dramatic_intensity`). Calibrated scoring (idle < 0.25, confrontation >= 0.80, director urgency >= 0.60). Guaranteed zero AI calls and byte-identical immutability on `EventHistory`.
+    - 5A.3 Scene & SceneObjective Models: Created/extended `Scene` (`presentation_position == chronological_position`) and observational `SceneObjective` (`pov_character_id`, `wants`, `emotional_want`, `obstacle`, `tactics`, `outcome`, `state_delta`) with zero invented goals/tactics.
+    - 5A.4 Sufficiency Gate Gating: Implemented `SufficiencyGateExecutionError`; Scene Builder runs only after terminal recommendation (`PROCEED`, `HALT_INSUFFICIENT`) and rejects non-terminal recommendation (`CONTINUE`, `ADJUST_PRESSURE_AND_CONTINUE`).
+    - 5A.5 Deterministic Scene Grouping & Static Scene Flagging: Grouped events on location changes, time gaps (>2 ticks), and participant changes. Detected static scenes (`is_static = True`) based on zero entry-to-exit state delta.
+    - 5A.6 Deterministic Turning Point & Provenance: Selected salience-backed turning point event or None. Registered Event -> Scene bidirectional provenance via `ProvenanceService`.
+    - 5A.7 Verification: Added 19 comprehensive unit tests in `tests/test_phase5a_observer_scene_builder.py`.
+  - Phase 5B:
+    - 5B.1 SceneLink Model: Defined `SceneLinkType` (`THEREFORE`, `BUT`, `AND_THEN`, `MEANWHILE`) and `SceneLink` backed by mandatory evidence event IDs.
+    - 5B.2 THEREFORE: Deterministic causal ancestry traversal using BFS along `Event.caused_by` back to initiating events.
+    - 5B.3 BUT: Goal-progress reversal evaluation using `SceneObjective`, `StateSnapshotDiffer`, and goal status/possession loss. Explicitly verified that an obstacle without reversal is NOT automatically BUT.
+    - 5B.4 AND_THEN & MEANWHILE: Evaluated uncaused transitions as diagnostic defects (`AND_THEN`) and demonstrably concurrent cross-location scenes as `MEANWHILE`.
+    - 5B.5 CausalContinuityAnalyzer: Computed total scene links, therefore/but/and_then/meanwhile counts, `and_then_ratio`, and detected consecutive AND_THEN runs (`consecutive_and_then_runs`).
+    - 5B.6 Provenance Integration: Extended `ProvenanceService` with bidirectional `Event <-> Scene <-> SceneLink` traversal.
+    - 5B.7 The Missing Dossier Scenario Diagnostic: 205 events, 21 scenes, 20 links (18 THEREFORE, 1 MEANWHILE, 1 AND_THEN, 0 BUT, `and_then_ratio = 0.05`, 0 consecutive runs).
+    - 5B.8 Verification: Added 16 unit/integration tests in `tests/test_phase5b_causal_continuity.py`. Total backend tests expanded to 447 passing tests. Frontend tests: 49 passing. Production build and typecheck passing. Phase 5 COMPLETE.
+- Session 9: Phase 6 (Character Arcs + Subtext + Performance Cues) complete:
+  - 6.1 Character Arc Tracker:
+    - Extended domain models: `ArcClassification` (`POSITIVE_CHANGE`, `FALL`, `FLAT_TESTING`, `DISILLUSIONMENT`, `NO_ARC_DETECTED`), `TurningPoint` (`event_id`, `delta_magnitude`, `description`, `tick`, `state_change_type`), and `CharacterArc` with starting/ending state dictionaries, turning points, evidence event IDs, and `reason_if_none`.
+    - Integrated `CharacterArcTracker` using `StateSnapshotDiffer` (`snap_start` vs `snap_end`). Grounded turning points on belief flips (`0.40`), goal status transitions (`0.35`), relationship shifts (`0.30`), and persistent emotional changes (`0.30`).
+    - Differentiated persistent emotional transformations from transient spikes (spikes reverting within 2 subsequent ticks or ending at baseline are excluded).
+    - Hardened trajectory classification with word boundary detection to prevent false substring matches (e.g. "allies" vs "lies"). Verified Arjun's trajectory in The Missing Dossier classifies deterministically as `DISILLUSIONMENT`.
+  - 6.2 Subtext Analyzer:
+    - Fully migrated to typed `Character.knowledge` (`dict[str, KnowledgeItem]`) without authoritative reads of legacy unversioned fields.
+    - Supported 10 spoken intent classifications: `TRUTHFUL`, `EVASIVE`, `CONCEALING`, `HALF_TRUTH`, `MISDIRECTING`, `LYING`, `MANIPULATIVE`, `THREATENING`, `DEFLECTING`, `VULNERABLE`.
+    - Preserved subjective false belief separation: when character subjectively believes P=False, stating "P is false" is classified as `TRUTHFUL`, not `LYING`.
+    - Deception detection: Maya's denial of the classified dossier in The Missing Dossier classifies as `LYING` with private truth referencing `prop_dossier_in_desk` (`"dossier is_in desk_drawer"`). Arjun's knowledge is completely unpolluted.
+  - 6.3 Performance Cue Generator:
+    - Mapped internal subtext and emotion into observable physical behavior across 8 canonical types: `EYE_MOVEMENT`, `PHYSICAL_DISTANCE`, `GESTURE_TICK`, `BREATHING`, `MICRO_EXPRESSION`, `OBJECT_DISPLACEMENT`, `VOICE_CRACK`, `POSTURE_SHIFT`.
+    - Implemented `InternalStateVerbGuard` enforcing "Show, Don't Tell" by strictly rejecting unobservable internal verbs (`knows`, `realizes`, `feels`, `remembers`, `is afraid`, `decides`). Verified that 100% of generated performance cues pass this guard.
+  - 6.4 Scene Model & Downstream Scribe Support:
+    - Extended `Scene` with `character_arcs: Dict[str, Any]`, `subtext_analyses: List[Any]`, and `performance_cues: List[Any]`.
+    - Added `SceneBuilder.enrich_scenes_with_phase6(...)` to automatically attach character arcs, dialogue subtext analyses, and physical performance cues to scenes for Phase 7 Scribe consumption.
+  - 6.5 Zero AI Calls:
+    - Ensured 100% deterministic rule-based execution across arc tracking, subtext analysis, cue generation, and verb guarding.
+  - 6.6 Verification & Diagnostics:
+    - Added 23 unit/integration tests in `tests/test_phase6_arcs_subtext_cues.py` covering all required specifications.
+    - Executed full Missing Dossier Phase 6 pipeline: Arjun arc (`DISILLUSIONMENT`, 2 turning points), Maya arc (`DISILLUSIONMENT`, 1 turning point), Maya denial subtext (`LYING`, private truth referenced), all cues passed `InternalStateVerbGuard`, 0 AI calls.
+    - Full verification suite passing: 470 backend tests (`pytest -q` in 12.03s), 49 frontend tests (`npm test -- --run` in 14.49s), production build and TypeScript check clean (`npm run build && npx tsc --noEmit`). Phase 6 COMPLETE.
+- Session 10: Pre-Phase-7 Live UI Integration Verification complete:
+  - 10.1 Blank-Screen Root Cause: In `StructureAndArcsViewer.tsx`, character arc relationship deltas were formatted using `delta.toFixed(2)`. Backend Phase 6 `CharacterArcTracker` (`src/narrative/arc_tracker.py`) generates `relationship_deltas: Dict[str, str]` with values formatted like `"Affinity: +0.4, Trust: +0.5"`. Invoking `.toFixed(2)` on string values threw an unhandled `TypeError: delta.toFixed is not a function`. In the absence of an Error Boundary, React 18 unmounted the component tree, producing a blank black screen. In addition, blueprint fit metadata nested under `blueprint.metadata` lacked safe fallback accessors, and the component lacked explicit state modeling for `LOADING`, `READY`, `NO_DATA`, and `ERROR`.
+  - 10.2 Integration Fix:
+    - Updated `CharacterArcReport`, `BeatDefinition`, `StoryBlueprint`, and `CausalTransitionReport` in `frontend/src/types/index.ts` to accommodate both string and numeric deltas, optional beat statuses, and enriched transition types.
+    - Re-implemented `StructureAndArcsViewer.tsx` to support a 4-state lifecycle (`LOADING`, `READY`, `NO_DATA`, `ERROR`).
+    - Added an internal `StructureErrorBoundary` catching uncaught rendering errors and presenting a dark-themed error card with a retry affordance rather than failing silently to a blank screen.
+    - Implemented safe delta formatting (`formatDelta`, `isPositive`) supporting string deltas, numeric floats, and missing entries.
+    - Added status badges (`[SATISFIED]`, `[PENDING]`, `[UNSATISFIED]`, `[PARTIAL]`) to target beats in the story blueprint outline.
+    - Added a scenes breakdown section under Causal Continuity displaying POV objectives, subtext analyses (`[intent] dialogue / private truth`), and physical performance cues (`[cue_type] action`).
+    - Updated `App.tsx` so `StructureAndArcsViewer` receives `project={projectData}` directly and manages its own empty/loading container state.
+    - Appended styling in `frontend/src/styles.css` for error cards, loading containers, beat status badges, and scene subtext/cue chips.
+  - 10.3 Project Identity Verification: Verified project `world_init_4bef81` represents "The Missing Dossier" (T10, current_tick: 10, 20 events, 3 scenes, 24 storyboard panels). Characters are preserved as Vincent Cross (`char_alpha`, Infiltrator) and Evelyn Vance (`char_beta`, Clandestine Custodian). Confirmed that Home, World, Actors, Arcs, Simulation, Script, Storyboard, and Export all bind to this exact project ID. No character renaming was performed.
+  - 10.4 Script/Synopsis Legacy-Path Diagnostic: Investigated ungrounded terms ("Director interventions", "second sovereign actor") appearing in Script/Synopsis. Traced root cause to hardcoded fallback outline templates in `backend/src/narrative/completion.py` (`StoryCompletionEngine._fallback_outline`, line 138) and fallback synopsis synthesis in `backend/src/narrative/synopsis.py` (`SynopsisGenerator.generate_synopsis`, line 58). This is not a stale project ID bug; the legacy generator templates predate Phase 5-6 narrative grounding and will be cleanly superseded in Phase 7 Scribe without ad-hoc edits.
+  - 10.5 Live Tab Acceptance: Verified all 8 creative workstation tabs (`HOME`, `WORLD`, `ACTORS`, `ARCS & STRUCTURE`, `SIMULATION`, `SCRIPT`, `STORYBOARD`, `EXPORT`) render without blank screens using live production data.
+  - 10.6 Regression & Verification Suites: Added 5 regression tests in `frontend/src/__tests__/StructureAndArcsViewer.test.tsx` and 9 acceptance tests in `frontend/src/__tests__/LiveTabAcceptance.test.tsx`. Total frontend tests expanded from 49 to 63 passing tests.
+  - Verification suite passing: 470 backend tests (`pytest -q` in 11.65s), 63 frontend tests (`npm test -- --run` in 16.27s), production build clean (`npm run build`), TypeScript check clean (`npx tsc --noEmit`), `git diff --check` clean. Working tree is NOT committed and NOT pushed.
+- Session 11: Phase 7.1 Scribe Input Contract + Observable Scene Projection complete:
+  - 11.1 Omniscience Firewall Models: Implemented `ObservableBeat`, `ObservableObjective`, `ObservableDialogueLine`, and `ObservableSceneProjection` in `src/narrative/scene_projection.py`. Scribe receives only this projection; never raw `WorldState` or shadow knowledge.
+  - 11.2 Invariant & Exclusion Enforcement: Enforced strict 1:1 event correspondence (`projection.source_event_ids == scene.source_event_ids`). Filtered `in_play_knowledge` exclusively to present characters and propositions actively referenced in the scene's events. Strictly isolated from legacy `known_facts` and `beliefs` (reads only `character.knowledge`). Unrelated secrets held by present characters are completely excluded.
+  - 11.3 Dialogue & Subtext Grounding: `ObservableDialogueLine` carries typed `communicative_intent` alongside literal `text`. In `to_reader_prose()`, `communicative_intent` is never rendered as prose or parentheticals.
+  - 11.4 Vocabulary Scanner: Defined `INTERNAL_VOCABULARY_BLOCKLIST` covering 27 internal engine types. Implemented `scan_for_internal_vocabulary()` detecting any planted internal terms with word boundaries.
+  - 11.5 Missing Dossier Acceptance: Projected all 3 scenes of `world_init_4bef81`. Confirmed 0 blocklist violations, exact event ID correspondence (4, 4, 12 beats), 0 knowledge leaks.
+  - 11.6 Verification Suite: Added 8 comprehensive unit tests in `tests/test_phase7_scene_projection.py`. Total backend tests expanded from 470 to 478 passing tests (`pytest -q` in 12.95s). Frontend tests: 63 passing (`npm test -- --run` in 16.99s). Production build and typecheck clean (`npm run build && npx tsc --noEmit`). Clean `git diff --check`. Working tree is NOT committed and NOT pushed. Phase 7.1 COMPLETE. Prompt 2 is next.
+- Session 12: Phase 7.2 Scribe Screenplay Generation + Formatting complete:
+  - 12.1 ScreenplayBlock Contract & Compatibility: Extended `ScreenplayBlock` in `src/narrative/fountain.py` with `block_id`, `scene_id`, `element_type` (`SLUGLINE`, `ACTION`, `CHARACTER_CUE`, `DIALOGUE`, `PARENTHETICAL`, `TRANSITION`), `content`, and `presentation_position`, maintaining bidirectional compatibility with legacy fields (`id`, `text`, `block_type`, `chronological_position`).
+  - 12.2 Dialogue Template Library & Name Resolution: Built `DialogueTemplateLibrary` in `src/narrative/scribe.py` covering all 10 communicative intents across speech acts. Implemented `resolve_display_name` mapping internal IDs to display names (e.g. `char_alpha` -> `VINCENT CROSS`), ensuring internal IDs never appear in character cues.
+  - 12.3 Scene Block Composition & Invariant Enforcement: Implemented `compose_scene_blocks` and `compose_from_projections` operating purely behind `ObservableSceneProjection` with zero raw `WorldState` access:
+    - `SLUGLINE`: `INT./EXT. LOCATION - TIME`, uppercase.
+    - `ACTION`: Present-tense observable action passing Phase 6's `InternalStateVerbGuard.check_and_raise` directly.
+    - `CHARACTER_CUE`: Uppercase display name.
+    - `DIALOGUE`: Grounded line from simulation or slot-filled from `DialogueTemplateLibrary`. Repetitions suppressed into physical reaction beats.
+    - `PARENTHETICAL`: Sparse physical vocal quality only (`(lowers voice)`, `(rapidly)`, `(quietly)`), max 1 per 3 lines of dialogue; never psychological emotions.
+    - `TRANSITION`: Omitted by default.
+    - Strict Invariants: Every block's `source_event_ids` is a subset of the projection's `source_event_ids`; `presentation_position == chronological_position` for all blocks; 0 AI calls in deterministic path.
+  - 12.4 Missing Dossier Live Acceptance on `world_init_4bef81`: Generated complete screenplay (3 scenes, 33 blocks: 3 SLUGLINE, 13 ACTION, 7 CHARACTER_CUE, 3 PARENTHETICAL, 7 DIALOGUE, 0 TRANSITION). Confirmed 0 internal vocabulary blocklist hits and 0 `InternalStateVerbGuard` violations.
+  - 12.5 Verification Suite: Added 10 comprehensive unit/integration tests in `tests/test_phase7_screenplay_generation.py`. Total backend tests expanded from 478 to 488 passing tests (`pytest -q` in 12.87s). Frontend tests: 63 passing (`npm test -- --run` in 16.58s). Production build and typecheck clean (`npm run build && npx tsc --noEmit`). Clean `git diff --check`. Working tree is NOT committed and NOT pushed. Phase 7.2 COMPLETE. Prompt 3 is next.
+- Session 13: Phase 7.3 Screenplay Quality Validator + Legacy Migration + Phase 7 Acceptance complete:
+  - 13.1 Objective ScreenplayQualityReport: Implemented deterministic `ScreenplayQualityReport` and `ScreenplayQualityValidator` in `src/narrative/screenplay_validator.py`. Reports inspectable individual metrics without opaque score aggregation: `format_conformance` (7 rules), `internal_state_leak_count` (via `InternalStateVerbGuard`), `architecture_vocabulary_leak_count` (via `INTERNAL_VOCABULARY_BLOCKLIST`), `provenance_completeness_pct`, `scene_coverage_pct`, `dialogue_subtext_consistency_issues`, `unsupported_event_invention_count`, and `missing_source_reference_count`.
+  - 13.2 Legacy Completion & Synopsis Migration:
+    - Cleansed hardcoded internal engine templates in `src/narrative/completion.py` ("second sovereign actor", "The Director triggers..."). Marked module as legacy/deprecated.
+    - Upgraded `src/narrative/synopsis.py` (`SynopsisGenerator`) to derive grounded three-tier synopsis directly from Phase 5/6/7 scenes and screenplay blocks. Added `sanitize_narrative_text` purging all 10 legacy architecture terms ("Director injects...", "second sovereign actor", "BeatPressure", "Sufficiency Gate", etc.).
+    - Cleaned frontend fallback text in `ScreenplayViewer.tsx` (purged "sovereign actors").
+    - Updated `ProjectStore.normalize_project_dict` to automatically sanitize legacy synopses in-memory on project load.
+    - Updated API `/api/projects/{project_id}/scribe/run`, `/synopsis`, and `/export/synopsis` to route through Phase 7 scene projections and store validated `screenplay_quality`.
+  - 13.3 Full Pipeline Acceptance on The Missing Dossier (`world_init_4bef81`):
+    - Generated complete screenplay (3 scenes, 33 blocks).
+    - `format_conformance`: 0 violations across all 7 categories (slugline, action, character cue, dialogue, parenthetical, transition).
+    - `internal_state_leak_count`: 0 (100% compliant with "Show, Don't Tell").
+    - `architecture_vocabulary_leak_count`: 0.
+    - `provenance_completeness_pct`: 100.0%.
+    - `scene_coverage_pct`: 100.0%.
+    - `unsupported_event_invention_count`: 0.
+    - `missing_source_reference_count`: 0.
+    - `passed`: True.
+    - Provider call count: 0 (deterministic offline verification).
+    - EventHistory: byte-identical before and after Scribe + validation.
+  - 13.4 Verification Suite: Added 15 targeted tests in `tests/test_phase7_quality_validator.py`. Total backend tests expanded from 488 to 503 passing tests (`pytest -q` in 13.10s). Frontend tests: 63 passing (`npm test -- --run` in 16.37s). Production build clean (`npm run build`). TypeScript check clean (`npx tsc --noEmit`). `git diff --check` clean. Working tree is NOT committed and NOT pushed.
+  - **Phase 7 (7.1, 7.2, 7.3) is COMPLETE overall.** Phase 8 is unlocked for human confirmation.
 
 ## Open decisions awaiting human input
 1. **Knowledge & Proposition Modeling Migration Strategy**:

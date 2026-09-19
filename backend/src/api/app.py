@@ -58,6 +58,7 @@ from src.narrative.structure_library import STRUCTURE_LIBRARY, COMPATIBILITY_MAT
 from src.narrative.structure_selector import StructureSelector
 from src.narrative.blueprint_generator import StoryBlueprintGenerator
 from src.narrative.scene_builder import SceneBuilder
+from src.narrative.scene_projection import ObservableSceneProjector
 from src.narrative.causal_analyzer import CausalContinuityAnalyzer
 from src.narrative.arc_tracker import CharacterArcTracker
 from src.storage.project_store import (
@@ -501,6 +502,8 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
                 outline=proj.story_outline,
                 world=proj.world,
                 selection=proj.selection,
+                scenes=proj.scenes,
+                screenplay=proj.screenplay,
             )
             store.save_project(proj)
         return proj.synopsis.model_dump(mode="json")
@@ -573,22 +576,40 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         observer = Observer(provider=provider)
         selection = observer.observe_events(events, proj.world)
 
-        scribe = Scribe(provider=provider)
-        doc = scribe.compose_screenplay(selection, proj.world, title=proj.metadata.title, framing_mode=framing_mode)
+        # Route through Phase 7 ObservableSceneProjection pipeline if scenes exist
+        projections = None
+        if proj.scenes:
+            builder = SceneBuilder()
+            enriched_scenes = builder.enrich_scenes_with_phase6(proj.scenes, proj.world)
+            projector = ObservableSceneProjector()
+            projections = projector.project_all_scenes(enriched_scenes, proj.world)
+            scribe = Scribe(provider=provider)
+            doc = scribe.compose_from_projections(projections, title=proj.metadata.title)
+        else:
+            scribe = Scribe(provider=provider)
+            doc = scribe.compose_screenplay(selection, proj.world, title=proj.metadata.title, framing_mode=framing_mode)
+
         fountain_text = doc.to_fountain()
 
         proj.selection = selection
         proj.screenplay = doc
         proj.fountain_text = fountain_text
 
-        # Update synopsis grounded in verified simulation beats
-        if proj.story_outline:
-            syn_gen = SynopsisGenerator()
-            proj.synopsis = syn_gen.generate_synopsis(
-                outline=proj.story_outline,
-                world=proj.world,
-                selection=selection,
-            )
+        # Update synopsis grounded in verified simulation beats & scenes
+        syn_gen = SynopsisGenerator()
+        proj.synopsis = syn_gen.generate_synopsis(
+            outline=proj.story_outline,
+            world=proj.world,
+            selection=selection,
+            scenes=proj.scenes,
+            screenplay=doc,
+            projections=projections,
+        )
+
+        # Execute deterministic ScreenplayQualityReport validation
+        val = ScreenplayQualityValidator()
+        report = val.validate(doc, proj.world, scenes=proj.scenes, projections=projections)
+        proj.screenplay_quality = report.to_dict()
 
         # Automatically plan cinematic shots and render comic illustrations with Visual Bible
         asset_store = StoryboardAssetStore(store.base_dir)
@@ -1770,8 +1791,14 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         elif export_format == "synopsis":
             syn = proj.synopsis
             if not syn:
-                if proj.story_outline:
-                    syn = SynopsisGenerator().generate_synopsis(proj.story_outline, proj.world, proj.selection)
+                if proj.story_outline or proj.scenes:
+                    syn = SynopsisGenerator().generate_synopsis(
+                        proj.story_outline,
+                        proj.world,
+                        proj.selection,
+                        scenes=proj.scenes,
+                        screenplay=proj.screenplay,
+                    )
                 else:
                     raise HTTPException(status_code=400, detail="Synopsis not yet generated")
             md_text = (

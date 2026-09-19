@@ -213,18 +213,12 @@ export const App: React.FC = () => {
         )}
 
         {activeView === 'arcs' && (
-          projectData ? (
-            <div className="view-page-container full-height">
-              <StructureAndArcsViewer
-                project={projectData}
-                loading={loading}
-              />
-            </div>
-          ) : (
-            <div className="empty-quiet" style={{ margin: 'auto' }}>
-              NO ACTIVE SIMULATION. CREATE OR SELECT A PROJECT TO VIEW STRUCTURE & ARCS.
-            </div>
-          )
+          <div className="view-page-container full-height">
+            <StructureAndArcsViewer
+              project={projectData}
+              loading={loading}
+            />
+          </div>
         )}
 
         {activeView === 'simulation' && (

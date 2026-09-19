@@ -1,8 +1,27 @@
 """Domain models for D3 Story Lab"""
 
 from .simulation import SimulationClock, SimulationTick
-from .event import Event, EventType, EventLog
+from .event import Event, EventType, EventLog, EventHistory
+from .story_structure import (
+    DramaticFunction,
+    ScenePurpose,
+    ScenePurposeType,
+    SceneObjective,
+    CoreEmotionalObjective,
+    Scene,
+    SceneData,
+    SceneLinkType,
+    SceneLink,
+    CausalTransitionType,
+    CausalTransitionReport,
+    CausalContinuitySummary,
+    ArcClassification,
+    TurningPoint,
+    CharacterArc,
+    CharacterArcReport,
+)
 from .belief import Belief
+
 from .memory import Memory
 from .secret import Secret
 from .relationship import Relationship
@@ -27,7 +46,25 @@ __all__ = [
     "Event",
     "EventType",
     "EventLog",
+    "EventHistory",
+    "DramaticFunction",
+    "ScenePurpose",
+    "ScenePurposeType",
+    "SceneObjective",
+    "CoreEmotionalObjective",
+    "Scene",
+    "SceneData",
+    "SceneLinkType",
+    "SceneLink",
+    "CausalTransitionType",
+    "CausalTransitionReport",
+    "CausalContinuitySummary",
+    "ArcClassification",
+    "TurningPoint",
+    "CharacterArc",
+    "CharacterArcReport",
     "Belief",
+
     "Memory",
     "Secret",
     "Relationship",

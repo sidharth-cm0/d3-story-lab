@@ -16,7 +16,7 @@ from src.generator.schemas import WorldInitializationPlan
 from src.narrative.observer import NarrativeEventSelection
 from src.narrative.fountain import ScreenplayDocument
 from src.narrative.completion import StoryOutline
-from src.narrative.synopsis import StorySynopsis
+from src.narrative.synopsis import StorySynopsis, sanitize_narrative_text
 from src.storyboard.models import ShotPlan
 from src.storyboard.visual_bible import VisualBible
 from src.domain.story_structure import (
@@ -151,6 +151,17 @@ class ProjectStore:
         for field in ("story_structure", "story_blueprint", "scenes", "causal_summary", "character_arcs", "event_log"):
             if field not in data:
                 data[field] = None
+
+        # Sanitize legacy synopsis fields if present
+        syn = data.get("synopsis")
+        if isinstance(syn, dict):
+            for k in ("logline", "paragraph_summary", "full_synopsis", "dramatic_question"):
+                if k in syn and isinstance(syn[k], str):
+                    syn[k] = sanitize_narrative_text(syn[k])
+            if "acts" in syn and isinstance(syn["acts"], dict):
+                for ak, av in syn["acts"].items():
+                    if isinstance(av, str):
+                        syn["acts"][ak] = sanitize_narrative_text(av)
 
         return data
 

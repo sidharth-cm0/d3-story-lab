@@ -88,3 +88,7 @@ class EventLog(BaseModel):
 
     def __getitem__(self, index):
         return self.events[index]
+
+
+# EventHistory is an alias for the immutable EventLog sequence
+EventHistory = EventLog

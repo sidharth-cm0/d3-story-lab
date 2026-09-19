@@ -133,7 +133,7 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
               <span className="synopsis-badge">ONE-LINE LOGLINE</span>
               <p className="synopsis-logline">
                 {synopsis?.logline ||
-                  `When sovereign actors clash over opposing secrets in ${project.world.name}, mounting crises force a decisive choice between survival and the truth.`}
+                  `When opposing operatives clash over concealed secrets in ${project.world.name}, mounting crises force a decisive choice between survival and the truth.`}
               </p>
             </div>
 
@@ -148,7 +148,7 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
             <div className="synopsis-card">
               <span className="synopsis-badge">DRAMATIC QUESTION</span>
               <p className="synopsis-question">
-                {synopsis?.dramatic_question || outline?.dramatic_question || 'Will truth survive the clash of sovereign actors?'}
+                {synopsis?.dramatic_question || outline?.dramatic_question || 'Will truth survive the clash of hidden agendas?'}
               </p>
             </div>
 
