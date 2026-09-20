@@ -12,6 +12,31 @@ from .models import (
     ShotPlan,
 )
 from .planner import StoryboardPlanner
+from .shot_planner import (
+    ShotType as GroundedShotType,
+    CameraAngle as GroundedCameraAngle,
+    ShotContextSignals,
+    CompositionPlan,
+    ShotPlan as GroundedShotPlan,
+    ShotPlanner,
+    PsychologicalCameraRule,
+    PSYCHOLOGICAL_CAMERA_RULES,
+    evaluate_camera_rules,
+    resolve_lens_feel,
+)
+from .keyframe_rendering import (
+    CharacterVisualRef,
+    LocationVisualRef,
+    PropVisualRef,
+    VisualBible as GroundedVisualBible,
+    ContinuityPack,
+    StoryboardPanel as GroundedStoryboardPanel,
+    KeyframeSelector,
+    PRIORITY_ORDER,
+    VisualBibleBuilder,
+    StoryboardPromptBuilder,
+    GroundedStoryboardRenderer,
+)
 from .visual_bible import (
     StoryboardStyleProfile,
     CharacterVisualReference,
@@ -42,6 +67,15 @@ from .provider import (
 )
 from .sketch.renderer import HandDrawnStoryboardProvider
 from .on_demand_provider import OnDemandStoryboardProvider
+
+
+from .storyboard_validator import (
+    StoryboardQualityReport,
+    StoryboardQualityValidator,
+    GroundedStoryboardValidator,
+    StoryboardIssue,
+    scan_codebase_for_prohibited_media,
+)
 
 
 __all__ = [
@@ -81,4 +115,30 @@ __all__ = [
     "GeminiImageStoryboardProvider",
     "HandDrawnStoryboardProvider",
     "OnDemandStoryboardProvider",
+    "GroundedShotType",
+    "GroundedCameraAngle",
+    "ShotContextSignals",
+    "CompositionPlan",
+    "GroundedShotPlan",
+    "ShotPlanner",
+    "PsychologicalCameraRule",
+    "PSYCHOLOGICAL_CAMERA_RULES",
+    "evaluate_camera_rules",
+    "resolve_lens_feel",
+    "CharacterVisualRef",
+    "LocationVisualRef",
+    "PropVisualRef",
+    "GroundedVisualBible",
+    "ContinuityPack",
+    "GroundedStoryboardPanel",
+    "KeyframeSelector",
+    "PRIORITY_ORDER",
+    "VisualBibleBuilder",
+    "StoryboardPromptBuilder",
+    "GroundedStoryboardRenderer",
+    "StoryboardQualityReport",
+    "StoryboardQualityValidator",
+    "GroundedStoryboardValidator",
+    "StoryboardIssue",
+    "scan_codebase_for_prohibited_media",
 ]

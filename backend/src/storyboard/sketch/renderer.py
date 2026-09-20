@@ -391,3 +391,87 @@ class HandDrawnStoryboardProvider(StoryboardImageProvider):
             mime_type="image/svg+xml",
             render_metadata=metadata,
         )
+
+    def render_from_composition_plan(
+        self,
+        shot: Any,
+        continuity: Optional[Any] = None,
+        prompt: str = "",
+        project_id: str = "default",
+        version: int = 1,
+    ) -> str:
+        """Render an individual ShotPlan using its CompositionPlan and ContinuityPack into deterministic previs SVG."""
+        w, h = 960.0, 540.0
+        shot_id = getattr(shot, "shot_id", "shot_default")
+        shot_type = getattr(shot.shot_type, "value", str(shot.shot_type)) if hasattr(shot, "shot_type") else "MEDIUM"
+        camera_angle = getattr(shot.camera_angle, "value", str(shot.camera_angle)) if hasattr(shot, "camera_angle") else "EYE_LEVEL"
+        lens_feel = getattr(shot, "lens_feel", "normal")
+        emotion = getattr(shot, "emotion", "neutral")
+        comp = getattr(shot, "composition_plan", None)
+
+        loc_landmark = "INTERIOR"
+        loc_arch = "unspecified architecture"
+        if continuity and hasattr(continuity, "location_ref") and continuity.location_ref:
+            loc_landmark = getattr(continuity.location_ref, "landmarks", loc_landmark)
+            loc_arch = getattr(continuity.location_ref, "architecture", loc_arch)
+
+        # 1. Header with gradient and paper grain
+        svg_header = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <filter id="paper_grain" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" result="grain"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.9  0 0 0 0 0.9  0 0 0 0 0.9  0 0 0 0.04 0"/>
+    </filter>
+  </defs>
+  <rect width="{w}" height="{h}" fill="url(#bgGrad)"/>
+"""
+        # 2. Architectural environment framing
+        env_lines = f"""  <g id="environment" stroke="#475569" stroke-width="1.2" fill="none">
+    <line x1="0" y1="{h*0.75}" x2="{w}" y2="{h*0.75}" stroke="#64748b" stroke-width="2"/>
+    <rect x="{w*0.1}" y="{h*0.2}" width="{w*0.25}" height="{h*0.55}" stroke-dasharray="4 2"/>
+    <rect x="{w*0.65}" y="{h*0.15}" width="{w*0.25}" height="{h*0.6}" stroke-dasharray="4 2"/>
+    <text x="24" y="36" fill="#94a3b8" font-family="monospace" font-size="12" letter-spacing="1">LOCATION: {loc_landmark.upper()}</text>
+    <text x="24" y="54" fill="#64748b" font-family="monospace" font-size="10">FRAMING: {shot_type} | {camera_angle} | {lens_feel.upper()}</text>
+  </g>
+"""
+        # 3. Actors staged according to CompositionPlan
+        actor_elements: List[str] = []
+        if comp and hasattr(comp, "subject_positions"):
+            for cid, pos in comp.subject_positions.items():
+                x_pct, y_pct, scale = pos
+                cx = x_pct * w
+                cy = y_pct * h
+                actor_name = cid.upper()
+                actor_elements.append(
+                    f"""  <g id="actor_{cid}" transform="translate({cx:.1f},{cy:.1f}) scale({scale:.2f})">
+    <ellipse cx="0" cy="-60" rx="20" ry="26" fill="#1e293b" stroke="#94a3b8" stroke-width="1.8"/>
+    <path d="M -24,-30 Q 0,-40 24,-30 L 30,50 L -30,50 Z" fill="#0f172a" stroke="#94a3b8" stroke-width="1.8"/>
+    <text x="0" y="68" fill="#e2e8f0" font-family="sans-serif" font-size="11" text-anchor="middle" font-weight="bold">{actor_name}</text>
+  </g>"""
+                )
+
+        # 4. Props staged
+        prop_elements: List[str] = []
+        if continuity and hasattr(continuity, "prop_refs"):
+            for pref in continuity.prop_refs:
+                prop_elements.append(
+                    f"""  <g id="prop_{pref.prop_id}" transform="translate({w*0.5:.1f},{h*0.7:.1f})">
+    <rect x="-30" y="-20" width="60" height="40" rx="3" fill="#334155" stroke="#cbd5e1" stroke-width="1.6"/>
+    <text x="0" y="5" fill="#f8fafc" font-family="monospace" font-size="9" text-anchor="middle">{pref.prop_id[:12]}</text>
+  </g>"""
+                )
+
+        # 5. Production board lower thirds
+        footer = f"""  <g id="production_metadata" transform="translate(0, {h - 40})">
+    <rect width="{w}" height="40" fill="#020617" opacity="0.85"/>
+    <text x="24" y="24" fill="#38bdf8" font-family="monospace" font-size="11" font-weight="bold">SHOT {shot_id.upper()}</text>
+    <text x="180" y="24" fill="#94a3b8" font-family="monospace" font-size="10">EMOTION: {emotion[:55]}</text>
+    <text x="{w - 24}" y="24" fill="#64748b" font-family="monospace" font-size="10" text-anchor="end">DETERMINISTIC PREVIS SVG</text>
+  </g>
+</svg>"""
+
+        return svg_header + env_lines + ("\n".join(actor_elements) + "\n" if actor_elements else "") + ("\n".join(prop_elements) + "\n" if prop_elements else "") + footer
