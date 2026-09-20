@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ProjectMetadata, ProjectData, Event, ActiveView, StoryInputType } from './types';
 import * as api from './api';
-import { Header } from './components/Header';
+import { AppShell } from './components/shell';
 import { SpotlightCursor } from './components/SpotlightCursor';
 import { ScrollytellingHome } from './components/ScrollytellingHome';
 import { NewProjectModal } from './components/NewProjectModal';
@@ -88,7 +88,6 @@ export const App: React.FC = () => {
     setActiveView('arcs');
   };
 
-
   const handleDeleteProject = async (id: string) => {
     await api.deleteProject(id);
     const updated = projects.filter((p) => p.id !== id);
@@ -156,147 +155,140 @@ export const App: React.FC = () => {
   const currentMeta = projects.find((p) => p.id === currentProjectId) || null;
 
   return (
-    <div className="workstation-container">
+    <AppShell
+      currentProject={currentMeta}
+      projects={projects}
+      providerName={providerName}
+      activeView={activeView}
+      onSelectView={handleSelectView}
+      onSelectProject={(id) => {
+        setCurrentProjectId(id);
+        if (activeView === 'home') handleSelectView('simulation');
+      }}
+      onOpenNewProject={() => setIsModalOpen(true)}
+      onDeleteProject={handleDeleteProject}
+      onRunSimulation={handleRun}
+      loading={loading}
+    >
       <SpotlightCursor />
 
-      <Header
-        currentProject={currentMeta}
-        projects={projects}
-        providerName={providerName}
-        activeView={activeView}
-        onSelectView={handleSelectView}
-        onSelectProject={(id) => {
-          setCurrentProjectId(id);
-          if (activeView === 'home') handleSelectView('simulation');
-        }}
-        onOpenNewProject={() => setIsModalOpen(true)}
-        onDeleteProject={handleDeleteProject}
-        onRunSimulation={handleRun}
-        loading={loading}
-      />
+      {activeView === 'home' && (
+        <ScrollytellingHome
+          onStartNew={() => setIsModalOpen(true)}
+          onOpenProject={(id) => {
+            setCurrentProjectId(id);
+            setActiveView('simulation');
+          }}
+          projects={projects}
+        />
+      )}
 
-      {/* Main Dynamic Viewport */}
-      <main className="main-viewport">
-        {activeView === 'home' && (
-          <ScrollytellingHome
-            onStartNew={() => setIsModalOpen(true)}
-            onOpenProject={(id) => {
-              setCurrentProjectId(id);
-              setActiveView('simulation');
-            }}
-            projects={projects}
+      {activeView === 'world' && (
+        projectData ? (
+          <div className="view-page-container">
+            <WorldInspector world={projectData.world} />
+          </div>
+        ) : (
+          <div className="empty-quiet" style={{ margin: 'auto' }}>
+            NO ACTIVE SIMULATION. CREATE OR SELECT A PROJECT TO INSPECT WORLD TOPOLOGY.
+          </div>
+        )
+      )}
+
+      {activeView === 'actors' && (
+        projectData ? (
+          <div className="view-page-container">
+            <CharacterCards world={projectData.world} />
+          </div>
+        ) : (
+          <div className="empty-quiet" style={{ margin: 'auto' }}>
+            NO ACTIVE SIMULATION. CREATE OR SELECT A PROJECT TO VIEW ACTORS.
+          </div>
+        )
+      )}
+
+      {activeView === 'arcs' && (
+        <div className="view-page-container full-height">
+          <StructureAndArcsViewer
+            project={projectData}
+            loading={loading}
           />
-        )}
+        </div>
+      )}
 
-        {activeView === 'world' && (
-          projectData ? (
-            <div className="view-page-container">
-              <WorldInspector world={projectData.world} />
-            </div>
-          ) : (
-            <div className="empty-quiet" style={{ margin: 'auto' }}>
-              NO ACTIVE SIMULATION. CREATE OR SELECT A PROJECT TO INSPECT WORLD TOPOLOGY.
-            </div>
-          )
-        )}
-
-        {activeView === 'actors' && (
-          projectData ? (
-            <div className="view-page-container">
-              <CharacterCards world={projectData.world} />
-            </div>
-          ) : (
-            <div className="empty-quiet" style={{ margin: 'auto' }}>
-              NO ACTIVE SIMULATION. CREATE OR SELECT A PROJECT TO VIEW ACTORS.
-            </div>
-          )
-        )}
-
-        {activeView === 'arcs' && (
+      {activeView === 'simulation' && (
+        projectData ? (
           <div className="view-page-container full-height">
-            <StructureAndArcsViewer
+            <SimulationTicker
+              world={projectData.world}
+              events={events}
+              onStep={handleStep}
+              onRun={handleRun}
+              loading={loading}
+            />
+          </div>
+        ) : (
+          <div className="empty-standby-screen">
+            <span className="empty-logo">❖</span>
+            <h2 className="empty-title">NO ACTIVE SIMULATION</h2>
+            <p className="empty-desc">
+              The sandbox requires a narrative premise or incident report before autonomous actors can be spawned.
+            </p>
+            <button className="btn-cinematic-primary" onClick={() => setIsModalOpen(true)}>
+              START WITH A SPARK
+            </button>
+          </div>
+        )
+      )}
+
+      {activeView === 'script' && (
+        projectData ? (
+          <div className="view-page-container full-height">
+            <ScreenplayViewer
+              project={projectData}
+              onGenerate={handleGenerateScreenplay}
+              loading={loading}
+            />
+          </div>
+        ) : (
+          <div className="empty-quiet" style={{ margin: 'auto' }}>
+            NO ACTIVE PROJECT. SELECT A PROJECT TO TRANSCRIBE SCREENPLAY.
+          </div>
+        )
+      )}
+
+      {activeView === 'storyboard' && (
+        projectData ? (
+          <div className="view-page-container full-height">
+            <StoryboardViewer
               project={projectData}
               loading={loading}
             />
           </div>
-        )}
+        ) : (
+          <div className="empty-quiet" style={{ margin: 'auto' }}>
+            NO ACTIVE PROJECT. SELECT A PROJECT TO PREPARE STORYBOARD FRAMES.
+          </div>
+        )
+      )}
 
-        {activeView === 'simulation' && (
-          projectData ? (
-            <div className="view-page-container full-height">
-              <SimulationTicker
-                world={projectData.world}
-                events={events}
-                onStep={handleStep}
-                onRun={handleRun}
-                loading={loading}
-              />
-            </div>
-          ) : (
-            <div className="empty-standby-screen">
-              <span className="empty-logo">❖</span>
-              <h2 className="empty-title">NO ACTIVE SIMULATION</h2>
-              <p className="empty-desc">
-                The sandbox requires a narrative premise or incident report before autonomous actors can be spawned.
-              </p>
-              <button className="btn-cinematic-primary" onClick={() => setIsModalOpen(true)}>
-                START WITH A SPARK
-              </button>
-            </div>
-          )
-        )}
-
-        {activeView === 'script' && (
-          projectData ? (
-            <div className="view-page-container full-height">
-              <ScreenplayViewer
-                project={projectData}
-                onGenerate={handleGenerateScreenplay}
-                loading={loading}
-              />
-            </div>
-          ) : (
-            <div className="empty-quiet" style={{ margin: 'auto' }}>
-              NO ACTIVE PROJECT. SELECT A PROJECT TO TRANSCRIBE SCREENPLAY.
-            </div>
-          )
-        )}
-
-        {activeView === 'storyboard' && (
-          projectData ? (
-            <div className="view-page-container full-height">
-              <StoryboardViewer
-                project={projectData}
-                loading={loading}
-              />
-            </div>
-          ) : (
-            <div className="empty-quiet" style={{ margin: 'auto' }}>
-              NO ACTIVE PROJECT. SELECT A PROJECT TO PREPARE STORYBOARD FRAMES.
-            </div>
-          )
-        )}
-
-        {activeView === 'export' && (
-          projectData ? (
-            <div className="view-page-container full-height">
-              <ExportViewer project={projectData} />
-            </div>
-          ) : (
-            <div className="empty-quiet" style={{ margin: 'auto' }}>
-              NO ACTIVE PROJECT. SELECT A PROJECT TO EXPORT PRODUCTION ARTIFACTS.
-            </div>
-          )
-        )}
-      </main>
-
-
+      {activeView === 'export' && (
+        projectData ? (
+          <div className="view-page-container full-height">
+            <ExportViewer project={projectData} />
+          </div>
+        ) : (
+          <div className="empty-quiet" style={{ margin: 'auto' }}>
+            NO ACTIVE PROJECT. SELECT A PROJECT TO EXPORT PRODUCTION ARTIFACTS.
+          </div>
+        )
+      )}
 
       <NewProjectModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onCreate={handleCreateProject}
       />
-    </div>
+    </AppShell>
   );
 };

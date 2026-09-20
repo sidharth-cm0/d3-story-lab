@@ -1656,16 +1656,29 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         return provider.get_status()
 
     @app.get("/api/storyboard/capabilities")
-    def get_storyboard_capabilities():
+    def get_storyboard_capabilities(probe: Optional[bool] = None):
         """Expose image provider capability report without exposing secrets."""
         provider = get_image_provider()
-        caps = provider.get_capabilities() if hasattr(provider, "get_capabilities") else provider.get_status()
-        health = provider.health_check() if hasattr(provider, "health_check") else {}
+        caps = provider.get_capabilities(probe=probe) if hasattr(provider, "get_capabilities") else provider.get_status()
+        health = provider.health_check(probe=probe) if hasattr(provider, "health_check") else (
+            provider.engine.health_check(probe=probe) if hasattr(provider, "engine") else {}
+        )
         if isinstance(caps, dict):
             caps["provider_health"] = health
-            caps["provider_status"] = health.get("provider_status", "CONNECTED" if caps.get("available") else "NOT_CONFIGURED")
-            caps["model_generation_capability"] = health.get("model_status", caps.get("status", "AVAILABLE"))
-            caps["model_status"] = health.get("model_status", caps.get("status", "AVAILABLE"))
+            resolved_provider_status = (
+                health.get("provider_status")
+                or caps.get("provider_status")
+                or ("CONNECTED" if caps.get("available") else "NOT_CONFIGURED")
+            )
+            caps["provider_status"] = resolved_provider_status
+            resolved_model_status = (
+                health.get("model_status")
+                or caps.get("model_status")
+                or caps.get("status")
+                or ("AVAILABLE" if caps.get("available") else "UNAVAILABLE")
+            )
+            caps["model_generation_capability"] = resolved_model_status
+            caps["model_status"] = resolved_model_status
         return caps
 
     @app.get("/api/storyboard/smoke-test")
@@ -1696,6 +1709,7 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             os.environ["STORYBOARD_RUNTIME_URL"] = req.runtime_url
         if req.model is not None:
             os.environ["STORYBOARD_MODEL"] = req.model
+            os.environ["ON_DEMAND_MODEL"] = req.model
         if req.api_key is not None:
             os.environ["ON_DEMAND_API_KEY"] = req.api_key
             os.environ["HF_TOKEN"] = req.api_key

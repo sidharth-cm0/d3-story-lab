@@ -16,7 +16,10 @@
 | 8.2 | Visual bible / keyframe budget / rendering | COMPLETE | 15 | VisualBibleBuilder with cached entity reuse and scoped props, KeyframeSelector (budgets 4/8/12 scored against PRIORITY_ORDER), StoryboardPromptBuilder with fixed style profile and leak checks, and GroundedStoryboardRenderer wiring deterministic SVG fallback previs. |
 | 8.3 | Storyboard QA & acceptance gate | COMPLETE | 16 | StoryboardQualityValidator (8 inspectable metrics, zero aggregate scoring), prohibited media static scanner, legacy cut-over of renderer.py, budget-violation regression prevention, and Missing Dossier acceptance. |
 | **8** | **Overall Storyboard Phase** | **COMPLETE** | **16** | **Phase 8 (8.1, 8.2, 8.3) complete. Phase 9 (Frontend) is next.** |
-| 9 | Frontend | NOT_STARTED | | |
+| 9.1 | Design system, app shell & motion foundation | COMPLETE | 17 | Tokens (color, type, spacing, radius, motion), Fraunces/IBM Plex Mono/Archivo web fonts, static noise/halftone overlays, AppShell/TopNav/ProjectSwitcher, 11 generic primitives, usePrefersReducedMotion, accessibility & keyboard operability. |
+| 9.2 | Page redesign (Home, World, Actors, Arcs, Simulation) | NOT_STARTED | | |
+| 9.3 | Page redesign (Script, Storyboard, Export) & final polish | NOT_STARTED | | |
+| **9** | **Overall Frontend Phase** | **IN_PROGRESS** | **17** | **Phase 9.1 COMPLETE. Prompt 2 is next.** |
 | 10 | Export / demo / metrics / cleanup | NOT_STARTED | | |
 
 ## Session log
@@ -212,6 +215,35 @@
     - All 4 invariants verified (#25 no fabricated facts, #26 prompt leak checks, #27 budget enforcement, #28 fallback distinction `provider_used = "DETERMINISTIC_SVG_FALLBACK"`).
   - 16.6 Verification Suite: Added 10 comprehensive tests in `tests/test_phase8_quality_and_acceptance.py`. Total backend tests expanded from 526 to 536 passing tests (`pytest -q` in 13.34s). Frontend tests: 63 passing (`npm test -- --run` in 16.05s). Production build clean (`npm run build`). TypeScript check clean (`npx tsc --noEmit`). Clean `git diff --check`. Working tree is NOT committed and NOT pushed.
   - **Phase 8 (8.1, 8.2, 8.3) is COMPLETE overall.** Phase 9 (Frontend) is unlocked.
+- Session 17: Phase 9.1 Design System, App Shell & Motion Foundation complete:
+  - 17.1 Preserved Dark Cinematic / Forensic Palette & Design Tokens: Preserved the existing dark D3 Story Lab theme (deep black / charcoal background `--bg-primary: #0A0A0B`, graphite surfaces `--surface-0: #050505` through `--surface-elevated: #181A1D`, off-white text `--text-primary: #EDE9E1`, `--text-muted: #A8A196`, refined graphite borders `--border-subtle: #22252A`, `--border-strong: #333842`), and restrained amber/gold reserved strictly for active indicators and focus rings (`--accent-secondary: #C9A46B`, `--color-signal-error: #8C4A3D`). Maintained canonical tokens `--color-ink: #0D0C0A` and `--color-paper: #EDE9E1`, alongside `--color-gray-100` through `--color-gray-900`.
+  - 17.2 Canonical Typography Hierarchy: Established 3-role typographic system (`Fraunces` editorial display serif, `IBM Plex Mono` technical mono, `Archivo` clean UI sans), loaded via Google Fonts preconnect with system fallbacks. Defined responsive typography scale tokens (`--display-xl`, `--display-lg`, `--heading-lg`, `--heading-md`, `--body`, `--body-small`, `--meta`, `--micro-label`, `--mono-data`) and utility classes.
+  - 17.3 Button System: Established restrained rounded pill button hierarchy (`.btn-pill-primary` in restrained amber accent with dark text, `.btn-pill-secondary`, `.btn-pill-tertiary`, `.btn-pill-danger`) with backwards-compatible aliases for `.btn-cinematic-*`.
+  - 17.4 Static CSS-Only Forensic Texture: Implemented static grain overlay (subtle static paper grain via inline SVG `feTurbulence` fractal noise with screen blend mode, `pointer-events: none`) and faint forensic halftone dot grid (radial dot pattern). Zero per-frame animations, zero JS canvas loops, zero WebGL. Text contrast meets WCAG AA/AAA (>13:1 on dark graphite surfaces).
+  - 17.5 Motion & Accessibility Foundation: Added `usePrefersReducedMotion` hook and `getMotionTransition` helper. Integrated `@media (prefers-reduced-motion: reduce)` collapsing transitions to 0.001ms. Established global `:focus-visible` styling with `--accent-secondary` ring and 2px offset across buttons, links, selects, and interactive tabs.
+  - 17.6 App Shell & Editorial Navigation: Rebuilt `AppShell`, `TopNav`, and `ProjectSwitcher`. `TopNav` provides full Tab reachability, Enter/Space activation, `aria-selected` status, and pill indicators across all 8 workstation views (`HOME`, `WORLD`, `ACTORS`, `ARCS & STRUCTURE`, `SIMULATION`, `SCRIPT`, `STORYBOARD`, `EXPORT`). `ProjectSwitcher` provides accessible project switching, tick indicator, run simulation, delete, and new project controls. Updated `Header.tsx` to compose `TopNav` and `ProjectSwitcher` while preserving backward-compatible props.
+  - 17.7 Shared Primitives Library (15 Components):
+    - `SectionHeader`: Display title, technical eyebrow/subtitle, action slot.
+    - `PanelCard`: Sharp corners (`--radius-sharp: 0px`), subtle borders, off-white surface, header/content/footer slots, accent/error/muted variants.
+    - `MetricChip`: Technical mono, label, numeric value, delta, trend indicator.
+    - `StatusBadge`: Pill radius (`--radius-pill: 999px`), `role="status"`, restrained neutral/amber/error/subtle palette.
+    - `InspectorDrawer`: Accessible dialog (`role="dialog"`), Escape key dismiss, close button, amber focus ring, reduced-motion-aware slide/fade.
+    - `EmptyState`: Distinct container, `role="status"`, `aria-live="polite"`, glyph, action slot.
+    - `ErrorState`: Distinct alert, `role="alert"`, muted rust accent (`--color-signal-error`), message, details, retry action slot.
+    - `LoadingState`: Distinct progress state, `role="status"`, `aria-live="polite"`, bounded non-infinite loading meter.
+    - `SegmentedControl`: Pill radius, `role="radiogroup"`, full arrow key (Left/Right/Up/Down/Home/End) and Tab navigation, amber focus ring.
+    - `ProvenanceChip`: Technical mono entity badge (EVENT, BLOCK, SHOT, PANEL, etc.) with click/inspect handler.
+    - `QualityMetric`: Real computed metric representation with status badge, value, benchmark, and rationale.
+    - `PanelToolbar`: Left, center, and right control slots with `role="toolbar"`.
+    - Shell components: `AppShell`, `TopNav`, `ProjectSwitcher`.
+  - 17.8 Home Page Visual Proof: Applied the editorial visual foundation to `ScrollytellingHome` featuring centered editorial hero, oversized title (`D3 STORY LAB`), dramatic statement lines (`THE STORY IS NOT WRITTEN.`, `IT EMERGES.`), pill CTA buttons (`NEW SIMULATION`, `OPEN PROJECT`), compact explanatory copy, and generous negative space.
+  - 17.9 Verification Suite:
+    - Expanded test suite in `frontend/src/__tests__/DesignSystemAndShell.test.tsx` to 27 tests covering all 9 required assertions in §14 (AppShell banner/viewport, TopNav 8 tabs with tab roles and keyboard reachability, ProjectSwitcher controls, pill button system classes, semantic empty/error/loading states, HOME centered editorial hero and pill CTAs, route reachability, storyboard contract preservation, and arcs & structure integration).
+    - Total frontend tests expanded from 63 to 90 passing tests across 7 test files (`npm test -- --run` in 22.47s).
+    - Production build clean (`npm run build` in 2.89s). TypeScript check clean (`npx tsc --noEmit`).
+    - Full backend test suite passing: 539 tests in 16.87s (`pytest -q`). Zero backend code touched.
+    - Clean `git diff --check`. Working tree is NOT committed and NOT pushed.
+  - **Phase 9.1 is COMPLETE.** Prompt 2 (Page redesign: Home, World, Actors, Arcs, Simulation) is next.
 
 ## Open decisions awaiting human input
 1. **Knowledge & Proposition Modeling Migration Strategy**:

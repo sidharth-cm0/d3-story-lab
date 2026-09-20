@@ -131,12 +131,12 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
         </p>
 
         <div className="hero-actions">
-          <button className="btn-cinematic-primary" onClick={onStartNew}>
+          <button className="btn-pill-primary btn-cinematic-primary" onClick={onStartNew}>
             NEW SIMULATION
           </button>
           {projects.length > 0 && (
             <button
-              className="btn-cinematic-secondary"
+              className="btn-pill-secondary btn-cinematic-secondary"
               onClick={() => onOpenProject(projects[0].id)}
             >
               OPEN PROJECT ({projects[0].title})
@@ -174,7 +174,7 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
             Prompt. Clipping. Incident. Scenario. Choose beginning, midpoint, ending, or full concept.
           </p>
           <div style={{ marginTop: '24px' }}>
-            <button className="btn-cinematic-primary" onClick={onStartNew}>
+            <button className="btn-pill-primary btn-cinematic-primary" onClick={onStartNew}>
               CONFIGURE SIMULATION
             </button>
           </div>
@@ -470,7 +470,7 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
                 <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '16px' }}>
                   No narrative simulations created yet.
                 </p>
-                <button className="btn-cinematic-primary" onClick={onStartNew}>
+                <button className="btn-pill-primary btn-cinematic-primary" onClick={onStartNew}>
                   + INITIALIZE FIRST SIMULATION
                 </button>
               </>
@@ -479,7 +479,7 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
                 <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '16px' }}>
                   No simulations match "{searchQuery}".
                 </p>
-                <button className="btn-cinematic-secondary" onClick={() => setSearchQuery('')}>
+                <button className="btn-pill-secondary btn-cinematic-secondary" onClick={() => setSearchQuery('')}>
                   Clear Filter
                 </button>
               </>
@@ -532,12 +532,12 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
       <section className="scrolly-section cta-final-section">
         <h2 className="cta-statement">THE STORY IS NOT WRITTEN. IT EMERGES.</h2>
         <div className="hero-actions">
-          <button className="btn-cinematic-primary" onClick={onStartNew}>
+          <button className="btn-pill-primary btn-cinematic-primary" onClick={onStartNew}>
             BUILD WORLD
           </button>
           {projects.length > 0 && (
             <button
-              className="btn-cinematic-secondary"
+              className="btn-pill-secondary btn-cinematic-secondary"
               onClick={() => onOpenProject(projects[0].id)}
             >
               ENTER WORKSTATION

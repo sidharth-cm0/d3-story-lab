@@ -936,8 +936,11 @@ class OpenModelImageProviderAdapter(StoryboardImageProvider):
         self.engine = OpenModelStoryboardProvider(adapter=adapter, asset_store=self.asset_store)
 
 
-    def get_capabilities(self) -> Dict[str, Any]:
-        return self.engine.get_capabilities().to_dict()
+    def health_check(self, probe: Optional[bool] = None) -> Dict[str, Any]:
+        return self.engine.health_check(probe=probe)
+
+    def get_capabilities(self, probe: Optional[bool] = None) -> Dict[str, Any]:
+        return self.engine.get_capabilities(probe=probe).to_dict()
 
     def get_status(self) -> Dict[str, Any]:
         caps = self.get_capabilities()
@@ -951,6 +954,8 @@ class OpenModelImageProviderAdapter(StoryboardImageProvider):
             "continuity_mode": "Deterministic Visual Bible & Continuity Packs",
             "model": caps.get("model", ""),
             "status_message": health.get("message", ""),
+            "provider_status": health.get("provider_status", caps.get("provider_status", "CONNECTED" if health.get("available") else "NOT_CONFIGURED")),
+            "model_status": health.get("model_status", caps.get("model_status", "AVAILABLE" if health.get("available") else "UNAVAILABLE")),
             "supports_reference_images": caps.get("supports_reference_images", False),
             "pose_control": caps.get("pose_control", False),
             "depth_control": caps.get("depth_control", False),

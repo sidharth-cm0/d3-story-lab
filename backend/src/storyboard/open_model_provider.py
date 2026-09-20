@@ -824,7 +824,7 @@ class OpenModelStoryboardProvider(StoryboardRenderProvider):
     def _resolve_default_adapter(self) -> StoryboardRenderProvider:
         provider_name = os.environ.get("STORYBOARD_RENDER_PROVIDER", "on_demand").lower()
         runtime_url = os.environ.get("STORYBOARD_RUNTIME_URL", "")
-        model = os.environ.get("STORYBOARD_MODEL", "")
+        model = os.environ.get("STORYBOARD_MODEL") or os.environ.get("ON_DEMAND_MODEL") or ""
 
         if provider_name == "comfyui" or "comfy" in provider_name or (runtime_url and provider_name not in ("on_demand", "ondemand")):
             return ComfyUIStoryboardAdapter(runtime_url=runtime_url, model_name=model, asset_store=self.asset_store)
@@ -842,12 +842,20 @@ class OpenModelStoryboardProvider(StoryboardRenderProvider):
         from src.storyboard.on_demand_provider import OnDemandStoryboardProvider
         return OnDemandStoryboardProvider(asset_store=self.asset_store, model_name=model)
 
-    def get_capabilities(self) -> ProviderCapabilityReport:
+    def get_capabilities(self, probe: Optional[bool] = None) -> ProviderCapabilityReport:
+        if hasattr(self.adapter, "get_capabilities"):
+            try:
+                return self.adapter.get_capabilities(probe=probe)  # type: ignore
+            except TypeError:
+                return self.adapter.get_capabilities()
         return self.adapter.get_capabilities()
 
-
-
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self, probe: Optional[bool] = None) -> Dict[str, Any]:
+        if hasattr(self.adapter, "health_check"):
+            try:
+                return self.adapter.health_check(probe=probe)  # type: ignore
+            except TypeError:
+                return self.adapter.health_check()
         return self.adapter.health_check()
 
     def render_panel(

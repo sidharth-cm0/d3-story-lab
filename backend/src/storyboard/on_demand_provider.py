@@ -241,6 +241,19 @@ class OnDemandStoryboardProvider(StoryboardRenderProvider):
         if probe:
             is_compat, status_code, message = self.verify_model_compatibility(force=False)
             model_status = "AVAILABLE" if is_compat else status_code
+            if status_code == "AUTH_FAILED":
+                provider_status = "AUTH_FAILED"
+            elif status_code == "QUOTA_UNAVAILABLE":
+                provider_status = "QUOTA_UNAVAILABLE"
+            elif status_code == "RATE_LIMITED":
+                provider_status = "RATE_LIMITED"
+            elif status_code == "TIMEOUT":
+                provider_status = "TIMEOUT"
+            elif status_code == "PROVIDER_ERROR":
+                provider_status = "PROVIDER_ERROR"
+            else:
+                provider_status = "CONNECTED"
+
             return {
                 "available": is_compat,
                 "status": status_code,

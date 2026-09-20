@@ -457,3 +457,75 @@ def test_api_generate_storyboard_with_budget(tmp_path):
     for panel in rendered_panels:
         assert panel.get("mode") == "previs_guide" or panel.get("metadata", {}).get("previs_available") is True
 
+
+def test_provider_status_connected_when_model_unavailable():
+    """Verify provider_status remains CONNECTED when token is present but model returns 410."""
+    provider = OnDemandStoryboardProvider(
+        api_key="hf_test_valid_token_123",
+        model_name="stabilityai/stable-diffusion-xl-base-1.0",
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 410
+
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_resp
+        mock_client_cls.return_value.__enter__.return_value = mock_client
+
+        health = provider.health_check(probe=True)
+        assert health["available"] is False
+        assert health["status"] == "MODEL_UNAVAILABLE"
+        assert health["provider_status"] == "CONNECTED"
+        assert health["model_status"] == "MODEL_UNAVAILABLE"
+
+        caps = provider.get_capabilities(probe=True)
+        assert caps.available is False
+        assert caps.status == "MODEL_UNAVAILABLE"
+        assert caps.provider_status == "CONNECTED"
+        assert caps.model_status == "MODEL_UNAVAILABLE"
+
+
+def test_provider_status_auth_failed_when_unauthorized():
+    """Verify provider_status reports AUTH_FAILED when token is rejected (401)."""
+    provider = OnDemandStoryboardProvider(
+        api_key="hf_bad_token",
+        model_name="stabilityai/stable-diffusion-3-medium-diffusers",
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_resp
+        mock_client_cls.return_value.__enter__.return_value = mock_client
+
+        health = provider.health_check(probe=True)
+        assert health["available"] is False
+        assert health["status"] == "AUTH_FAILED"
+        assert health["provider_status"] == "AUTH_FAILED"
+        assert health["model_status"] == "AUTH_FAILED"
+
+
+def test_api_capabilities_accurate_provider_status_when_model_unavailable(monkeypatch):
+    """Verify /api/storyboard/capabilities reports provider_status=CONNECTED not NOT_CONFIGURED when model is 410."""
+    app = create_app()
+    client = TestClient(app)
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 410
+
+    with patch.dict(os.environ, {"HF_TOKEN": "hf_test_token_123", "ON_DEMAND_MODEL": "stabilityai/stable-diffusion-xl-base-1.0"}), \
+         patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_resp
+        mock_client_cls.return_value.__enter__.return_value = mock_client
+
+        resp = client.get("/api/storyboard/capabilities?probe=true")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["available"] is False
+        assert data["status"] == "MODEL_UNAVAILABLE"
+        assert data["provider_status"] == "CONNECTED"
+        assert data["model_status"] == "MODEL_UNAVAILABLE"
