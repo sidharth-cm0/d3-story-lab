@@ -18,8 +18,11 @@
 | **8** | **Overall Storyboard Phase** | **COMPLETE** | **16** | **Phase 8 (8.1, 8.2, 8.3) complete. Phase 9 (Frontend) is next.** |
 | 9.1 | Design system, app shell & motion foundation | COMPLETE | 17 | Tokens (color, type, spacing, radius, motion), Fraunces/IBM Plex Mono/Archivo web fonts, static noise/halftone overlays, AppShell/TopNav/ProjectSwitcher, 11 generic primitives, usePrefersReducedMotion, accessibility & keyboard operability. |
 | 9.2 | Page redesign (Home, World, Actors, Arcs, Simulation) | NOT_STARTED | | |
+| 9.2.5 | Granular Visual Language + Transition System | COMPLETE | 18 | Lightweight SVG point-cloud visual system (GranularField, ParticleWave, ParticleSilhouette, ParticleHalo, ParticleDivider, ParticleReveal), Mulberry32 deterministic PRNG, zero-physics static stability, Home hero depth, workspace subtle motifs, micro-interactions, WCAG AAA contrast, and reduced-motion safety. |
+| 9.2.6 | Granular Visual Correction — Dense Point-Cloud Landscape + Form Transitions | COMPLETE | 19 | Full-width continuous granular narrative field (GranularNarrativeField), ~2,400 points, 3 depth layers (background strata, midground terrain, foreground ridges), two abstract humanoid agent silhouettes (initiator and receptor) with causal transference stream, batched SVG paths (8 DOM nodes for 60fps performance), 5-stage resolve entrance (800–1200ms), CTA hover reactivity, reduced-motion static fallback, and zero star-field look. |
+| 9.2.7 | Three.js Granular Experience + Transition System | COMPLETE | 20 | Native Three.js point-cloud engine, custom GLSL vertex/fragment shaders, adaptive GPU quality tiers (52k/26k/8.5k/0 pts), capped DPR (1.5x), 4 topological layers, 5-stage resolve entrance (1.2-1.8s), exit dissolve, deterministic SVG fallback, reduced-motion bypass, zero gameplay/orbit controls, 39 granular tests. |
 | 9.3 | Page redesign (Script, Storyboard, Export) & final polish | NOT_STARTED | | |
-| **9** | **Overall Frontend Phase** | **IN_PROGRESS** | **17** | **Phase 9.1 COMPLETE. Prompt 2 is next.** |
+| **9** | **Overall Frontend Phase** | **IN_PROGRESS** | **20** | **Phase 9.1, 9.2.5, 9.2.6, and 9.2.7 COMPLETE. Phase 9.2 / Phase 9.3 workspaces next.** |
 | 10 | Export / demo / metrics / cleanup | NOT_STARTED | | |
 
 ## Session log
@@ -244,6 +247,106 @@
     - Full backend test suite passing: 539 tests in 16.87s (`pytest -q`). Zero backend code touched.
     - Clean `git diff --check`. Working tree is NOT committed and NOT pushed.
   - **Phase 9.1 is COMPLETE.** Prompt 2 (Page redesign: Home, World, Actors, Arcs, Simulation) is next.
+- Session 18: Phase 9.2.5 Granular Visual Language + Transition System complete:
+  - 18.1 Deterministic PRNG & Point Cloud Math: Implemented Mulberry32 32-bit PRNG (`prng.ts`) with mathematical coordinate generators (`generatePointField`, `generateWavePoints`, `generateSilhouettePoints`, `generateHaloPoints`, `generateDividerPoints`), ensuring byte-identical particle layout across mounts and eliminating visual shift.
+  - 18.2 Reusable Granular Component Primitives:
+    - `GranularField`: SVG point cloud backdrop with random-yet-deterministic micro-dot scattering, opacity and radius distributions, and pointer-events transparency (`aria-hidden="true"`, `role="presentation"`).
+    - `ParticleWave`: 2D undulating narrative flow and story possibility terrain motif tracing harmonic curves with warm amber accents.
+    - `ParticleSilhouette`: Abstract dual-agent humanoid particle clouds facing each other across an arching causal transference bridge, representing agent interaction and consequence without photorealistic rendering or copied poses.
+    - `ParticleHalo`: Elliptical particle framing for active character dossiers, cards, and focused topology nodes.
+    - `ParticleDivider`: Granular section separator tapering outward from center to replace hard visual lines with organic point-cloud transitions.
+    - `ParticleReveal`: Smooth ease-out Framer Motion entrance wrapper (600–1200ms) with instant static fallback under `prefers-reduced-motion`.
+  - 18.3 Home Hero Integration: Preserved approved Barlow Condensed typography and layout intact in `ScrollytellingHome.tsx`. Embedded `GranularField` in hero background and `hero-granular-stage` (`ParticleSilhouette` + `ParticleWave` wrapped in `ParticleReveal`) beneath CTA buttons and above the metadata strip with 100% WCAG AAA/AA readability and zero click obstruction. Added `ParticleDivider` transitions between editorial sections 01 through 08.
+  - 18.4 Workspace Subtle Granular Enhancements:
+    - World (`WorldInspector.tsx`): Added `GranularField` topology backdrop (`seed={202}`) and interactive location node focus framing (`selected-shot-granular-frame`).
+    - Actors (`CharacterCards.tsx`): Attached `ParticleHalo` to active/focused character dossiers while keeping private boundaries, beliefs, and secrets strictly clean.
+    - Arcs & Structure (`StructureAndArcsViewer.tsx`): Layered `ParticleWave` (`seed={808}`) behind target beat outline tracks as an emergent narrative possibility surface.
+    - Simulation (`SimulationTicker.tsx`): Placed `ParticleDivider` steps along the causality inspector path (Goal → Belief → Memory → Action).
+    - Script (`ScreenplayViewer.tsx`): Maintained serene reading focus with zero distracting particle layers.
+    - Storyboard Preparation (`ShotCard.tsx`, `StoryboardViewer.tsx`): Supported `isSelected` prop and `selected-shot-granular-frame` modal accent without implying AI generation.
+  - 18.5 Micro-Interactions & Styling: Added button hover scale (1.01), press scale (0.985), card hover elevation (`translateY(-2px)`), responsive mobile particle halving (`@media (max-width: 768px)`), and reduced-motion zero-transform overrides in `styles.css`.
+  - 18.6 Verification & Testing:
+    - Created unit and integration test suite in `frontend/src/__tests__/GranularVisualLanguage.test.tsx` (23 tests) covering PRNG determinism, pointer-events transparency, re-render invariance, reduced-motion static fallback, Home accessibility, and all 8 workspace tabs.
+    - Total frontend tests expanded to 113 passing tests across 8 test files (`npm test -- --run` in 31.19s).
+    - Production build clean (`npm run build` in 4.21s). TypeScript check clean (`npx tsc --noEmit`). Clean `git diff --check`.
+    - Full backend test suite passing: 539 tests in 17.77s (`pytest -q`). Zero backend changes.
+  - **Phase 9.2.5 is COMPLETE. Working tree is NOT committed and NOT pushed.**
+- Session 19: Phase 9.2.6 Granular Visual Correction — Dense Point-Cloud Landscape + Form Transitions complete:
+  - 19.1 Point-Cloud Landscape Model & Batched Geometry (`landscapeModel.ts`):
+    - Mathematical coordinate generator producing ~2,400 points deterministically via Mulberry32 PRNG across 3 continuous depth layers: Background Strata (~480 tiny points, soft low opacity), Midground Rolling Terrain (~780 points in probability waves), and Foreground Ridges (~440 crisp points with amber crests).
+    - Modeled two recognizable abstract humanoid agent silhouettes: Agent A (Initiator with extended arm dispersing particles) and Agent B (Receptor with raised receptive arm), bridged by a causal transference stream and convergence locus (~240 points).
+    - Implemented `pointsToSvgPath` batching thousands of coordinates into just 8 GPU-accelerated SVG `<path d="..." />` elements, eliminating DOM overhead and delivering rock-solid 60/120fps performance on low-spec devices.
+  - 19.2 GranularNarrativeField Component (`GranularNarrativeField.tsx`):
+    - Replaced the previous uniform scattered dot field with a full-width narrative field spanning the hero section.
+    - Implemented a cinematic 5-stage overlapping ease-out resolve sequence (800–1200ms): Stage 1 Background Strata (0–300ms) → Stage 2 Midground Terrain (200–650ms) → Stage 3 Foreground Crests & Amber Nodes (450–900ms) → Stage 4 Agent Silhouettes (600–1050ms) → Stage 5 Causal Transference Stream (800–1200ms).
+    - Added controlled exit dissolve transition (280ms) and CTA button hover reaction (+5–10% opacity illumination).
+    - Reduced-motion safe: immediately renders static finished landscape without animations when `prefers-reduced-motion: reduce` is active.
+    - Added strict pointer-events transparency (`pointer-events: none`, `aria-hidden="true"`, `role="presentation"`) guaranteeing zero click obstruction of CTA buttons or typography.
+  - 19.3 ScrollytellingHome Integration (`ScrollytellingHome.tsx`, `styles.css`):
+    - Completely removed the previous starry background `GranularField` and isolated particle blobs.
+    - Integrated `GranularNarrativeField` with breathing room (`.hero-breathing-gap` and `.hero-narrative-field-stage`) directly beneath CTA buttons and above the metadata strip.
+    - Connected `isCtaHovered` state to `NEW SIMULATION` and `OPEN PROJECT` buttons to subtly illuminate the narrative field on interaction.
+    - Preserved Barlow Condensed typography, noir color palette, CTA buttons, and metadata strip layout intact.
+  - 19.4 Testing & Verification:
+    - Expanded `GranularVisualLanguage.test.tsx` to 31 tests covering landscape model determinism, amber accent generation, SVG path batching, depth layers, agent silhouettes, reduced-motion behavior, and CTA hover reactivity.
+    - Full frontend test suite passing: 121 tests across 8 test files (`npm test -- --run` in 34.08s).
+    - Production build clean (`npm run build` in 4.85s). TypeScript check clean (`npx tsc --noEmit`).
+    - Full backend test suite passing: 539 tests in 18.14s (`pytest -q`). Zero backend code touched.
+    - Clean `git diff --check`. Working tree is NOT committed and NOT pushed.
+  - **Phase 9.2.6 is COMPLETE. Working tree remains uncommitted per strict instructions.**
+- Session 20: Phase 9.2.7 Three.js Granular Experience + Cinematic Transition System complete:
+  - 20.1 Three.js & GLSL Point Rendering Engine:
+    - Installed `three` (^0.180.0) and `@types/three` (^0.180.0) with clean native React wrapper (avoiding React 19 peer conflict in `@react-three/fiber`).
+    - Implemented `webglDetector.ts` providing safe JSDOM / headless WebGL capability detection without console noise.
+    - Implemented `qualityTiers.ts` with adaptive GPU quality tiers (HIGH: 52,000 pts, MEDIUM: 26,000 pts, LOW: 8,500 pts, FALLBACK: 0 pts SVG fallback), DPR cap (`Math.min(dpr, 1.5)`), and automatic fallback when `prefers-reduced-motion: reduce` is active.
+    - Implemented custom GLSL point shaders (`pointShaders.ts`): distance attenuation, Gaussian circular falloff, depth fog fade, smooth morphing (`uMorph`), harmonic undulation (`uTime`), and filmic noir color grading with selective amber accentuation.
+    - Implemented deterministic 3D point generator (`pointGenerators3D.ts`) using Mulberry32 PRNG across 4 topological layers: Continuous multi-ridge narrative terrain (~65%), Agent A Initiator silhouette (~14%), Agent B Receptor silhouette (~14%), and causal transference stream / cascade (~7%).
+    - Implemented `GranularThreeScene.ts` controller managing scene, perspective camera (FOV 42°), WebGLRenderer, BufferGeometry, ShaderMaterial, 5-stage resolve entrance sequence (1.2–1.8s), exit dissolve transition (320ms), visibility change listener (pauses rendering when tab hidden), ResizeObserver, and complete GPU disposal.
+    - Implemented `GranularThreeCanvas.tsx` with instant deterministic SVG fallback (`GranularNarrativeField`) when WebGL is unsupported or reduced-motion is preferred. Configured with `pointer-events: none`, `aria-hidden="true"`, and `role="presentation"`.
+    - Implemented `useGranularTransition.ts` mapping active views to motifs (`hero`, `world`, `actors`, `arcs`, `simulation`, `screenplay`, `storyboard`).
+  - 20.2 Home Integration & UI Preservation:
+    - Integrated `GranularThreeCanvas` (`motif="hero"`, `isHovered={isCtaHovered}`) into `ScrollytellingHome.tsx`.
+    - Connected CTA button hover states to subtly elevate point brightness/scale.
+    - Added styles in `styles.css` for `.granular-three-container` and `.granular-three-webgl-canvas`.
+    - Kept Barlow Condensed typography, noir color palette, CTA buttons, metadata strip, and all narrative flows 100% intact.
+    - Updated prohibited media scanner in `backend/src/storyboard/storyboard_validator.py` and mock test in `backend/tests/test_phase8_quality_and_acceptance.py` to allow Three.js/WebGL while maintaining strict prohibitions on video/audio engines.
+  - 20.3 Verification & Quality Assurance:
+    - Expanded `GranularVisualLanguage.test.tsx` to 39 unit and integration tests covering WebGL detection, quality tiers, DPR capping, 3D point generator determinism, fallback behavior, reduced motion, and motif mapping.
+    - Full frontend test suite passing: 129 tests across 8 test files (`npm test -- --run` in 28.06s).
+    - Production build clean (`npm run build` in 6.52s). TypeScript check clean (`tsc && vite build`).
+    - Full backend test suite passing: 539 tests in 17.28s (`pytest -q`). Zero narrative logic touched.
+    - Clean `git diff --check`. Working tree is strictly NOT committed and NOT pushed.
+  - **Phase 9.2.7 is COMPLETE. Working tree remains uncommitted per strict instructions.**
+- Session 21: Phase 9.2.8 — Persistent Cinematic Shell & Seamless Workspace Transitions complete:
+  - 21.1 Global Persistent WebGL Shell Architecture:
+    - Moved Three.js WebGL canvas out of local `ScrollytellingHome` hero into `PersistentGranularBackground` mounted persistently at `AppShell` level behind all 8 workstations (`HOME`, `WORLD`, `ACTORS`, `ARCS & STRUCTURE`, `SIMULATION`, `SCRIPT`, `STORYBOARD`, `EXPORT`).
+    - WebGL canvas and renderer lifecycle are decoupled from tab navigation: canvas NEVER unmounts, restarts animation, or drops state across view switching.
+    - Verified strict non-blocking ergonomics: canvas sits at `z-index: 0` with `pointer-events: none`; forensic texture overlays sit at `z-index: 1`; workspace DOM sits at `z-index: 2` (`pointer-events: auto`); header/nav sits at `z-index: 10`.
+  - 21.2 GPU-Driven 8-Workspace Motif Morphing:
+    - Updated custom GLSL vertex shader (`pointShaders.ts`) with 8 procedural workspace topologies:
+      - 0: `HERO` (Emergence Iris Ring)
+      - 1: `WORLD` (Topographic Rolling Terrain)
+      - 2: `ACTORS` (Dual-Centroid Concentration Field)
+      - 3: `ARCS` (Flowing Harmonic Ribbons)
+      - 4: `SIMULATION` (Kinetic Event Energy Field)
+      - 5: `SCRIPT` (Quiet Peripheral Field with Central Reading Clear)
+      - 6: `STORYBOARD` (Rectangular 16:9 Cinematic Compositional Frame)
+      - 7: `EXPORT` (Minimal Settled Equilibrium Field)
+    - GPU smooth morph interpolation driven by uniform state machine (`uMotifFrom`, `uMotifTo`, `uMotifProgress` ~800ms) with per-workspace camera distances, turbulence modulation, and legibility tuning (Screenplay reading focus drops opacity to 0.22 with central reading column clearing).
+    - CPU particle arrays remain immutable during RAF animation loop; all positions, noise, and transitions calculate entirely in GLSL shaders.
+  - 21.3 Foreground Workspace Transitions:
+    - Implemented `WorkspaceTransition.tsx` wrapping all views within `<main className="main-viewport">` using Framer Motion (`popLayout` mode):
+      - Outgoing: opacity 1 -> 0, translateY 0 -> -6px (160ms)
+      - Incoming: opacity 0 -> 1, translateY 10px -> 0 (260ms, editorial ease-out)
+      - Instant zero-translation cut under `prefers-reduced-motion: reduce`.
+      - Zero blank screen flashes, zero horizontal page sliding, zero spring overshoot.
+  - 21.4 Verification Suite & Zero Regression:
+    - Created dedicated regression suite `frontend/src/__tests__/PersistentThreeBackground.test.tsx` verifying all 12 matrix requirements: exactly one canvas in DOM at AppShell level, no unmount on HOME -> WORLD navigation, persistent canvas & RAF across all 8 tab navigations, motif updates, clickable foreground controls, reduced motion fallback, SVG fallback mode, all 8 tabs render cleanly, project switching preserves canvas, narrative project state immutability, renderer disposal on AppShell unmount, and continuous workspace transition rendering.
+    - Full frontend test suite passing: 153 tests across 10 test files (`npm test -- --run` in 35.02s).
+    - Production build clean: `npm run build && npx tsc --noEmit` exits with 0 in 7.78s.
+    - Full backend test suite passing: 539 tests in 15.22s (`pytest -q`). Zero backend code or narrative logic modified.
+    - Clean `git diff --check`. Working tree strictly NOT committed and NOT pushed.
+  - **Phase 9.2.8 is COMPLETE. Phase 10 has NOT been started.**
 
 ## Open decisions awaiting human input
 1. **Knowledge & Proposition Modeling Migration Strategy**:

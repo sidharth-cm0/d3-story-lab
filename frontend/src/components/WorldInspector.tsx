@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { WorldState } from '../types';
 import { formatDisplayValue } from '../utils/format';
+import { GranularField } from './granular';
 
 interface WorldInspectorProps {
   world: WorldState;
@@ -10,6 +11,7 @@ type WorldTab = 'places' | 'objects' | 'facts' | 'unknown';
 
 export const WorldInspector: React.FC<WorldInspectorProps> = ({ world }) => {
   const [tab, setTab] = useState<WorldTab>('places');
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
 
   const locations = Object.values(world.locations || {});
   const objects = Object.values(world.objects || {});
@@ -19,8 +21,18 @@ export const WorldInspector: React.FC<WorldInspectorProps> = ({ world }) => {
   const uninspected = objects.filter((o) => !o.inspected_by || o.inspected_by.length === 0);
 
   return (
-    <div className="world-inspector-pane">
-      <div className="pane-header">
+    <div className="world-inspector-pane" style={{ position: 'relative' }}>
+      {/* Granular Topology Backdrop (§11) */}
+      <GranularField
+        seed={202}
+        pointCount={75}
+        className="granular-topology-bg"
+        style={{ opacity: selectedLocationId ? 0.38 : 0.22 }}
+        color="rgba(235, 235, 235, 0.4)"
+        accentColor="var(--accent-amber, #d89c38)"
+      />
+
+      <div className="pane-header" style={{ position: 'relative', zIndex: 1 }}>
         <div>
           <span className="pane-kicker">SANDBOX TOPOLOGY</span>
           <h2 className="pane-title">WORLD</h2>
@@ -53,36 +65,45 @@ export const WorldInspector: React.FC<WorldInspectorProps> = ({ world }) => {
         </div>
       </div>
 
-      <div className="world-cards-grid">
+      <div className="world-cards-grid" style={{ position: 'relative', zIndex: 1 }}>
         {tab === 'places' && (
           locations.length === 0 ? (
             <div className="empty-quiet">NO LOCATIONS DEFINED</div>
           ) : (
-            locations.map((loc) => (
-              <div key={loc.id} className="noir-card">
-                <div className="card-topline">
-                  <span className="card-item-title">{formatDisplayValue(loc.name)}</span>
-                  <span className="card-sub-tag">ROOM</span>
-                </div>
-                <p className="card-desc">{formatDisplayValue(loc.description)}</p>
-                {loc.visual_profile && (
-                  <div className="card-visual-profile-box">
-                    <span className="visual-profile-tag">VISUAL ENVIRONMENT:</span>
-                    <span className="visual-profile-desc">
-                      {formatDisplayValue(`${loc.visual_profile.environment_type} • ${loc.visual_profile.palette} • ${loc.visual_profile.lighting}`)}
+            locations.map((loc) => {
+              const isSelected = selectedLocationId === loc.id;
+              return (
+                <div
+                  key={loc.id}
+                  className={`noir-card ${isSelected ? 'selected-shot-granular-frame' : ''}`}
+                  onClick={() => setSelectedLocationId(isSelected ? null : loc.id)}
+                  style={{ cursor: 'pointer' }}
+                  title="Click to focus topology node"
+                >
+                  <div className="card-topline">
+                    <span className="card-item-title">{formatDisplayValue(loc.name)}</span>
+                    <span className="card-sub-tag">{isSelected ? 'FOCUSED NODE' : 'ROOM'}</span>
+                  </div>
+                  <p className="card-desc">{formatDisplayValue(loc.description)}</p>
+                  {loc.visual_profile && (
+                    <div className="card-visual-profile-box">
+                      <span className="visual-profile-tag">VISUAL ENVIRONMENT:</span>
+                      <span className="visual-profile-desc">
+                        {formatDisplayValue(`${loc.visual_profile.environment_type} • ${loc.visual_profile.palette} • ${loc.visual_profile.lighting}`)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="card-meta-line">
+                    <span className="meta-label">CONNECTIVITY</span>
+                    <span className="meta-value">
+                      Connected to {loc.connected_locations.length > 0
+                        ? loc.connected_locations.map((cid) => formatDisplayValue(world.locations[cid]?.name || cid)).join(', ')
+                        : 'None (Isolated)'}
                     </span>
                   </div>
-                )}
-                <div className="card-meta-line">
-                  <span className="meta-label">CONNECTIVITY</span>
-                  <span className="meta-value">
-                    Connected to {loc.connected_locations.length > 0
-                      ? loc.connected_locations.map((cid) => formatDisplayValue(world.locations[cid]?.name || cid)).join(', ')
-                      : 'None (Isolated)'}
-                  </span>
                 </div>
-              </div>
-            ))
+              );
+            })
           )
         )}
 

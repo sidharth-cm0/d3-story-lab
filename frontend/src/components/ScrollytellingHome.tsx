@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ProjectMetadata } from '../types';
+import {
+  ParticleDivider,
+} from './granular';
+import { Footer } from './layout/Footer';
 
 interface ScrollytellingHomeProps {
   onStartNew: () => void;
@@ -33,65 +37,60 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
       el.addEventListener('scroll', handleScroll, { passive: true });
     }
     return () => {
-      if (el) el.removeEventListener('scroll', handleScroll);
+      if (el) {
+        el.removeEventListener('scroll', handleScroll);
+      }
     };
   }, []);
 
-  // Section 01: Hero statement morph calculation
-  // As user starts scrolling (0.0 to 0.15), 'WRITTEN' recedes, 'EMERGES' comes forward
-  const writtenOpacity = Math.max(0.15, 1 - scrollProgress * 7);
-  const writtenScale = Math.max(0.85, 1 - scrollProgress * 1.2);
-  const emergesOpacity = Math.min(1, 0.4 + scrollProgress * 5);
-  const emergesScale = Math.min(1.15, 1 + scrollProgress * 0.8);
+  // Compute text opacities/scales based on scrollProgress
+  const writtenOpacity = Math.max(0, 1 - scrollProgress * 3.5);
+  const writtenScale = 1 - scrollProgress * 0.05;
 
-  // Fast client-side fuzzy filter for projects portfolio
-  const filteredProjects = projects.filter((project) => {
+  const emergesOpacity = Math.min(1, 0.4 + scrollProgress * 2.5);
+  const emergesScale = 1 + scrollProgress * 0.05;
+
+  // Filter projects by search query
+  const filteredProjects = projects.filter((p) => {
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase().trim();
-    const title = (project.title || '').toLowerCase();
-    const prompt = (project.seed_prompt || '').toLowerCase();
-    const inputType = (project.input_type || '').toLowerCase();
-    if (title.includes(q) || prompt.includes(q) || inputType.includes(q)) return true;
-
-    // Fuzzy character subsequence match
-    let qIdx = 0;
-    for (let i = 0; i < title.length && qIdx < q.length; i++) {
-      if (title[i] === q[qIdx]) qIdx++;
-    }
-    return qIdx === q.length;
+    const q = searchQuery.toLowerCase();
+    return (
+      p.title.toLowerCase().includes(q) ||
+      p.seed_prompt.toLowerCase().includes(q) ||
+      (p.input_type && p.input_type.toLowerCase().includes(q))
+    );
   });
 
   const renderProductionRail = (p: ProjectMetadata) => {
-    const hasWorld = true;
-    const hasSim = p.current_tick > 0 || p.total_events > 0;
-    const hasScript = p.total_scenes > 0 || Boolean((p as any).screenplay);
-    const hasStoryboard = (p.total_panels && p.total_panels > 0) || Boolean((p as any).storyboard || (p as any).shot_plan);
-    const hasExport = Boolean(hasScript && hasStoryboard);
+    const hasEvents = p.total_events > 0 || p.current_tick > 0;
+    const hasScenes = p.total_scenes > 0;
+    const hasPanels = (p.total_panels || 0) > 0;
+    const isExportReady = hasPanels;
 
     return (
-      <div className="production-rail" aria-label="Production pipeline status">
-        <span className={`rail-step ${hasWorld ? 'active' : ''}`} title="World created">
-          <span className="rail-marker">{hasWorld ? '●' : '○'}</span>
+      <div className="portfolio-pipeline-rail" aria-label="Production milestone rail">
+        <span className="rail-step complete">
+          <span className="rail-indicator">●</span>
           <span className="rail-label">WORLD</span>
         </span>
-        <span className="rail-line" />
-        <span className={`rail-step ${hasSim ? 'active' : ''}`} title={hasSim ? `Simulated to tick ${p.current_tick}` : 'Simulation pending'}>
-          <span className="rail-marker">{hasSim ? '●' : '○'}</span>
-          <span className="rail-label">SIMULATION</span>
+        <span className="rail-divider" />
+        <span className={`rail-step ${hasEvents ? 'complete' : 'pending'}`}>
+          <span className="rail-indicator">{hasEvents ? '●' : '○'}</span>
+          <span className="rail-label">SIM</span>
         </span>
-        <span className="rail-line" />
-        <span className={`rail-step ${hasScript ? 'active' : ''}`} title={hasScript ? `Screenplay scribed (${p.total_scenes} scenes)` : 'Screenplay pending'}>
-          <span className="rail-marker">{hasScript ? '●' : '○'}</span>
-          <span className="rail-label">SCREENPLAY</span>
+        <span className="rail-divider" />
+        <span className={`rail-step ${hasScenes ? 'complete' : 'pending'}`}>
+          <span className="rail-indicator">{hasScenes ? '●' : '○'}</span>
+          <span className="rail-label">SCRIPT</span>
         </span>
-        <span className="rail-line" />
-        <span className={`rail-step ${hasStoryboard ? 'active' : ''}`} title={hasStoryboard ? 'Storyboard planned' : 'Storyboard pending'}>
-          <span className="rail-marker">{hasStoryboard ? '●' : '○'}</span>
-          <span className="rail-label">STORYBOARD</span>
+        <span className="rail-divider" />
+        <span className={`rail-step ${hasPanels ? 'complete' : 'pending'}`}>
+          <span className="rail-indicator">{hasPanels ? '●' : '○'}</span>
+          <span className="rail-label">BOARD</span>
         </span>
-        <span className="rail-line" />
-        <span className={`rail-step ${hasExport ? 'active' : ''}`} title={hasExport ? 'Ready for export' : 'Export pending'}>
-          <span className="rail-marker">{hasExport ? '●' : '○'}</span>
+        <span className="rail-divider" />
+        <span className={`rail-step ${isExportReady ? 'complete' : 'pending'}`}>
+          <span className="rail-indicator">{isExportReady ? '●' : '○'}</span>
           <span className="rail-label">EXPORT</span>
         </span>
       </div>
@@ -101,67 +100,99 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
   return (
     <div className="scrolly-container" ref={containerRef}>
       {/* SECTION 01: HERO */}
-      <section className="scrolly-section hero-section">
-        <div className="hero-kicker">AGENTIC PROCEDURAL NARRATIVE ENGINE</div>
-        <h1 className="hero-editorial-title">D3 STORY LAB</h1>
-
-        <div className="hero-statement-container">
-          <div
-            className="statement-line statement-receding"
-            style={{
-              opacity: writtenOpacity,
-              transform: `scale(${writtenScale}) translateZ(0)`,
-            }}
-          >
-            THE STORY IS NOT WRITTEN.
+      <section className="scrolly-section hero-section" aria-label="Hero Section">
+        <div className="hero-central-composition">
+          <div className="hero-eyebrow">
+            <span className="eyebrow-glyph" aria-hidden="true">❖</span>
+            <span className="hero-kicker">AGENTIC PROCEDURAL NARRATIVE ENGINE</span>
           </div>
-          <div
-            className="statement-line statement-emerging"
-            style={{
-              opacity: emergesOpacity,
-              transform: `scale(${emergesScale}) translateZ(0)`,
-            }}
-          >
-            IT EMERGES.
-          </div>
-        </div>
 
-        <p className="hero-prose">
-          Autonomous characters. Conflicting goals. Living narratives.
-        </p>
+          <h1 className="hero-editorial-title">D3 STORY LAB</h1>
 
-        <div className="hero-actions">
-          <button className="btn-pill-primary btn-cinematic-primary" onClick={onStartNew}>
-            NEW SIMULATION
-          </button>
-          {projects.length > 0 && (
-            <button
-              className="btn-pill-secondary btn-cinematic-secondary"
-              onClick={() => onOpenProject(projects[0].id)}
+          <div className="hero-statement-container">
+            <div
+              className="statement-line statement-receding"
+              style={{
+                opacity: writtenOpacity,
+                transform: `scale(${writtenScale}) translateZ(0)`,
+              }}
             >
-              OPEN PROJECT ({projects[0].title})
+              THE STORY IS NOT WRITTEN.
+            </div>
+            <div
+              className="statement-line statement-emerging"
+              style={{
+                opacity: emergesOpacity,
+                transform: `scale(${emergesScale}) translateZ(0)`,
+              }}
+            >
+              IT EMERGES.
+            </div>
+          </div>
+
+          <p className="hero-prose">
+            Autonomous characters make decisions inside a deterministic world.
+            Narrative arcs, subtext, causality, screenplay, and storyboard emerge from simulation.
+          </p>
+
+          <div className="hero-actions">
+            <button
+              type="button"
+              className="btn-pill-primary btn-cinematic-primary"
+              onClick={onStartNew}
+            >
+              <span>NEW SIMULATION</span>
+              <span className="btn-arrow" aria-hidden="true">→</span>
             </button>
-          )}
+            {projects.length > 0 && (
+              <button
+                type="button"
+                className="btn-pill-secondary btn-cinematic-secondary"
+                onClick={() => onOpenProject(projects[0].id)}
+              >
+                <span>OPEN PROJECT ({projects[0].title})</span>
+              </button>
+            )}
+          </div>
+
+
+          {/* Minimal Project / Engine Metadata Strip */}
+          <div className="hero-metadata-strip" aria-label="System status strip">
+            <div className="metadata-strip-item">
+              <span className="strip-label">ENGINE</span>
+              <strong className="strip-val">DETERMINISTIC HYBRID</strong>
+            </div>
+            <span className="strip-sep" aria-hidden="true">/</span>
+            <div className="metadata-strip-item">
+              <span className="strip-label">EXECUTION</span>
+              <strong className="strip-val">LOCAL ZERO-AI FALLBACK</strong>
+            </div>
+            <span className="strip-sep" aria-hidden="true">/</span>
+            <div className="metadata-strip-item">
+              <span className="strip-label">FIREWALL</span>
+              <strong className="strip-val">SCENE PROJECTION ONLY</strong>
+            </div>
+            {projects.length > 0 && (
+              <>
+                <span className="strip-sep" aria-hidden="true">/</span>
+                <div className="metadata-strip-item">
+                  <span className="strip-label">ACTIVE DOSSIER</span>
+                  <strong className="strip-val text-amber">
+                    {projects[0].title.toUpperCase()} (T{projects[0].current_tick})
+                  </strong>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Short Pipeline Summary */}
-        <div className="pipeline-flow-minimal">
-          <span>IDEA</span>
-          <span className="flow-arrow">↓</span>
-          <span>ACTORS</span>
-          <span className="flow-arrow">↓</span>
-          <span>SANDBOX</span>
-          <span className="flow-arrow">↓</span>
-          <span>EVENTS</span>
-          <span className="flow-arrow">↓</span>
-          <span>SCREENPLAY</span>
-        </div>
-
-        <div className="scroll-indicator">
-          <span>SCROLL TO EXPLORE</span>
+        <div className="scroll-indicator" aria-hidden="true">
+          <span>SCROLL TO EXPLORE ARCHITECTURE</span>
           <div className="scroll-notch" />
         </div>
       </section>
+
+      <ParticleDivider seed={501} width="85%" />
 
       {/* SECTION 02: THE SPARK */}
       <section className="scrolly-section split-editorial-section">
@@ -216,6 +247,8 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
           </div>
         </div>
       </section>
+
+      <ParticleDivider seed={502} width="85%" />
 
       {/* SECTION 03: CAST */}
 
@@ -292,6 +325,8 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
         </div>
       </section>
 
+      <ParticleDivider seed={503} width="85%" />
+
       {/* SECTION 04: SANDBOX */}
       <section className="scrolly-section split-editorial-section">
         <div className="split-left">
@@ -322,6 +357,8 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
           </div>
         </div>
       </section>
+
+      <ParticleDivider seed={504} width="85%" />
 
       {/* SECTION 05: DIRECTOR */}
       <section className="scrolly-section split-editorial-section">
@@ -355,6 +392,8 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
           </div>
         </div>
       </section>
+
+      <ParticleDivider seed={505} width="85%" />
 
       {/* SECTION 06: SCRIBE */}
       <section className="scrolly-section split-editorial-section">
@@ -391,6 +430,8 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
           </div>
         </div>
       </section>
+
+      <ParticleDivider seed={506} width="85%" />
 
       {/* SECTION 07: STORYBOARD */}
       <section className="scrolly-section split-editorial-section">
@@ -429,6 +470,8 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
           </div>
         </div>
       </section>
+
+      <ParticleDivider seed={507} width="85%" />
 
       {/* SECTION 08: PRODUCTION PORTFOLIO */}
       <section className="scrolly-section portfolio-section">
@@ -545,6 +588,9 @@ export const ScrollytellingHome: React.FC<ScrollytellingHomeProps> = ({
           )}
         </div>
       </section>
+
+      {/* Editorial Architectural Index Footer */}
+      <Footer />
     </div>
   );
 };

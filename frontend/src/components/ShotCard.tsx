@@ -22,6 +22,7 @@ export interface ShotCardProps {
   onRegenerate?: (panelId: string) => void;
   onPanelUpdated?: (updatedPanel: StoryboardPanel) => void;
   className?: string;
+  isSelected?: boolean;
 }
 
 export const ShotCard: React.FC<ShotCardProps> = ({
@@ -31,6 +32,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onRegenerate,
   onPanelUpdated,
   className = '',
+  isSelected = false,
 }) => {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -86,7 +88,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
   return (
     <div
-      className={`shot-card-clean ${className}`}
+      className={`shot-card-clean ${isSelected ? 'selected-shot-granular-frame' : ''} ${className}`}
       onClick={() => onSelect?.(panel)}
       title="Click to view panel inspector and visual details"
       data-testid={`shot-card-${panel.id}`}

@@ -1586,7 +1586,7 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
       {/* PANEL INSPECTOR MODAL */}
       {selectedPanel && (
         <div className="panel-inspector-overlay" onClick={() => setSelectedPanel(null)}>
-          <div className="panel-inspector-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="panel-inspector-modal selected-shot-granular-frame" onClick={(e) => e.stopPropagation()}>
             <div className="inspector-header">
               <div>
                 <span className="pane-kicker">PANEL INSPECTOR &amp; VERSION CONTROLLER</span>

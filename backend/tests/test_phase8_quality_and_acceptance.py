@@ -181,10 +181,10 @@ def test_scan_codebase_for_prohibited_media_is_clean():
 
 def test_scan_codebase_detects_mock_violations(tmp_path):
     """Verify scanner detects prohibited dependencies in mock repository."""
-    # Mock frontend package.json with three.js
+    # Mock frontend package.json with remotion
     fe = tmp_path / "frontend"
     fe.mkdir()
-    (fe / "package.json").write_text('{"dependencies": {"three": "^0.160.0"}}')
+    (fe / "package.json").write_text('{"dependencies": {"remotion": "^4.0.0"}}')
 
     # Mock backend requirements with moviepy
     be = tmp_path / "backend"
@@ -193,7 +193,7 @@ def test_scan_codebase_detects_mock_violations(tmp_path):
 
     clean, violations = scan_codebase_for_prohibited_media(repo_root=tmp_path)
     assert clean is False
-    assert any("three" in v for v in violations)
+    assert any("remotion" in v for v in violations)
     assert any("moviepy" in v for v in violations)
 
 

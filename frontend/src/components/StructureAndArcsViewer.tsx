@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ProjectData, StoryBlueprint, CharacterArcReport, CausalContinuitySummary } from '../types';
 import * as api from '../api';
+import { ParticleWave } from './granular';
 
 interface StructureAndArcsViewerProps {
   project: ProjectData | null;
@@ -271,10 +272,19 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
               </div>
 
               {/* Target Beat Timeline */}
-              <div className="beat-timeline-section">
-                <h3 className="section-title">TARGET BEAT OUTLINE & PRESSURE SIGNALS</h3>
+              <div className="beat-timeline-section" style={{ position: 'relative' }}>
+                <ParticleWave
+                  seed={808}
+                  pointsPerLayer={45}
+                  className="narrative-flow-bg"
+                  width="100%"
+                  height={130}
+                  color="rgba(235, 235, 235, 0.4)"
+                  accentColor="var(--accent-amber, #d89c38)"
+                />
+                <h3 className="section-title" style={{ position: 'relative', zIndex: 1 }}>TARGET BEAT OUTLINE & PRESSURE SIGNALS</h3>
                 {blueprint.expected_beats && blueprint.expected_beats.length > 0 ? (
-                  <div className="beat-cards-list">
+                  <div className="beat-cards-list" style={{ position: 'relative', zIndex: 1 }}>
                     {blueprint.expected_beats.map((beat, idx) => (
                       <div key={beat.beat_id || idx} className="beat-card">
                         <div className="beat-card-header">

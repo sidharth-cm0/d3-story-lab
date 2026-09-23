@@ -29,11 +29,11 @@ def scan_codebase_for_prohibited_media(repo_root: Optional[Path] = None) -> Tupl
         repo_root = Path(__file__).resolve().parents[3]
 
     violations: List[str] = []
+    # Video, full game engines, and audio remain strictly prohibited.
+    # Note: Three.js/WebGL for point-cloud particle rendering was authorized in Phase 9.2.7.
     prohibited = {
-        "three", "three.js", "@react-three/fiber", "@react-three/drei", "three-stdlib",
         "moviepy", "ffmpeg", "ffmpeg-python", "pygame", "opencv", "opencv-python",
         "cv2", "remotion", "babylon", "babylonjs", "pixi.js", "video.js", "howler", "tone",
-        "webgl",
     }
 
     # 1. Check frontend/package.json
@@ -44,7 +44,7 @@ def scan_codebase_for_prohibited_media(repo_root: Optional[Path] = None) -> Tupl
             all_deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
             for dep in all_deps:
                 dep_l = dep.lower()
-                if dep_l in prohibited or any(p in dep_l for p in ["three", "moviepy", "pygame", "webgl"]):
+                if dep_l in prohibited or any(p in dep_l for p in ["moviepy", "pygame", "remotion"]):
                     violations.append(f"package.json: {dep}")
         except Exception as e:
             logger.warning(f"Error checking package.json: {e}")

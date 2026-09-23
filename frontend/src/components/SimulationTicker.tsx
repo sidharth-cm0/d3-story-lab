@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { WorldState, Event, EventCausality } from '../types';
 import { formatDisplayValue } from '../utils/format';
+import { ParticleDivider } from './granular';
 
 interface SimulationTickerProps {
   world: WorldState;
@@ -255,10 +256,14 @@ export const SimulationTicker: React.FC<SimulationTickerProps> = ({
                 <div className="causal-content">{formatDisplayValue(causality.goalDescription)}</div>
               </div>
 
+              <ParticleDivider seed={101} count={20} height={12} width="100%" />
+
               <div className="causal-step-block">
                 <span className="causal-label text-technical">BELIEF</span>
                 <div className="causal-content">{formatDisplayValue(causality.beliefStatement)}</div>
               </div>
+
+              <ParticleDivider seed={102} count={20} height={12} width="100%" />
 
               <div className="causal-step-block">
                 <span className="causal-label">MEMORY</span>
@@ -269,6 +274,8 @@ export const SimulationTicker: React.FC<SimulationTickerProps> = ({
                 <span className="causal-label">EMOTION</span>
                 <div className="causal-content">{formatDisplayValue(causality.emotionalSummary)}</div>
               </div>
+
+              <ParticleDivider seed={103} count={20} height={12} width="100%" />
 
               <div className="causal-step-block">
                 <span className="causal-label text-white">ACTION / RESULT</span>

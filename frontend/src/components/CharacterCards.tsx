@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { WorldState } from '../types';
 import { formatDisplayValue } from '../utils/format';
+import { ParticleHalo } from './granular';
 
 interface CharacterCardsProps {
   world: WorldState;
@@ -8,6 +9,7 @@ interface CharacterCardsProps {
 
 export const CharacterCards: React.FC<CharacterCardsProps> = ({ world }) => {
   const [debugActive, setDebugActive] = useState<Record<string, boolean>>({});
+  const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
 
   const characters = Object.values(world.characters || {});
   const locations = world.locations || {};
@@ -59,12 +61,26 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({ world }) => {
         {characters.map((char) => {
           const loc = locations[char.location_id];
           const isDebug = !!debugActive[char.id];
+          const isSelected = selectedCharId === char.id;
           const emo = char.emotional_state || { happiness: 0, fear: 0, anger: 0, trust: 0, curiosity: 0.5 };
           const stateWord = calculateStateWord(emo.fear ?? 0, emo.anger ?? 0, emo.trust ?? 0);
 
           return (
-            <div className="noir-actor-card" key={char.id}>
-              <div className="actor-card-header">
+            <div
+              className={`noir-actor-card ${isSelected ? 'selected-shot-granular-frame' : ''}`}
+              key={char.id}
+              onClick={() => setSelectedCharId(isSelected ? null : char.id)}
+              style={{ position: 'relative', cursor: 'pointer' }}
+              title="Click to focus character dossier"
+            >
+              <ParticleHalo
+                active={isSelected}
+                seed={char.id.charCodeAt(0) * 19}
+                rx={130}
+                ry={100}
+                count={32}
+              />
+              <div className="actor-card-header" style={{ position: 'relative', zIndex: 1 }}>
                 <div>
                   <h3 className="actor-name">{formatDisplayValue(char.name)}</h3>
                   <div className="actor-role">{formatDisplayValue(char.role)}</div>

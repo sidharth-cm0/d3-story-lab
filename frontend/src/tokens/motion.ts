@@ -67,19 +67,21 @@ export function getMotionTransition(
 export const pageTransitionVariants: Variants = {
   initial: (prefersReduced: boolean) => ({
     opacity: 0,
-    y: prefersReduced ? 0 : 12,
+    y: prefersReduced ? 0 : 10,
   }),
   animate: (prefersReduced: boolean) => ({
     opacity: 1,
     y: 0,
-    transition: getMotionTransition(prefersReduced, MOTION_TIMING.normal, MOTION_EASING.easeOut),
+    transition: getMotionTransition(prefersReduced, 0.26, MOTION_EASING.easeOut),
   }),
   exit: (prefersReduced: boolean) => ({
     opacity: 0,
-    y: prefersReduced ? 0 : -4,
-    transition: getMotionTransition(prefersReduced, MOTION_TIMING.fast, MOTION_EASING.easeInOut),
+    y: prefersReduced ? 0 : -6,
+    transition: getMotionTransition(prefersReduced, 0.16, MOTION_EASING.easeInOut),
   }),
 };
+
+export const workspaceTransitionVariants: Variants = pageTransitionVariants;
 
 /**
  * Masked Heading Reveal Variants (§4)

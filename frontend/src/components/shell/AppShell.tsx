@@ -2,6 +2,8 @@ import React from 'react';
 import { ProjectMetadata, ActiveView } from '../../types';
 import { TopNav } from './TopNav';
 import { ProjectSwitcher } from './ProjectSwitcher';
+import { PersistentGranularBackground } from './PersistentGranularBackground';
+import { WorkspaceTransition } from '../motion/WorkspaceTransition';
 
 export interface AppShellProps {
   currentProject: ProjectMetadata | null;
@@ -32,11 +34,14 @@ export const AppShell: React.FC<AppShellProps> = ({
 }) => {
   return (
     <div className="workstation-container editorial-shell">
-      {/* Static Visual Texture Overlays (Zero Animation / Static CSS-only) */}
+      {/* Layer 1: Global Persistent Three.js Granular Environment (Never unmounts across navigation) */}
+      <PersistentGranularBackground activeView={activeView} />
+
+      {/* Layer 2: Static Visual Texture Overlays (Zero Animation / Static CSS-only) */}
       <div className="app-texture-overlay" aria-hidden="true" />
       <div className="app-halftone-overlay" aria-hidden="true" />
 
-      {/* Top Header & Navigation */}
+      {/* Layer 4: Top Header & Navigation */}
       <header className="app-header" role="banner">
         <div className="header-main-row">
           {/* Brand Identity */}
@@ -128,9 +133,11 @@ export const AppShell: React.FC<AppShellProps> = ({
         )}
       </header>
 
-      {/* Main Dynamic Viewport */}
+      {/* Layer 3: Main Dynamic Viewport with Reusable WorkspaceTransition */}
       <main className="main-viewport" role="main">
-        {children}
+        <WorkspaceTransition viewKey={activeView}>
+          {children}
+        </WorkspaceTransition>
       </main>
     </div>
   );
