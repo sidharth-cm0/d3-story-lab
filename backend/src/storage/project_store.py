@@ -25,6 +25,7 @@ from src.domain.story_structure import (
     CausalContinuitySummary,
     CharacterArcReport,
 )
+from src.domain.character_creation import CharacterInput, CharacterProfileDraft
 
 
 class ProjectStorageError(Exception):
@@ -80,6 +81,8 @@ class ProjectData(BaseModel):
     scenes: Optional[List[SceneData]] = None
     causal_summary: Optional[CausalContinuitySummary] = None
     character_arcs: Optional[Dict[str, CharacterArcReport]] = None
+    character_inputs: Optional[Dict[str, CharacterInput]] = None
+    character_drafts: Optional[Dict[str, CharacterProfileDraft]] = None
 
 
 class ProjectStore:
@@ -148,7 +151,7 @@ class ProjectStore:
                 world["facts"] = {}
 
         # Safe defaults for optional fields
-        for field in ("story_structure", "story_blueprint", "scenes", "causal_summary", "character_arcs", "event_log"):
+        for field in ("story_structure", "story_blueprint", "scenes", "causal_summary", "character_arcs", "event_log", "character_inputs", "character_drafts"):
             if field not in data:
                 data[field] = None
 
@@ -224,6 +227,8 @@ class ProjectStore:
             scenes=project.scenes,
             causal_summary=project.causal_summary,
             character_arcs=project.character_arcs,
+            character_inputs=project.character_inputs,
+            character_drafts=project.character_drafts,
         )
 
         data_dict = project_to_save.model_dump(mode="json")
@@ -302,6 +307,8 @@ class ProjectStore:
             scenes=project.scenes,
             causal_summary=project.causal_summary,
             character_arcs=project.character_arcs,
+            character_inputs=project.character_inputs,
+            character_drafts=project.character_drafts,
         )
 
         data_dict = project_to_save.model_dump(mode="json")

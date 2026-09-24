@@ -3,6 +3,7 @@ from typing import List, Dict, Optional, Any, Literal
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from .continuity import ActorVisualProfile
 from .proposition import KnowledgeItem
+from .character_creation import FieldProvenance
 
 
 class EmotionalState(BaseModel):
@@ -79,6 +80,13 @@ class Character(BaseModel):
     inventory: List[str] = Field(default_factory=list, description="Object IDs held")
     visual_profile: Optional[ActorVisualProfile] = Field(
         default=None, description="Visual identity profile for continuity"
+    )
+    input_id: Optional[str] = Field(
+        default=None, description="Linked CharacterInput ID if created via intake"
+    )
+    field_provenance: Dict[str, FieldProvenance] = Field(
+        default_factory=dict,
+        description="Design-time field authority and provenance map",
     )
 
     def knows(self, proposition_id: str) -> Optional[KnowledgeItem]:

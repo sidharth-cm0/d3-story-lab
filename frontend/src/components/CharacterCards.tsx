@@ -2,14 +2,22 @@ import React, { useState } from 'react';
 import { WorldState } from '../types';
 import { formatDisplayValue } from '../utils/format';
 import { ParticleHalo } from './granular';
+import { CharacterWorkstation } from './CharacterWorkstation';
 
 interface CharacterCardsProps {
   world: WorldState;
+  projectId?: string;
+  onCharacterCreated?: () => void;
 }
 
-export const CharacterCards: React.FC<CharacterCardsProps> = ({ world }) => {
+export const CharacterCards: React.FC<CharacterCardsProps> = ({
+  world,
+  projectId,
+  onCharacterCreated,
+}) => {
   const [debugActive, setDebugActive] = useState<Record<string, boolean>>({});
   const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
+  const [showWorkstation, setShowWorkstation] = useState(false);
 
   const characters = Object.values(world.characters || {});
   const locations = world.locations || {};
@@ -53,11 +61,30 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({ world }) => {
         <div>
           <span className="pane-kicker">AUTONOMOUS AGENTS</span>
           <h2 className="pane-title">ACTORS</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span className="badge badge-subtle">{characters.length} ACTIVE</span>
+          <button
+            className={`btn-primary ${showWorkstation ? 'active' : ''}`}
+            onClick={() => setShowWorkstation(!showWorkstation)}
+            style={{ fontSize: '11px', padding: '6px 14px' }}
+          >
+            {showWorkstation ? '✕ Close Workstation' : '＋ Create Character'}
+          </button>
         </div>
-        <span className="badge badge-subtle">{characters.length} ACTIVE</span>
       </div>
 
-      <div className="actors-cards-grid">
+      {showWorkstation && (
+        <div style={{ marginBottom: '24px' }}>
+          <CharacterWorkstation
+            projectId={projectId || world.id}
+            onCharacterCreated={() => {
+              setShowWorkstation(false);
+              onCharacterCreated?.();
+            }}
+            onCancel={() => setShowWorkstation(false)}
+          />
+        </div>
+      )}
         {characters.map((char) => {
           const loc = locations[char.location_id];
           const isDebug = !!debugActive[char.id];

@@ -74,6 +74,56 @@ export interface DiscoveredFact {
   metadata?: Record<string, any>;
 }
 
+export type FieldAuthority = 'USER_LOCKED' | 'USER_PREFERRED' | 'SYSTEM_INFERRED' | 'SYSTEM_GENERATED';
+
+export interface FieldProvenance {
+  field_name: string;
+  value?: any;
+  authority: FieldAuthority;
+  source_snippet?: string | null;
+  inference_rule?: string | null;
+  created_at: string;
+  locked_at?: string | null;
+}
+
+export interface CharacterInput {
+  id: string;
+  project_id?: string | null;
+  raw_text?: string | null;
+  structured_payload?: Record<string, any> | null;
+  created_at: string;
+  linked_character_id?: string | null;
+}
+
+export interface CharacterProfileDraft {
+  id: string;
+  project_id?: string | null;
+  input_id?: string | null;
+  name: string;
+  role: string;
+  description?: string | null;
+  personality_traits: Record<string, number>;
+  goals: string[];
+  secrets: string[];
+  beliefs: string[];
+  emotional_state: Record<string, number>;
+  visual_profile?: ActorVisualProfile | null;
+  current_location_id?: string | null;
+  provenance: Record<string, FieldProvenance>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompletenessReport {
+  score: number;
+  normalized_score: number;
+  is_complete: boolean;
+  missing_fields: string[];
+  present_fields: string[];
+  field_scores: Record<string, number>;
+  weights: Record<string, number>;
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -87,6 +137,8 @@ export interface Character {
   known_facts?: string[];
   inventory?: string[];
   visual_profile?: ActorVisualProfile;
+  input_id?: string | null;
+  field_provenance?: Record<string, FieldProvenance>;
 }
 
 export interface WorldObject {

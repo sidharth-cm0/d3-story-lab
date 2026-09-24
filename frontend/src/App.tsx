@@ -198,7 +198,13 @@ export const App: React.FC = () => {
       {activeView === 'actors' && (
         projectData ? (
           <div className="view-page-container">
-            <CharacterCards world={projectData.world} />
+            <CharacterCards
+              world={projectData.world}
+              projectId={currentProjectId || undefined}
+              onCharacterCreated={() => {
+                if (currentProjectId) loadCurrentProject(currentProjectId);
+              }}
+            />
           </div>
         ) : (
           <div className="empty-quiet" style={{ margin: 'auto' }}>

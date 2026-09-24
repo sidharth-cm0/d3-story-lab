@@ -9,6 +9,8 @@ from .schemas import (
     WorldInitializationPlan,
 )
 from .initializer import WorldInitializerService
+from .character_normalizer import CharacterProfileNormalizer
+from .character_enricher import CharacterEnrichmentService
 
 __all__ = [
     "FactType",
@@ -19,4 +21,6 @@ __all__ = [
     "RelationshipPlan",
     "WorldInitializationPlan",
     "WorldInitializerService",
+    "CharacterProfileNormalizer",
+    "CharacterEnrichmentService",
 ]

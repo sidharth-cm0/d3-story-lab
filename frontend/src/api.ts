@@ -11,6 +11,10 @@ import {
   StoryBlueprint,
   CharacterArcReport,
   CausalContinuitySummary,
+  CharacterProfileDraft,
+  CharacterInput,
+  CompletenessReport,
+  FieldAuthority,
 } from './types';
 
 const BASE_URL = '/api';
@@ -366,5 +370,115 @@ export async function fetchCausalContinuity(projectId: string): Promise<CausalCo
 export async function fetchScenes(projectId: string): Promise<any[]> {
   const res = await fetch(`${BASE_URL}/projects/${projectId}/scenes`);
   if (!res.ok) throw new Error('Failed to fetch scenes');
+  return res.json();
+}
+
+// --- Phase A: Character Creation & Field Authority APIs ---
+
+export async function intakeCharacter(
+  projectId: string,
+  rawText?: string,
+  structuredPayload?: Record<string, any>,
+  autoEnrich: boolean = false
+): Promise<{ input: CharacterInput; draft: CharacterProfileDraft; completeness: CompletenessReport }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/intake`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      raw_text: rawText,
+      structured_payload: structuredPayload,
+      auto_enrich: autoEnrich,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to intake character' }));
+    throw new Error(err.detail || 'Failed to intake character');
+  }
+  return res.json();
+}
+
+export async function fetchCharacterDrafts(
+  projectId: string
+): Promise<Array<{ draft: CharacterProfileDraft; completeness: CompletenessReport }>> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/drafts`);
+  if (!res.ok) throw new Error('Failed to fetch character drafts');
+  return res.json();
+}
+
+export async function fetchCharacterDraft(
+  projectId: string,
+  draftId: string
+): Promise<{ draft: CharacterProfileDraft; completeness: CompletenessReport }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/drafts/${draftId}`);
+  if (!res.ok) throw new Error('Failed to fetch character draft');
+  return res.json();
+}
+
+export async function enrichCharacterDraft(
+  projectId: string,
+  draftId: string
+): Promise<{ draft: CharacterProfileDraft; completeness: CompletenessReport }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/drafts/${draftId}/enrich`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to enrich character draft');
+  return res.json();
+}
+
+export async function lockCharacterField(
+  projectId: string,
+  draftId: string,
+  fieldName: string
+): Promise<{ draft: CharacterProfileDraft; field_name: string; authority: FieldAuthority }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/drafts/${draftId}/lock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field_name: fieldName }),
+  });
+  if (!res.ok) throw new Error('Failed to lock character field');
+  return res.json();
+}
+
+export async function unlockCharacterField(
+  projectId: string,
+  draftId: string,
+  fieldName: string
+): Promise<{ draft: CharacterProfileDraft; field_name: string; authority: FieldAuthority }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/drafts/${draftId}/unlock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field_name: fieldName }),
+  });
+  if (!res.ok) throw new Error('Failed to unlock character field');
+  return res.json();
+}
+
+export async function updateCharacterField(
+  projectId: string,
+  draftId: string,
+  fieldName: string,
+  value: any,
+  authority: FieldAuthority = 'USER_LOCKED'
+): Promise<{ draft: CharacterProfileDraft; completeness: CompletenessReport }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/drafts/${draftId}/update-field`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field_name: fieldName, value, authority }),
+  });
+  if (!res.ok) throw new Error('Failed to update character field');
+  return res.json();
+}
+
+export async function acceptCharacterDraft(
+  projectId: string,
+  draftId: string
+): Promise<{ character: any; character_id: string; draft_id: string }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/drafts/${draftId}/accept`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to accept character' }));
+    throw new Error(err.detail || 'Failed to accept character');
+  }
   return res.json();
 }

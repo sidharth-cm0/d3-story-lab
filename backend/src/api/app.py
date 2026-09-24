@@ -37,7 +37,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ConfigDict
 
 from src.domain.world import WorldState
+from src.domain.character import Character
+from src.domain.goal import Goal, GoalStatus
+from src.domain.secret import Secret
+from src.domain.belief import Belief
+from src.domain.character_creation import (
+    FieldAuthority,
+    FieldProvenance,
+    CharacterInput,
+    CharacterProfileDraft,
+)
+from src.domain.character_completeness import (
+    CompletenessReport,
+    calculate_character_completeness,
+)
 from src.generator.initializer import WorldInitializerService
+from src.generator.character_normalizer import CharacterProfileNormalizer
+from src.generator.character_enricher import CharacterEnrichmentService
 from src.simulation.orchestrator import SimulationOrchestrator
 from src.agents.actor import ActorAgent
 from src.agents.director import DirectorAgent
@@ -127,6 +143,26 @@ class StepRequest(BaseModel):
 
 class RunRequest(BaseModel):
     num_ticks: int = Field(default=5, ge=1, le=100)
+
+
+class CharacterIntakeRequest(BaseModel):
+    raw_text: Optional[str] = None
+    structured_payload: Optional[Dict[str, Any]] = None
+    auto_enrich: Optional[bool] = False
+
+
+class LockFieldRequest(BaseModel):
+    field_name: str
+
+
+class UnlockFieldRequest(BaseModel):
+    field_name: str
+
+
+class UpdateFieldRequest(BaseModel):
+    field_name: str
+    value: Any
+    authority: Optional[FieldAuthority] = FieldAuthority.USER_LOCKED
 
 
 class GenerateScreenplayRequest(BaseModel):
@@ -800,6 +836,300 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         proj.character_arcs = reports
         store.save_project(proj)
         return {cid: rep.model_dump(mode="json") for cid, rep in reports.items()}
+
+    # --- Phase A: Character Creation & Field Authority Endpoints ---
+
+    @app.post("/api/projects/{project_id}/characters/intake")
+    def intake_character_for_project(project_id: str, req: CharacterIntakeRequest):
+        """Intake character from free text or structured fields with field-level authority."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        normalizer = CharacterProfileNormalizer()
+        char_input, draft = normalizer.normalize(
+            raw_text=req.raw_text,
+            structured_payload=req.structured_payload,
+            project_id=project_id,
+        )
+
+        if req.auto_enrich:
+            enricher = CharacterEnrichmentService()
+            draft = enricher.enrich(draft, premise=proj.metadata.seed_prompt)
+
+        completeness = calculate_character_completeness(draft)
+
+        if proj.character_inputs is None:
+            proj.character_inputs = {}
+        if proj.character_drafts is None:
+            proj.character_drafts = {}
+
+        proj.character_inputs[char_input.id] = char_input
+        proj.character_drafts[draft.id] = draft
+        store.save_project(proj)
+
+        return {
+            "input": char_input.model_dump(mode="json"),
+            "draft": draft.model_dump(mode="json"),
+            "completeness": completeness.model_dump(mode="json"),
+        }
+
+    @app.get("/api/projects/{project_id}/characters/drafts")
+    def list_character_drafts(project_id: str):
+        """List all character profile drafts for a project."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        drafts = list((proj.character_drafts or {}).values())
+        return [
+            {
+                "draft": d.model_dump(mode="json"),
+                "completeness": calculate_character_completeness(d).model_dump(mode="json"),
+            }
+            for d in drafts
+        ]
+
+    @app.get("/api/projects/{project_id}/characters/drafts/{draft_id}")
+    def get_character_draft(project_id: str, draft_id: str):
+        """Retrieve a character draft with its per-field authority and completeness."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        draft = (proj.character_drafts or {}).get(draft_id)
+        if not draft:
+            raise HTTPException(status_code=404, detail="Character draft not found")
+        return {
+            "draft": draft.model_dump(mode="json"),
+            "completeness": calculate_character_completeness(draft).model_dump(mode="json"),
+        }
+
+    @app.get("/api/projects/{project_id}/characters/drafts/{draft_id}/completeness")
+    def get_character_draft_completeness(project_id: str, draft_id: str):
+        """Get pure completeness report for a character draft."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        draft = (proj.character_drafts or {}).get(draft_id)
+        if not draft:
+            raise HTTPException(status_code=404, detail="Character draft not found")
+        return calculate_character_completeness(draft).model_dump(mode="json")
+
+    @app.post("/api/projects/{project_id}/characters/drafts/{draft_id}/enrich")
+    def enrich_character_draft(project_id: str, draft_id: str):
+        """Enrich missing and unlocked fields deterministically, respecting USER_LOCKED fields."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        draft = (proj.character_drafts or {}).get(draft_id)
+        if not draft:
+            raise HTTPException(status_code=404, detail="Character draft not found")
+
+        enricher = CharacterEnrichmentService()
+        draft = enricher.enrich(draft, premise=proj.metadata.seed_prompt)
+        completeness = calculate_character_completeness(draft)
+
+        proj.character_drafts[draft_id] = draft
+        store.save_project(proj)
+
+        return {
+            "draft": draft.model_dump(mode="json"),
+            "completeness": completeness.model_dump(mode="json"),
+        }
+
+    @app.post("/api/projects/{project_id}/characters/drafts/{draft_id}/lock")
+    def lock_character_field(project_id: str, draft_id: str, req: LockFieldRequest):
+        """Lock a field on a character profile draft so enrichment will never modify it."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        draft = (proj.character_drafts or {}).get(draft_id)
+        if not draft:
+            raise HTTPException(status_code=404, detail="Character draft not found")
+
+        draft.lock_field(req.field_name)
+        proj.character_drafts[draft_id] = draft
+        store.save_project(proj)
+
+        return {
+            "draft": draft.model_dump(mode="json"),
+            "field_name": req.field_name,
+            "authority": draft.get_authority(req.field_name),
+        }
+
+    @app.post("/api/projects/{project_id}/characters/drafts/{draft_id}/unlock")
+    def unlock_character_field(project_id: str, draft_id: str, req: UnlockFieldRequest):
+        """Unlock a previously locked field on a character profile draft."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        draft = (proj.character_drafts or {}).get(draft_id)
+        if not draft:
+            raise HTTPException(status_code=404, detail="Character draft not found")
+
+        draft.unlock_field(req.field_name)
+        proj.character_drafts[draft_id] = draft
+        store.save_project(proj)
+
+        return {
+            "draft": draft.model_dump(mode="json"),
+            "field_name": req.field_name,
+            "authority": draft.get_authority(req.field_name),
+        }
+
+    @app.post("/api/projects/{project_id}/characters/drafts/{draft_id}/update-field")
+    def update_character_field(project_id: str, draft_id: str, req: UpdateFieldRequest):
+        """Explicitly update a field on a draft with user authority."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        draft = (proj.character_drafts or {}).get(draft_id)
+        if not draft:
+            raise HTTPException(status_code=404, detail="Character draft not found")
+
+        auth = req.authority or FieldAuthority.USER_LOCKED
+        success = draft.set_field(
+            field_name=req.field_name,
+            value=req.value,
+            authority=auth,
+            source_snippet="manual_edit",
+            force=True,
+        )
+        if not success:
+            raise HTTPException(status_code=400, detail=f"Cannot update field '{req.field_name}'")
+
+        completeness = calculate_character_completeness(draft)
+        proj.character_drafts[draft_id] = draft
+        store.save_project(proj)
+
+        return {
+            "draft": draft.model_dump(mode="json"),
+            "completeness": completeness.model_dump(mode="json"),
+        }
+
+    @app.post("/api/projects/{project_id}/characters/drafts/{draft_id}/accept")
+    def accept_character_draft(project_id: str, draft_id: str):
+        """Accept a character profile draft and instantiate it into the canonical world state."""
+        import re as re_mod
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        draft = (proj.character_drafts or {}).get(draft_id)
+        if not draft:
+            raise HTTPException(status_code=404, detail="Character draft not found")
+
+        # Generate character ID
+        clean_name = re_mod.sub(r"[^a-zA-Z0-9_]", "", (draft.name or "actor").lower().replace(" ", "_"))
+        char_id = f"char_{clean_name}"
+        if char_id in proj.world.characters:
+            char_id = f"char_{clean_name}_{draft.id[-4:]}"
+
+        # Resolve location
+        loc_id = draft.current_location_id
+        if not loc_id or loc_id not in proj.world.locations:
+            loc_id = next(iter(proj.world.locations.keys()), None)
+
+        # Create Goals
+        char_goals: List[str] = []
+        for g_idx, g_desc in enumerate(draft.goals):
+            gid = f"goal_{char_id}_{g_idx + 1}"
+            goal = Goal(
+                id=gid,
+                character_id=char_id,
+                description=g_desc,
+                priority=0.8,
+                status=GoalStatus.ACTIVE,
+                reason="User-defined objective",
+            )
+            proj.world.goals[gid] = goal
+            char_goals.append(gid)
+
+        # Create Secrets
+        char_secrets: List[str] = []
+        for s_idx, s_desc in enumerate(draft.secrets):
+            sid = f"sec_{char_id}_{s_idx + 1}"
+            sec = Secret(
+                id=sid,
+                character_id=char_id,
+                statement=s_desc,
+                importance=1.0,
+            )
+            proj.world.secrets[sid] = sec
+            char_secrets.append(sid)
+
+        # Create Beliefs
+        char_beliefs: List[str] = []
+        for b_idx, b_desc in enumerate(draft.beliefs):
+            bid = f"bel_{char_id}_{b_idx + 1}"
+            bel = Belief(
+                id=bid,
+                character_id=char_id,
+                statement=b_desc,
+                confidence=0.85,
+                source="initial_belief",
+            )
+            proj.world.beliefs[bid] = bel
+            char_beliefs.append(bid)
+
+        # Create Character
+        char = Character(
+            id=char_id,
+            name=draft.name,
+            role=draft.role,
+            description=draft.description,
+            personality_traits=dict(draft.personality_traits),
+            goals=char_goals,
+            secrets=char_secrets,
+            beliefs=char_beliefs,
+            visual_profile=draft.visual_profile,
+            current_location_id=loc_id,
+            input_id=draft.input_id,
+            field_provenance=dict(draft.provenance),
+        )
+
+        proj.world.characters[char_id] = char
+
+        # Link input
+        if draft.input_id and proj.character_inputs and draft.input_id in proj.character_inputs:
+            proj.character_inputs[draft.input_id].linked_character_id = char_id
+
+        store.save_project(proj)
+
+        return {
+            "character": char.model_dump(mode="json"),
+            "character_id": char_id,
+            "draft_id": draft_id,
+        }
+
+    # Standalone character endpoints (in-memory, no project ID required)
+    @app.post("/api/characters/intake")
+    def standalone_character_intake(req: CharacterIntakeRequest):
+        """Intake character from free text or form payload without binding to a saved project."""
+        normalizer = CharacterProfileNormalizer()
+        char_input, draft = normalizer.normalize(
+            raw_text=req.raw_text,
+            structured_payload=req.structured_payload,
+        )
+        if req.auto_enrich:
+            enricher = CharacterEnrichmentService()
+            draft = enricher.enrich(draft)
+        completeness = calculate_character_completeness(draft)
+        return {
+            "input": char_input.model_dump(mode="json"),
+            "draft": draft.model_dump(mode="json"),
+            "completeness": completeness.model_dump(mode="json"),
+        }
+
+    @app.post("/api/characters/enrich")
+    def standalone_character_enrich(draft_data: Dict[str, Any] = Body(...)):
+        """Enrich a character draft payload in-memory respecting authority tags."""
+        draft = CharacterProfileDraft.model_validate(draft_data)
+        enricher = CharacterEnrichmentService()
+        enriched = enricher.enrich(draft)
+        completeness = calculate_character_completeness(enriched)
+        return {
+            "draft": enriched.model_dump(mode="json"),
+            "completeness": completeness.model_dump(mode="json"),
+        }
 
     @app.get("/api/projects/{project_id}/causal-continuity")
     def get_causal_continuity(project_id: str):

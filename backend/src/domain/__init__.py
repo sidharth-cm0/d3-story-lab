@@ -39,6 +39,16 @@ from .world_view import (
     project_view,
 )
 from .continuity import ActorVisualProfile, ObjectVisualProfile, LocationVisualProfile
+from .character_creation import (
+    FieldAuthority,
+    FieldProvenance,
+    CharacterInput,
+    CharacterProfileDraft,
+)
+from .character_completeness import (
+    CompletenessReport,
+    calculate_character_completeness,
+)
 
 __all__ = [
     "SimulationClock",
@@ -92,4 +102,10 @@ __all__ = [
     "ActorVisualProfile",
     "ObjectVisualProfile",
     "LocationVisualProfile",
+    "FieldAuthority",
+    "FieldProvenance",
+    "CharacterInput",
+    "CharacterProfileDraft",
+    "CompletenessReport",
+    "calculate_character_completeness",
 ]
