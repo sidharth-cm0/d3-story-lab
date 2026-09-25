@@ -27,6 +27,8 @@ class WorldSnapshot:
     character_goals: Dict[str, List[str]] = field(default_factory=dict)
     character_beliefs: Dict[Tuple[str, str], bool] = field(default_factory=dict)  # (char_id, prop_id) -> val
     relationships: Dict[Tuple[str, str], float] = field(default_factory=dict)      # (char_a, char_b) -> affinity
+    relationship_dimensions: Dict[Tuple[str, str], Dict[str, float]] = field(default_factory=dict)  # (char_a, char_b) -> {dim: val}
+    character_emotions: Dict[str, Dict[str, float]] = field(default_factory=dict)  # char_id -> {emotion: val}
 
 
 class StateSnapshotDiffer:
@@ -50,11 +52,20 @@ class StateSnapshotDiffer:
         char_goals: Dict[str, List[str]] = {}
         char_beliefs: Dict[Tuple[str, str], bool] = {}
         relationships: Dict[Tuple[str, str], float] = {}
+        char_emotions: Dict[str, Dict[str, float]] = {}
 
         for cid, char in world.characters.items():
             char_goals[cid] = [g.id if hasattr(g, "id") else str(g) for g in char.goals]
             for prop_id, k_item in char.knowledge.items():
                 char_beliefs[(cid, prop_id)] = k_item.believed_truth_value
+            if hasattr(char, "emotional_state") and char.emotional_state:
+                char_emotions[cid] = {
+                    "happiness": getattr(char.emotional_state, "happiness", 0.0),
+                    "fear": getattr(char.emotional_state, "fear", 0.0),
+                    "anger": getattr(char.emotional_state, "anger", 0.0),
+                    "trust": getattr(char.emotional_state, "trust", 0.0),
+                    "curiosity": getattr(char.emotional_state, "curiosity", 0.0),
+                }
             if isinstance(char.relationships, dict):
                 for target_id, rel in char.relationships.items():
                     relationships[(cid, target_id)] = getattr(rel, "affinity", 0.0)
@@ -71,7 +82,8 @@ class StateSnapshotDiffer:
                         if tid:
                             relationships[(cid, tid)] = getattr(rel, "affinity", 0.0)
 
-        # Also register world-level relationships
+        # Also register world-level relationships and multidimensional fields
+        relationship_dimensions: Dict[Tuple[str, str], Dict[str, float]] = {}
         if hasattr(world, "relationships") and isinstance(world.relationships, dict):
             for rel in world.relationships.values():
                 ca = getattr(rel, "character_a_id", None)
@@ -80,6 +92,19 @@ class StateSnapshotDiffer:
                 if ca and cb:
                     relationships.setdefault((ca, cb), aff)
                     relationships.setdefault((cb, ca), aff)
+                    dims = {
+                        "affinity": getattr(rel, "affinity", 0.0),
+                        "trust": getattr(rel, "trust", 0.0),
+                        "affection": getattr(rel, "affection", 0.0),
+                        "fear": getattr(rel, "fear", 0.0),
+                        "dependency": getattr(rel, "dependency", 0.0),
+                        "respect": getattr(rel, "respect", 0.0),
+                        "resentment": getattr(rel, "resentment", 0.0),
+                        "suspicion": getattr(rel, "suspicion", 0.0),
+                        "power_imbalance": getattr(rel, "power_imbalance", 0.0),
+                    }
+                    relationship_dimensions.setdefault((ca, cb), dims)
+                    relationship_dimensions.setdefault((cb, ca), dims)
 
         snap = WorldSnapshot(
             tick=tick,
@@ -89,6 +114,8 @@ class StateSnapshotDiffer:
             character_goals=char_goals,
             character_beliefs=char_beliefs,
             relationships=relationships,
+            relationship_dimensions=relationship_dimensions,
+            character_emotions=char_emotions,
         )
         self.snapshots[tick] = snap
         return snap
@@ -113,6 +140,19 @@ class StateSnapshotDiffer:
         # Sort descending by tick to reverse effects
         events_after.sort(key=lambda e: e.tick, reverse=True)
 
+        # Make a copy of the dictionaries so we don't mutate current tick snapshot
+        snap = WorldSnapshot(
+            tick=target_tick,
+            object_holders=dict(snap.object_holders),
+            object_locations=dict(snap.object_locations),
+            character_locations=dict(snap.character_locations),
+            character_goals={k: list(v) for k, v in snap.character_goals.items()},
+            character_beliefs=dict(snap.character_beliefs),
+            relationships=dict(snap.relationships),
+            relationship_dimensions={k: dict(v) for k, v in snap.relationship_dimensions.items()},
+            character_emotions={k: dict(v) for k, v in snap.character_emotions.items()},
+        )
+
         for evt in events_after:
             if evt.event_type == EventType.OBJECT_PICKED_UP:
                 oid = evt.metadata.get("object_id")
@@ -131,6 +171,44 @@ class StateSnapshotDiffer:
                 giver_id = evt.metadata.get("giver_id")
                 if oid and giver_id:
                     snap.object_holders[oid] = giver_id
+
+            # Roll back relationship dimensions
+            for dim in (
+                "affinity",
+                "trust",
+                "affection",
+                "fear",
+                "dependency",
+                "respect",
+                "resentment",
+                "suspicion",
+                "power_imbalance",
+            ):
+                d_key = f"delta_{dim}"
+                if d_key in evt.metadata and evt.actor_ids:
+                    delta = float(evt.metadata[d_key])
+                    if len(evt.actor_ids) >= 2:
+                        ca, cb = evt.actor_ids[0], evt.actor_ids[1]
+                        for pair in [(ca, cb), (cb, ca)]:
+                            if pair in snap.relationship_dimensions and dim in snap.relationship_dimensions[pair]:
+                                snap.relationship_dimensions[pair][dim] = round(
+                                    max(-1.0, min(1.0, snap.relationship_dimensions[pair][dim] - delta)), 4
+                                )
+                            if dim == "affinity" and pair in snap.relationships:
+                                snap.relationships[pair] = round(
+                                    max(-1.0, min(1.0, snap.relationships[pair] - delta)), 4
+                                )
+
+            # Roll back character emotions
+            for emo in ("happiness", "fear", "anger", "trust", "curiosity"):
+                d_key = f"delta_{emo}"
+                if d_key in evt.metadata and evt.actor_ids:
+                    delta = float(evt.metadata[d_key])
+                    for aid in evt.actor_ids:
+                        if aid in snap.character_emotions and emo in snap.character_emotions[aid]:
+                            snap.character_emotions[aid][emo] = round(
+                                max(0.0, min(1.0, snap.character_emotions[aid][emo] - delta)), 4
+                            )
 
         snap.tick = target_tick
         return snap

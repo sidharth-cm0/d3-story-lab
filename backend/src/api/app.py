@@ -67,6 +67,11 @@ from src.domain.conflict import (
     ConflictGraph,
 )
 from src.narrative.conflict_engine import ConflictEngine
+from src.narrative.state_history import (
+    CharacterStateHistoryReconstructor,
+    RELATIONSHIP_METRIC_NAMES,
+    CHARACTER_METRIC_NAMES,
+)
 from src.generator.initializer import WorldInitializerService
 from src.generator.character_normalizer import CharacterProfileNormalizer
 from src.generator.character_enricher import CharacterEnrichmentService
@@ -1620,6 +1625,151 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         if not rel:
             raise HTTPException(status_code=404, detail="Relationship not found")
         return rel.model_dump(mode="json")
+
+    # Character State History & Graph Endpoints (Phase E)
+    @app.get("/api/projects/{project_id}/characters/{character_id}/history")
+    def get_character_history(
+        project_id: str,
+        character_id: str,
+        metric: Optional[str] = None,
+        target_id: Optional[str] = None,
+        sparse: bool = True,
+    ):
+        """Retrieve reconstructed state history time-series for a character with event provenance."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if character_id not in proj.world.characters:
+            raise HTTPException(status_code=404, detail="Character not found")
+
+        if metric:
+            if metric in RELATIONSHIP_METRIC_NAMES:
+                if not target_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"target_id is required for relationship metric '{metric}'",
+                    )
+                series = CharacterStateHistoryReconstructor.reconstruct_relationship_series(
+                    proj.world,
+                    character_id,
+                    target_id,
+                    dimension=metric,
+                    project_id=project_id,
+                    sparse=sparse,
+                )
+            else:
+                series = CharacterStateHistoryReconstructor.reconstruct_character_metric_series(
+                    proj.world,
+                    character_id,
+                    metric=metric,
+                    project_id=project_id,
+                    sparse=sparse,
+                )
+            return series.model_dump(mode="json")
+        else:
+            report = CharacterStateHistoryReconstructor.reconstruct_character_history(
+                proj.world,
+                character_id,
+                target_character_id=target_id,
+                project_id=project_id,
+                sparse=sparse,
+            )
+            return report.model_dump(mode="json")
+
+    @app.get("/api/projects/{project_id}/relationships/{char_a_id}/{char_b_id}/history")
+    def get_relationship_dimension_history(
+        project_id: str,
+        char_a_id: str,
+        char_b_id: str,
+        dimension: Optional[str] = None,
+        sparse: bool = True,
+    ):
+        """Retrieve historical time-series for relationship dimensions with event provenance."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if char_a_id not in proj.world.characters or char_b_id not in proj.world.characters:
+            raise HTTPException(status_code=404, detail="One or both characters not found")
+
+        if dimension:
+            series = CharacterStateHistoryReconstructor.reconstruct_relationship_series(
+                proj.world,
+                char_a_id,
+                char_b_id,
+                dimension=dimension,
+                project_id=project_id,
+                sparse=sparse,
+            )
+            return series.model_dump(mode="json")
+        else:
+            dims = sorted(list(RELATIONSHIP_METRIC_NAMES))
+            res = {}
+            for d in dims:
+                s = CharacterStateHistoryReconstructor.reconstruct_relationship_series(
+                    proj.world,
+                    char_a_id,
+                    char_b_id,
+                    dimension=d,
+                    project_id=project_id,
+                    sparse=sparse,
+                )
+                res[d] = s.model_dump(mode="json")
+            return {
+                "char_a_id": char_a_id,
+                "char_b_id": char_b_id,
+                "dimensions": res,
+            }
+
+    @app.get("/api/projects/{project_id}/characters/{character_id}/trajectory/history")
+    def get_character_trajectory_history(
+        project_id: str,
+        character_id: str,
+        sparse: bool = True,
+    ):
+        """Retrieve historical time-series for archetype alignment and arc stage transitions."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if character_id not in proj.world.characters:
+            raise HTTPException(status_code=404, detail="Character not found")
+
+        trajectory_series = CharacterStateHistoryReconstructor.reconstruct_trajectory_series(
+            proj.world,
+            character_id,
+            project_id=project_id,
+            sparse=sparse,
+        )
+        return {
+            "character_id": character_id,
+            "project_id": project_id,
+            "trajectory": [s.model_dump(mode="json") for s in trajectory_series],
+        }
+
+    @app.get("/api/projects/{project_id}/characters/{character_id}/history/batch")
+    def get_character_history_batch(
+        project_id: str,
+        character_id: str,
+        metrics: str,
+        target_id: Optional[str] = None,
+        sparse: bool = True,
+    ):
+        """Batch query multiple history metrics for a character."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if character_id not in proj.world.characters:
+            raise HTTPException(status_code=404, detail="Character not found")
+
+        metric_list = [m.strip() for m in metrics.split(",") if m.strip()]
+        report = CharacterStateHistoryReconstructor.reconstruct_character_history(
+            proj.world,
+            character_id,
+            metrics=metric_list,
+            target_character_id=target_id,
+            project_id=project_id,
+            sparse=sparse,
+        )
+        return report.model_dump(mode="json")
 
     @app.get("/api/projects/{project_id}/causal-continuity")
     def get_causal_continuity(project_id: str):

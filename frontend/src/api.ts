@@ -21,6 +21,8 @@ import {
   ConflictGraph,
   ConflictEdge,
   Relationship,
+  CharacterHistorySeries,
+  CharacterHistoryReport,
 } from './types';
 
 const BASE_URL = '/api';
@@ -657,5 +659,59 @@ export async function getProjectRelationships(
 ): Promise<{ relationships: Relationship[] }> {
   const res = await fetch(`${BASE_URL}/projects/${projectId}/relationships`);
   if (!res.ok) throw new Error('Failed to fetch project relationships');
+  return res.json();
+}
+
+export async function getCharacterHistory(
+  projectId: string,
+  characterId: string,
+  metric: string = 'goal_pressure',
+  targetId?: string,
+  sparse: boolean = true
+): Promise<CharacterHistorySeries> {
+  const params = new URLSearchParams({ metric, sparse: String(sparse) });
+  if (targetId) params.append('target_id', targetId);
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/history?${params.toString()}`);
+  if (!res.ok) throw new Error('Failed to fetch character history');
+  return res.json();
+}
+
+export async function getRelationshipDimensionHistory(
+  projectId: string,
+  charAId: string,
+  charBId: string,
+  dimension?: string,
+  sparse: boolean = true
+): Promise<CharacterHistorySeries> {
+  const params = new URLSearchParams({ sparse: String(sparse) });
+  if (dimension) params.append('dimension', dimension);
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/relationships/${charAId}/${charBId}/history?${params.toString()}`);
+  if (!res.ok) throw new Error('Failed to fetch relationship history');
+  return res.json();
+}
+
+export async function getCharacterTrajectoryHistory(
+  projectId: string,
+  characterId: string,
+  sparse: boolean = true
+): Promise<{ trajectory: CharacterHistorySeries[] }> {
+  const params = new URLSearchParams({ sparse: String(sparse) });
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/trajectory/history?${params.toString()}`);
+  if (!res.ok) throw new Error('Failed to fetch character trajectory history');
+  return res.json();
+}
+
+export async function getCharacterHistoryBatch(
+  projectId: string,
+  characterId: string,
+  metrics?: string[],
+  targetId?: string,
+  sparse: boolean = true
+): Promise<CharacterHistoryReport> {
+  const params = new URLSearchParams({ sparse: String(sparse) });
+  if (metrics && metrics.length > 0) params.append('metrics', metrics.join(','));
+  if (targetId) params.append('target_id', targetId);
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/history/batch?${params.toString()}`);
+  if (!res.ok) throw new Error('Failed to fetch character history batch');
   return res.json();
 }

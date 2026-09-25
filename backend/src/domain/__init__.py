@@ -64,6 +64,11 @@ from .conflict import (
     ConflictEdge,
     ConflictGraph,
 )
+from .character_history import (
+    HistoryPoint,
+    CharacterHistorySeries,
+    CharacterHistoryReport,
+)
 
 __all__ = [
     "SimulationClock",
@@ -132,4 +137,7 @@ __all__ = [
     "ConflictEvidence",
     "ConflictEdge",
     "ConflictGraph",
+    "HistoryPoint",
+    "CharacterHistorySeries",
+    "CharacterHistoryReport",
 ]

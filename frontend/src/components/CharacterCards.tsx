@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { WorldState, ArchetypeTrajectory, ConflictGraph } from '../types';
+import { WorldState, ArchetypeTrajectory, ConflictGraph, CharacterHistorySeries } from '../types';
 import { formatDisplayValue } from '../utils/format';
 import { ParticleHalo } from './granular';
 import { CharacterWorkstation } from './CharacterWorkstation';
@@ -24,6 +24,9 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
   const [conflictGraph, setConflictGraph] = useState<ConflictGraph | null>(null);
   const [loadingConflicts, setLoadingConflicts] = useState(false);
   const [expandedConflicts, setExpandedConflicts] = useState<Record<string, boolean>>({});
+  const [expandedRelHistory, setExpandedRelHistory] = useState<Record<string, boolean>>({});
+  const [relHistoryData, setRelHistoryData] = useState<Record<string, CharacterHistorySeries>>({});
+  const [loadingRelHistory, setLoadingRelHistory] = useState<Record<string, boolean>>({});
 
   const characters = Object.values(world.characters || {});
   const locations = world.locations || {};
@@ -77,6 +80,27 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
       console.error('Failed to load archetype trajectory:', err);
     } finally {
       setLoadingTraj((prev) => ({ ...prev, [charId]: false }));
+    }
+  };
+
+  const toggleRelHistory = async (e: React.MouseEvent, charAId: string, charBId: string, relId: string, dimension: string = 'trust') => {
+    e.stopPropagation();
+    const key = `${charAId}_${relId}_${dimension}`;
+    if (expandedRelHistory[key]) {
+      setExpandedRelHistory((prev) => ({ ...prev, [key]: false }));
+      return;
+    }
+    setExpandedRelHistory((prev) => ({ ...prev, [key]: true }));
+    if (relHistoryData[key]) return;
+    setLoadingRelHistory((prev) => ({ ...prev, [key]: true }));
+    try {
+      const pid = projectId || world.id;
+      const series = await api.getRelationshipDimensionHistory(pid, charAId, charBId, dimension, true);
+      setRelHistoryData((prev) => ({ ...prev, [key]: series as CharacterHistorySeries }));
+    } catch (err) {
+      console.error('Failed to load relationship history:', err);
+    } finally {
+      setLoadingRelHistory((prev) => ({ ...prev, [key]: false }));
     }
   };
 
@@ -319,6 +343,88 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
                               <span className="dim-pill neutral">
                                 Power: {rel.power_imbalance > 0 ? `+${rel.power_imbalance.toFixed(2)}` : rel.power_imbalance.toFixed(2)}
                               </span>
+                            )}
+                          </div>
+                          <div className="relationship-timeline-control" style={{ marginTop: '8px' }}>
+                            <button
+                              type="button"
+                              className="btn-history-toggle"
+                              style={{
+                                fontSize: '0.72rem',
+                                padding: '2px 8px',
+                                background: 'rgba(255,255,255,0.06)',
+                                border: '1px solid rgba(255,255,255,0.15)',
+                                borderRadius: '4px',
+                                color: '#aaa',
+                                cursor: 'pointer',
+                              }}
+                              onClick={(e) => toggleRelHistory(e, char.id, otherId, rel.id, 'trust')}
+                              title="View reconstructed trust timeline with event provenance"
+                            >
+                              {expandedRelHistory[`${char.id}_${rel.id}_trust`] ? '▾ Hide History' : '▸ Trust History'}
+                            </button>
+                            {expandedRelHistory[`${char.id}_${rel.id}_trust`] && (
+                              <div
+                                className="rel-history-timeline"
+                                style={{
+                                  marginTop: '6px',
+                                  padding: '6px 8px',
+                                  background: 'rgba(0,0,0,0.25)',
+                                  borderRadius: '4px',
+                                  borderLeft: '2px solid #58a6ff',
+                                  fontSize: '0.75rem',
+                                }}
+                              >
+                                {loadingRelHistory[`${char.id}_${rel.id}_trust`] ? (
+                                  <span className="text-muted">Reconstructing history...</span>
+                                ) : relHistoryData[`${char.id}_${rel.id}_trust`]?.points ? (
+                                  <div className="history-points-list">
+                                    {relHistoryData[`${char.id}_${rel.id}_trust`].points.map((pt, pIdx) => (
+                                      <div
+                                        key={pIdx}
+                                        className="history-point-row"
+                                        style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}
+                                      >
+                                        <span className="history-tick font-mono" style={{ color: '#888', minWidth: '42px' }}>
+                                          {`T+${pt.tick}`}
+                                        </span>
+                                        <span
+                                          className={`history-value font-mono ${pt.value >= 0 ? 'text-green' : 'text-red'}`}
+                                          style={{ fontWeight: 600, minWidth: '45px' }}
+                                        >
+                                          {pt.value > 0 ? `+${pt.value.toFixed(2)}` : pt.value.toFixed(2)}
+                                        </span>
+                                        {pt.event_ids && pt.event_ids.length > 0 && (
+                                          <span
+                                            className="history-event-badge"
+                                            style={{
+                                              padding: '1px 4px',
+                                              borderRadius: '3px',
+                                              background: 'rgba(88,166,255,0.15)',
+                                              color: '#58a6ff',
+                                              fontSize: '0.7rem',
+                                            }}
+                                            title={pt.label || undefined}
+                                          >
+                                            {`evt:${pt.event_ids.map((id) => (id.length > 8 ? id.slice(-6) : id)).join(',')}`}
+                                          </span>
+                                        )}
+                                        {pt.label && (
+                                          <span
+                                            className="history-label text-muted"
+                                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                            title={pt.label}
+                                          >
+                                            {pt.label}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted">No change points</span>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>

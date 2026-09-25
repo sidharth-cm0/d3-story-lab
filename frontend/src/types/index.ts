@@ -832,3 +832,30 @@ export interface ConflictGraph {
   generated_at?: string;
   derived_at_tick?: number | null;
 }
+
+export interface HistoryPoint {
+  tick: number;
+  value: number;
+  event_ids: string[];
+  label?: string | null;
+  metadata?: Record<string, any>;
+}
+
+export interface CharacterHistorySeries {
+  character_id: string;
+  target_character_id?: string | null;
+  metric: string;
+  display_name: string;
+  points: HistoryPoint[];
+  is_sparse: boolean;
+  is_analytical_only?: boolean;
+}
+
+export interface CharacterHistoryReport {
+  project_id: string;
+  character_id: string;
+  series: Record<string, CharacterHistorySeries>;
+  generated_at_tick: number;
+  total_events_analyzed: number;
+  is_observed_only?: boolean;
+}
