@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ProjectData, StoryBlueprint, CharacterArcReport, CausalContinuitySummary } from '../types';
+import { ProjectData, StoryBlueprint, CharacterArcReport, CausalContinuitySummary, ArchetypeTrajectory } from '../types';
 import * as api from '../api';
 import { ParticleWave } from './granular';
 
@@ -67,6 +67,7 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
   const [scenes, setScenes] = useState<any[]>(project?.scenes || []);
   const [selectedCharId, setSelectedCharId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'blueprint' | 'arcs' | 'causality'>('blueprint');
+  const [archetypeTrajectories, setArchetypeTrajectories] = useState<Record<string, ArchetypeTrajectory>>({});
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,6 +128,20 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
       setSelectedCharId(Object.keys(arcs)[0]);
     }
   }, [arcs, selectedCharId]);
+
+  useEffect(() => {
+    if (activeTab === 'arcs' && selectedCharId && project?.metadata?.id) {
+      if (!archetypeTrajectories[selectedCharId]) {
+        api.getCharacterArchetypeTrajectory(project.metadata.id, selectedCharId)
+          .then((traj) => {
+            setArchetypeTrajectories((prev) => ({ ...prev, [selectedCharId]: traj }));
+          })
+          .catch(() => {
+            // non-fatal in offline/test environment
+          });
+      }
+    }
+  }, [activeTab, selectedCharId, project?.metadata?.id, archetypeTrajectories]);
 
   // Handle initial LOADING state before any data is ready
   if ((loading || fetching) && (!project || (!blueprint && Object.keys(arcs).length === 0 && !causalSummary))) {
@@ -452,6 +467,43 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
                           );
                         })}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Archetype Trajectory (Observational) */}
+                  {archetypeTrajectories[selectedCharId] && (
+                    <div className="arc-section">
+                      <div className="trajectory-header" style={{ marginBottom: '6px' }}>
+                        <h4 className="arc-section-title" style={{ margin: 0 }}>
+                          ARCHETYPE TRAJECTORY (OBSERVATIONAL)
+                        </h4>
+                        <span className="trajectory-stability">
+                          Stability: {Math.round(archetypeTrajectories[selectedCharId].stability_score * 100)}%
+                        </span>
+                      </div>
+                      <div className="trajectory-summary-text">
+                        {archetypeTrajectories[selectedCharId].trajectory_summary}
+                      </div>
+                      {archetypeTrajectories[selectedCharId].shift_points && archetypeTrajectories[selectedCharId].shift_points.length > 0 ? (
+                        <div className="shift-points-list">
+                          {archetypeTrajectories[selectedCharId].shift_points.map((sp, i) => (
+                            <div key={i} className="shift-point-item">
+                              <span className="shift-point-tick">TICK {sp.tick}</span>
+                              <span className="archetype-pill primary">{sp.dominant_archetype}</span>
+                              <span>{sp.rationale}</span>
+                              {sp.evidence_event_ids && sp.evidence_event_ids.length > 0 && (
+                                <span className="shift-point-evidence">
+                                  {sp.evidence_event_ids.length} events
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-muted text-sm" style={{ margin: 0 }}>
+                          Initial archetype remained stable throughout observed history.
+                        </p>
+                      )}
                     </div>
                   )}
                 </>

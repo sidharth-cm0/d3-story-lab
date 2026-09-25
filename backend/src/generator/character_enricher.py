@@ -279,4 +279,18 @@ class CharacterEnrichmentService:
             if self.can_enrich_field(draft, field_name):
                 draft.set_field(field_name, val, FieldAuthority.SYSTEM_INFERRED, inference_rule=rule)
 
+        # 5. Primary and secondary archetype inference
+        from .archetype_inference import ArchetypeInferenceEngine
+        if draft.dynamics:
+            ArchetypeInferenceEngine.enrich_dynamics_archetypes(
+                dynamics=draft.dynamics,
+                role=draft.role or "",
+                personality_traits=draft.personality_traits,
+            )
+            # Sync provenance to draft
+            if "primary_archetype" in draft.dynamics.provenance:
+                draft.provenance["primary_archetype"] = draft.dynamics.provenance["primary_archetype"]
+            if "secondary_archetype" in draft.dynamics.provenance:
+                draft.provenance["secondary_archetype"] = draft.dynamics.provenance["secondary_archetype"]
+
         return draft

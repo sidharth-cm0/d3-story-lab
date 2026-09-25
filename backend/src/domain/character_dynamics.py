@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field, ConfigDict
 
 from .character_creation import FieldAuthority, FieldProvenance
+from .archetype import ArchetypeType
 
 DYNAMICS_FIELD_NAMES = {
     "core_value",
@@ -20,6 +21,8 @@ DYNAMICS_FIELD_NAMES = {
     "lifestyle",
     "speech_style",
     "conflict_strategy",
+    "primary_archetype",
+    "secondary_archetype",
 }
 
 
@@ -48,6 +51,8 @@ class CharacterDynamicsProfile(BaseModel):
     lifestyle: Optional[str] = Field(default=None, description="Daily operational context / living conditions")
     speech_style: Optional[str] = Field(default=None, description="Verbal cadence, diction, vocabulary")
     conflict_strategy: Optional[str] = Field(default=None, description="Default approach to interpersonal tension")
+    primary_archetype: Optional[ArchetypeType] = Field(default=None, description="Primary narrative archetype orientation")
+    secondary_archetype: Optional[ArchetypeType] = Field(default=None, description="Secondary or shadow archetype orientation")
 
     provenance: Dict[str, FieldProvenance] = Field(
         default_factory=dict,

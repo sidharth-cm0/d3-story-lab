@@ -13,6 +13,7 @@ from src.domain.character_creation import (
     CharacterInput,
     CharacterProfileDraft,
 )
+from src.domain.archetype import ArchetypeType
 
 # Known personality keywords for deterministic extraction
 PERSONALITY_LEXICON = [
@@ -361,6 +362,20 @@ class CharacterProfileNormalizer:
         if strat_val:
             draft.set_field("conflict_strategy", strat_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Strategy: {strat_val}")
 
+        # Primary Archetype
+        arch_val = kv_pairs.get("primary archetype") or kv_pairs.get("archetype")
+        if arch_val:
+            parsed_arch = ArchetypeType.from_str(arch_val)
+            if parsed_arch:
+                draft.set_field("primary_archetype", parsed_arch, FieldAuthority.USER_PREFERRED, source_snippet=f"Archetype: {arch_val}")
+
+        # Secondary Archetype
+        sec_arch_val = kv_pairs.get("secondary archetype") or kv_pairs.get("shadow archetype")
+        if sec_arch_val:
+            parsed_sec_arch = ArchetypeType.from_str(sec_arch_val)
+            if parsed_sec_arch:
+                draft.set_field("secondary_archetype", parsed_sec_arch, FieldAuthority.USER_PREFERRED, source_snippet=f"Secondary Archetype: {sec_arch_val}")
+
     def _apply_structured_payload(self, payload: Dict[str, Any], draft: CharacterProfileDraft) -> None:
         """Apply structured form data to the draft with field authorities."""
         locked_fields = set(payload.get("locked_fields", []))
@@ -473,3 +488,12 @@ class CharacterProfileNormalizer:
                     items = []
                 auth = FieldAuthority.USER_LOCKED if (list_df in locked_fields or f"dynamics.{list_df}" in locked_fields) else FieldAuthority.USER_PREFERRED
                 draft.set_field(list_df, items, auth, source_snippet=f"form:{list_df}")
+
+        # Archetype fields
+        for af in ("primary_archetype", "secondary_archetype"):
+            val = dynamics_data.get(af) if af in dynamics_data else payload.get(af)
+            if val is not None:
+                parsed_val = ArchetypeType.from_str(str(val)) if not isinstance(val, ArchetypeType) else val
+                if parsed_val:
+                    auth = FieldAuthority.USER_LOCKED if (af in locked_fields or f"dynamics.{af}" in locked_fields) else FieldAuthority.USER_PREFERRED
+                    draft.set_field(af, parsed_val, auth, source_snippet=f"form:{af}")

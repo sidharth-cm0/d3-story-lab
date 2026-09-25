@@ -3,8 +3,24 @@ import {
   CharacterProfileDraft,
   CompletenessReport,
   FieldAuthority,
+  ArchetypeType,
 } from '../types';
 import * as api from '../api';
+
+const ARCHETYPES: ArchetypeType[] = [
+  'HERO',
+  'RULER',
+  'CAREGIVER',
+  'CREATOR',
+  'INNOCENT',
+  'SAGE',
+  'EXPLORER',
+  'OUTLAW',
+  'MAGICIAN',
+  'LOVER',
+  'JESTER',
+  'EVERYMAN',
+];
 
 interface CharacterWorkstationProps {
   projectId: string;
@@ -41,6 +57,8 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
   const [formCoreValue, setFormCoreValue] = useState('');
   const [formFear, setFormFear] = useState('');
   const [formContradiction, setFormContradiction] = useState('');
+  const [formPrimaryArchetype, setFormPrimaryArchetype] = useState<ArchetypeType | ''>('');
+  const [formSecondaryArchetype, setFormSecondaryArchetype] = useState<ArchetypeType | ''>('');
   const [lockedFields, setLockedFields] = useState<Record<string, boolean>>({
     name: false,
     role: false,
@@ -54,6 +72,8 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
     core_value: false,
     fear: false,
     contradiction: false,
+    primary_archetype: false,
+    secondary_archetype: false,
   });
 
   // Review mode state
@@ -96,6 +116,8 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
           core_value: formCoreValue.trim() || undefined,
           fear: formFear.trim() || undefined,
           contradiction: formContradiction.trim() || undefined,
+          primary_archetype: formPrimaryArchetype || undefined,
+          secondary_archetype: formSecondaryArchetype || undefined,
           locked_fields: activeLocks,
         };
         res = await api.intakeCharacter(projectId, undefined, payload, false);
@@ -157,6 +179,21 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
       setCompleteness(res.completeness);
     } catch (err: any) {
       setError(err.message || 'Failed to project conscious want to goals');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInferArchetypes = async () => {
+    if (!draft) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.inferDraftArchetype(projectId, draft.id);
+      setDraft(res.draft);
+      setCompleteness(res.completeness);
+    } catch (err: any) {
+      setError(err.message || 'Failed to infer archetypes');
     } finally {
       setLoading(false);
     }
@@ -540,6 +577,55 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
                   value={formContradiction}
                   onChange={(e) => setFormContradiction(e.target.value)}
                 />
+              </div>
+
+              {/* Phase C: Archetype Selection */}
+              <div className="form-field-row">
+                <div className="form-field-header">
+                  <label>Primary Archetype</label>
+                  <label className="lock-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={lockedFields.primary_archetype}
+                      onChange={() => toggleFieldLockInForm('primary_archetype')}
+                    />
+                    <span>🔒 Lock Value</span>
+                  </label>
+                </div>
+                <select
+                  className="workstation-select"
+                  value={formPrimaryArchetype}
+                  onChange={(e) => setFormPrimaryArchetype(e.target.value as ArchetypeType | '')}
+                >
+                  <option value="">-- None / Auto-Infer --</option>
+                  {ARCHETYPES.map((arch) => (
+                    <option key={arch} value={arch}>{arch}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-field-row">
+                <div className="form-field-header">
+                  <label>Secondary Archetype</label>
+                  <label className="lock-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={lockedFields.secondary_archetype}
+                      onChange={() => toggleFieldLockInForm('secondary_archetype')}
+                    />
+                    <span>🔒 Lock Value</span>
+                  </label>
+                </div>
+                <select
+                  className="workstation-select"
+                  value={formSecondaryArchetype}
+                  onChange={(e) => setFormSecondaryArchetype(e.target.value as ArchetypeType | '')}
+                >
+                  <option value="">-- None / Optional --</option>
+                  {ARCHETYPES.map((arch) => (
+                    <option key={arch} value={arch}>{arch}</option>
+                  ))}
+                </select>
               </div>
             </div>
           )}
@@ -1070,6 +1156,95 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
                       onClick={() => handleToggleLockInReview('conflict_strategy')}
                     >
                       {getFieldAuthority('conflict_strategy') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* PHASE C: ARCHETYPE ORIENTATION & OBSERVATIONAL TRAJECTORY */}
+                <div className="review-archetype-header">
+                  <div>
+                    <span className="dynamics-section-kicker">PHASE C DESIGN METADATA</span>
+                    <h4 className="dynamics-section-title">🏛️ ARCHETYPE ORIENTATION &amp; OBSERVATIONAL TRAJECTORY</h4>
+                    <p className="dynamics-section-note">
+                      Thematic design-time orientation and derived post-hoc analytics. Strictly non-coercive: zero direct influence on action selection, DecisionPolicy, or simulation rules. Never forces actions or invents goals.
+                    </p>
+                  </div>
+                  <button
+                    className="btn-enrich"
+                    onClick={handleInferArchetypes}
+                    disabled={loading}
+                    title="Deterministically infer archetypes from traits, role, and premise"
+                  >
+                    {loading ? 'Inferring...' : '✨ Infer Archetypes'}
+                  </button>
+                </div>
+
+                {/* Primary Archetype */}
+                <div className="review-item-row dynamics-row archetype-row">
+                  <div className="review-item-main">
+                    <div className="dynamics-title-line">
+                      <span className="review-field-name">Primary Archetype</span>
+                      <span className="dynamics-tag tag-archetype">Dominant Orientation</span>
+                    </div>
+                    <div className="review-field-value">
+                      {draft.dynamics?.primary_archetype ? (
+                        <span className="archetype-badge primary">
+                          🏛️ {draft.dynamics.primary_archetype}
+                        </span>
+                      ) : (
+                        <em className="text-muted">None specified</em>
+                      )}
+                    </div>
+                    {(draft.provenance.primary_archetype?.source_snippet || draft.provenance.primary_archetype?.inference_rule) && (
+                      <div className="review-field-snippet">
+                        {draft.provenance.primary_archetype.source_snippet
+                          ? `Source: "${draft.provenance.primary_archetype.source_snippet}"`
+                          : `Rule: ${draft.provenance.primary_archetype.inference_rule}`}
+                      </div>
+                    )}
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('primary_archetype'))}
+                    <button
+                      className="btn-lock-toggle"
+                      onClick={() => handleToggleLockInReview('primary_archetype')}
+                    >
+                      {getFieldAuthority('primary_archetype') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Secondary Archetype */}
+                <div className="review-item-row dynamics-row archetype-row">
+                  <div className="review-item-main">
+                    <div className="dynamics-title-line">
+                      <span className="review-field-name">Secondary Archetype</span>
+                      <span className="dynamics-tag tag-archetype-secondary">Secondary Overlay</span>
+                    </div>
+                    <div className="review-field-value">
+                      {draft.dynamics?.secondary_archetype ? (
+                        <span className="archetype-badge secondary">
+                          ⚖️ {draft.dynamics.secondary_archetype}
+                        </span>
+                      ) : (
+                        <em className="text-muted">None specified</em>
+                      )}
+                    </div>
+                    {(draft.provenance.secondary_archetype?.source_snippet || draft.provenance.secondary_archetype?.inference_rule) && (
+                      <div className="review-field-snippet">
+                        {draft.provenance.secondary_archetype.source_snippet
+                          ? `Source: "${draft.provenance.secondary_archetype.source_snippet}"`
+                          : `Rule: ${draft.provenance.secondary_archetype.inference_rule}`}
+                      </div>
+                    )}
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('secondary_archetype'))}
+                    <button
+                      className="btn-lock-toggle"
+                      onClick={() => handleToggleLockInReview('secondary_archetype')}
+                    >
+                      {getFieldAuthority('secondary_archetype') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
                     </button>
                   </div>
                 </div>

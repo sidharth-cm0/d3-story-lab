@@ -55,9 +55,16 @@ from src.domain.character_dynamics import (
     CharacterDynamicsProfile,
     DYNAMICS_FIELD_NAMES,
 )
+from src.domain.archetype import (
+    ArchetypeType,
+    ArchetypeShiftPoint,
+    ArchetypeTrajectory,
+)
 from src.generator.initializer import WorldInitializerService
 from src.generator.character_normalizer import CharacterProfileNormalizer
 from src.generator.character_enricher import CharacterEnrichmentService
+from src.generator.archetype_inference import ArchetypeInferenceEngine
+from src.narrative.archetype_analyzer import ArchetypeTrajectoryAnalyzer
 from src.simulation.orchestrator import SimulationOrchestrator
 from src.agents.actor import ActorAgent
 from src.agents.director import DirectorAgent
@@ -183,6 +190,16 @@ class UpdateDynamicsRequest(BaseModel):
     lifestyle: Optional[str] = None
     speech_style: Optional[str] = None
     conflict_strategy: Optional[str] = None
+    primary_archetype: Optional[str] = None
+    secondary_archetype: Optional[str] = None
+    locked_fields: Optional[List[str]] = None
+    force: Optional[bool] = False
+
+
+class UpdateArchetypeRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    primary_archetype: Optional[str] = None
+    secondary_archetype: Optional[str] = None
     locked_fields: Optional[List[str]] = None
     force: Optional[bool] = False
 
@@ -1175,10 +1192,12 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         for field_name in (
             "core_value", "shadow_value", "conscious_want", "dramatic_need",
             "fear", "contradiction", "moral_boundary", "lifestyle",
-            "speech_style", "conflict_strategy"
+            "speech_style", "conflict_strategy", "primary_archetype", "secondary_archetype"
         ):
             val = getattr(req, field_name)
             if val is not None:
+                if field_name in ("primary_archetype", "secondary_archetype"):
+                    val = ArchetypeType.from_str(str(val)) if not isinstance(val, ArchetypeType) else val
                 auth = FieldAuthority.USER_LOCKED if field_name in locked_set else FieldAuthority.USER_PREFERRED
                 success = char.dynamics.set_field(
                     field_name=field_name,
@@ -1329,6 +1348,180 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             "conscious_want": want_text,
             "is_need_projected": False,
         }
+
+    # --- Phase C: Narrative Archetype & Observational Trajectory Endpoints ---
+
+    @app.get("/api/projects/{project_id}/characters/{character_id}/archetype")
+    def get_character_archetype(project_id: str, character_id: str):
+        """Get primary and secondary archetype metadata and provenance for a character."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+        dyn = char.dynamics or CharacterDynamicsProfile()
+        return {
+            "character_id": character_id,
+            "primary_archetype": dyn.primary_archetype.value if dyn.primary_archetype else None,
+            "secondary_archetype": dyn.secondary_archetype.value if dyn.secondary_archetype else None,
+            "primary_authority": dyn.get_authority("primary_archetype"),
+            "secondary_authority": dyn.get_authority("secondary_archetype"),
+            "provenance": {
+                k: v.model_dump(mode="json")
+                for k, v in dyn.provenance.items()
+                if k in ("primary_archetype", "secondary_archetype")
+            },
+        }
+
+    @app.put("/api/projects/{project_id}/characters/{character_id}/archetype")
+    def update_character_archetype(project_id: str, character_id: str, req: UpdateArchetypeRequest):
+        """Update archetype metadata on an existing character respecting FieldAuthority locks."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+        if char.dynamics is None:
+            char.dynamics = CharacterDynamicsProfile()
+
+        locked_set = set(req.locked_fields or [])
+
+        if req.primary_archetype is not None:
+            parsed_primary = ArchetypeType.from_str(req.primary_archetype)
+            auth = FieldAuthority.USER_LOCKED if "primary_archetype" in locked_set else FieldAuthority.USER_PREFERRED
+            success = char.dynamics.set_field(
+                field_name="primary_archetype",
+                value=parsed_primary,
+                authority=auth,
+                source_snippet="api_update:primary_archetype",
+                force=bool(req.force),
+            )
+            if not success and not req.force:
+                raise HTTPException(status_code=400, detail="Field 'primary_archetype' is USER_LOCKED")
+            if "primary_archetype" in char.dynamics.provenance:
+                char.field_provenance["primary_archetype"] = char.dynamics.provenance["primary_archetype"]
+
+        if req.secondary_archetype is not None:
+            parsed_sec = ArchetypeType.from_str(req.secondary_archetype)
+            auth = FieldAuthority.USER_LOCKED if "secondary_archetype" in locked_set else FieldAuthority.USER_PREFERRED
+            success = char.dynamics.set_field(
+                field_name="secondary_archetype",
+                value=parsed_sec,
+                authority=auth,
+                source_snippet="api_update:secondary_archetype",
+                force=bool(req.force),
+            )
+            if not success and not req.force:
+                raise HTTPException(status_code=400, detail="Field 'secondary_archetype' is USER_LOCKED")
+            if "secondary_archetype" in char.dynamics.provenance:
+                char.field_provenance["secondary_archetype"] = char.dynamics.provenance["secondary_archetype"]
+
+        proj.world.characters[character_id] = char
+        store.save_project(proj)
+        return {
+            "character_id": character_id,
+            "primary_archetype": char.dynamics.primary_archetype.value if char.dynamics.primary_archetype else None,
+            "secondary_archetype": char.dynamics.secondary_archetype.value if char.dynamics.secondary_archetype else None,
+            "primary_authority": char.dynamics.get_authority("primary_archetype"),
+            "secondary_authority": char.dynamics.get_authority("secondary_archetype"),
+            "provenance": {
+                k: v.model_dump(mode="json")
+                for k, v in char.dynamics.provenance.items()
+                if k in ("primary_archetype", "secondary_archetype")
+            },
+        }
+
+    @app.post("/api/projects/{project_id}/characters/{character_id}/archetype/infer")
+    def infer_character_archetypes_endpoint(project_id: str, character_id: str):
+        """Deterministically infer primary and secondary archetypes for an existing character."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+        if char.dynamics is None:
+            char.dynamics = CharacterDynamicsProfile()
+
+        ArchetypeInferenceEngine.enrich_dynamics_archetypes(
+            dynamics=char.dynamics,
+            role=char.role or "",
+            personality_traits=char.personality_traits,
+        )
+        if "primary_archetype" in char.dynamics.provenance:
+            char.field_provenance["primary_archetype"] = char.dynamics.provenance["primary_archetype"]
+        if "secondary_archetype" in char.dynamics.provenance:
+            char.field_provenance["secondary_archetype"] = char.dynamics.provenance["secondary_archetype"]
+
+        proj.world.characters[character_id] = char
+        store.save_project(proj)
+        return {
+            "character_id": character_id,
+            "primary_archetype": char.dynamics.primary_archetype.value if char.dynamics.primary_archetype else None,
+            "secondary_archetype": char.dynamics.secondary_archetype.value if char.dynamics.secondary_archetype else None,
+            "primary_authority": char.dynamics.get_authority("primary_archetype"),
+            "secondary_authority": char.dynamics.get_authority("secondary_archetype"),
+            "provenance": {
+                k: v.model_dump(mode="json")
+                for k, v in char.dynamics.provenance.items()
+                if k in ("primary_archetype", "secondary_archetype")
+            },
+        }
+
+    @app.post("/api/projects/{project_id}/characters/drafts/{draft_id}/archetype/infer")
+    def infer_draft_archetypes_endpoint(project_id: str, draft_id: str):
+        """Deterministically infer primary and secondary archetypes for a draft."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        draft = (proj.character_drafts or {}).get(draft_id)
+        if not draft:
+            raise HTTPException(status_code=404, detail="Character draft not found")
+        if draft.dynamics is None:
+            draft.dynamics = CharacterDynamicsProfile()
+
+        ArchetypeInferenceEngine.enrich_dynamics_archetypes(
+            dynamics=draft.dynamics,
+            role=draft.role or "",
+            personality_traits=draft.personality_traits,
+        )
+        if "primary_archetype" in draft.dynamics.provenance:
+            draft.provenance["primary_archetype"] = draft.dynamics.provenance["primary_archetype"]
+        if "secondary_archetype" in draft.dynamics.provenance:
+            draft.provenance["secondary_archetype"] = draft.dynamics.provenance["secondary_archetype"]
+
+        completeness = calculate_character_completeness(draft)
+        proj.character_drafts[draft_id] = draft
+        store.save_project(proj)
+
+        return {
+            "draft": draft.model_dump(mode="json"),
+            "completeness": completeness.model_dump(mode="json"),
+        }
+
+    @app.get("/api/projects/{project_id}/characters/{character_id}/archetype-trajectory")
+    def get_character_archetype_trajectory(project_id: str, character_id: str):
+        """Observational analysis of a character's archetype alignment drift over time.
+
+        CRITICAL INVARIANT:
+        Strictly read-only post-hoc analyzer. ZERO mutation of world state.
+        """
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+
+        events = sorted(proj.world.events.values(), key=lambda e: (e.tick, e.id))
+        trajectory = ArchetypeTrajectoryAnalyzer.analyze_trajectory(
+            character_id=character_id,
+            world=proj.world,
+            events=events,
+        )
+        return trajectory.model_dump(mode="json")
 
     # Standalone character endpoints (in-memory, no project ID required)
     @app.post("/api/characters/intake")

@@ -18,6 +18,11 @@ vi.mock('../api', async (importOriginal) => {
     updateCharacterDynamics: vi.fn(),
     enrichCharacterDynamics: vi.fn(),
     projectCharacterConsciousWant: vi.fn(),
+    getCharacterArchetype: vi.fn(),
+    updateCharacterArchetype: vi.fn(),
+    inferCharacterArchetype: vi.fn(),
+    inferDraftArchetype: vi.fn(),
+    getCharacterArchetypeTrajectory: vi.fn(),
   };
 });
 
@@ -458,6 +463,172 @@ describe('CharacterWorkstation Component (Phase A)', () => {
 
     await waitFor(() => {
       expect(api.lockCharacterField).toHaveBeenCalled();
+    });
+  });
+
+  it('renders archetype selectors in Guided Profile mode and includes them in normalization', async () => {
+    vi.mocked(api.intakeCharacter).mockResolvedValueOnce({
+      input: mockInput,
+      draft: {
+        ...mockDraft,
+        dynamics: {
+          primary_archetype: 'HERO',
+          secondary_archetype: 'SAGE',
+          provenance: {},
+        },
+      },
+      completeness: mockCompleteness,
+    });
+
+    render(<CharacterWorkstation projectId={mockProjectId} />);
+
+    // Switch to Guided Profile mode
+    fireEvent.click(screen.getByText(/Guided Profile \(Form\)/i));
+
+    // Fill minimal required info
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Marcus Vance/i), {
+      target: { value: 'Marcus Vance' },
+    });
+
+    // Select primary archetype HERO
+    const selects = screen.getAllByRole('combobox');
+    expect(selects.length).toBeGreaterThanOrEqual(2);
+    fireEvent.change(selects[0], { target: { value: 'HERO' } });
+
+    // Lock primary archetype
+    const lockCheckboxes = screen.getAllByRole('checkbox');
+    // Lock the primary archetype (which is among the last checkboxes)
+    fireEvent.click(lockCheckboxes[lockCheckboxes.length - 2]);
+
+    // Submit form
+    fireEvent.click(screen.getByText(/Normalize & Review Profile/i));
+
+    await waitFor(() => {
+      expect(api.intakeCharacter).toHaveBeenCalledWith(
+        mockProjectId,
+        undefined,
+        expect.objectContaining({
+          name: 'Marcus Vance',
+          primary_archetype: 'HERO',
+          locked_fields: expect.arrayContaining(['primary_archetype']),
+        }),
+        false
+      );
+    });
+  });
+
+  it('displays archetypes with authority in Review Panel and triggers archetype inference', async () => {
+    const draftWithArchetypes: CharacterProfileDraft = {
+      ...mockDraft,
+      dynamics: {
+        primary_archetype: 'SAGE',
+        secondary_archetype: 'EXPLORER',
+        provenance: {
+          primary_archetype: {
+            field_name: 'primary_archetype',
+            authority: 'SYSTEM_INFERRED',
+            inference_rule: 'Keyword match for wisdom/truth',
+            created_at: '2026-09-24T12:00:00Z',
+          },
+        },
+      },
+    };
+
+    const inferredDraft: CharacterProfileDraft = {
+      ...draftWithArchetypes,
+      dynamics: {
+        ...draftWithArchetypes.dynamics,
+        primary_archetype: 'OUTLAW',
+      },
+    };
+
+    vi.mocked(api.intakeCharacter).mockResolvedValueOnce({
+      input: mockInput,
+      draft: draftWithArchetypes,
+      completeness: mockCompleteness,
+    });
+
+    vi.mocked(api.inferDraftArchetype).mockResolvedValueOnce({
+      draft: inferredDraft,
+      completeness: mockCompleteness,
+    });
+
+    render(<CharacterWorkstation projectId={mockProjectId} />);
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Detective Marcus Vance/i), {
+      target: { value: 'Prompt' },
+    });
+    fireEvent.click(screen.getByText(/Normalize & Review Profile/i));
+
+    await screen.findByText(/ARCHETYPE ORIENTATION & OBSERVATIONAL TRAJECTORY/i);
+
+    expect(screen.getByText(/🏛️ SAGE/i)).toBeTruthy();
+    expect(screen.getByText(/Dominant Orientation/i)).toBeTruthy();
+
+    const inferBtn = screen.getByText(/✨ Infer Archetypes/i);
+    fireEvent.click(inferBtn);
+
+    await waitFor(() => {
+      expect(api.inferDraftArchetype).toHaveBeenCalledWith(mockProjectId, 'draft_123');
+    });
+  });
+
+  it('allows locking and unlocking archetype fields in Review Panel', async () => {
+    const draftWithArchetype: CharacterProfileDraft = {
+      ...mockDraft,
+      dynamics: {
+        primary_archetype: 'HERO',
+        provenance: {
+          primary_archetype: {
+            field_name: 'primary_archetype',
+            authority: 'USER_PREFERRED',
+            created_at: '2026-09-24T12:00:00Z',
+          },
+        },
+      },
+    };
+
+    const lockedDraft: CharacterProfileDraft = {
+      ...draftWithArchetype,
+      dynamics: {
+        ...draftWithArchetype.dynamics,
+        provenance: {
+          primary_archetype: {
+            field_name: 'primary_archetype',
+            authority: 'USER_LOCKED',
+            created_at: '2026-09-24T12:00:00Z',
+            locked_at: '2026-09-24T12:05:00Z',
+          },
+        },
+      },
+    };
+
+    vi.mocked(api.intakeCharacter).mockResolvedValueOnce({
+      input: mockInput,
+      draft: draftWithArchetype,
+      completeness: mockCompleteness,
+    });
+
+    vi.mocked(api.lockCharacterField).mockResolvedValueOnce({
+      draft: lockedDraft,
+      field_name: 'primary_archetype',
+      authority: 'USER_LOCKED',
+    });
+
+    render(<CharacterWorkstation projectId={mockProjectId} />);
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Detective Marcus Vance/i), {
+      target: { value: 'Prompt' },
+    });
+    fireEvent.click(screen.getByText(/Normalize & Review Profile/i));
+
+    await screen.findByText(/ARCHETYPE ORIENTATION & OBSERVATIONAL TRAJECTORY/i);
+
+    // Find the lock button for primary_archetype (among the lock buttons at the bottom of the review list)
+    const lockButtons = screen.getAllByRole('button', { name: /🔒 Lock/i });
+    // Click the lock button corresponding to primary_archetype (second to last)
+    fireEvent.click(lockButtons[lockButtons.length - 2]);
+
+    await waitFor(() => {
+      expect(api.lockCharacterField).toHaveBeenCalledWith(mockProjectId, 'draft_123', 'primary_archetype');
     });
   });
 });

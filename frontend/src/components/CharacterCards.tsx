@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { WorldState } from '../types';
+import { WorldState, ArchetypeTrajectory } from '../types';
 import { formatDisplayValue } from '../utils/format';
 import { ParticleHalo } from './granular';
 import { CharacterWorkstation } from './CharacterWorkstation';
+import * as api from '../api';
 
 interface CharacterCardsProps {
   world: WorldState;
@@ -18,6 +19,8 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
   const [debugActive, setDebugActive] = useState<Record<string, boolean>>({});
   const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
   const [showWorkstation, setShowWorkstation] = useState(false);
+  const [trajectories, setTrajectories] = useState<Record<string, ArchetypeTrajectory>>({});
+  const [loadingTraj, setLoadingTraj] = useState<Record<string, boolean>>({});
 
   const characters = Object.values(world.characters || {});
   const locations = world.locations || {};
@@ -27,6 +30,27 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
 
   const toggleDebug = (charId: string) => {
     setDebugActive((prev) => ({ ...prev, [charId]: !prev[charId] }));
+  };
+
+  const toggleArchetypeTrajectory = async (e: React.MouseEvent, charId: string) => {
+    e.stopPropagation();
+    if (trajectories[charId]) {
+      setTrajectories((prev) => {
+        const next = { ...prev };
+        delete next[charId];
+        return next;
+      });
+      return;
+    }
+    setLoadingTraj((prev) => ({ ...prev, [charId]: true }));
+    try {
+      const traj = await api.getCharacterArchetypeTrajectory(projectId || world.id, charId);
+      setTrajectories((prev) => ({ ...prev, [charId]: traj }));
+    } catch (err) {
+      console.error('Failed to load archetype trajectory:', err);
+    } finally {
+      setLoadingTraj((prev) => ({ ...prev, [charId]: false }));
+    }
   };
 
   const calculateStateWord = (fear: number, anger: number, trust: number) => {
@@ -111,6 +135,18 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
                 <div>
                   <h3 className="actor-name">{formatDisplayValue(char.name)}</h3>
                   <div className="actor-role">{formatDisplayValue(char.role)}</div>
+                  {char.dynamics?.primary_archetype && (
+                    <div className="actor-archetype-strip">
+                      <span className="archetype-pill primary" title="Primary Archetype">
+                        🏛️ {char.dynamics.primary_archetype}
+                      </span>
+                      {char.dynamics.secondary_archetype && (
+                        <span className="archetype-pill secondary" title="Secondary Archetype">
+                          ⚖️ {char.dynamics.secondary_archetype}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="actor-status-tags">
                   <span className="actor-location-badge">
@@ -219,6 +255,57 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
                       })}
                     </ul>
                   </div>
+                </div>
+              )}
+
+              {/* Observational Archetype Trajectory Toggle */}
+              <button
+                className="btn-private-toggle"
+                onClick={(e) => toggleArchetypeTrajectory(e, char.id)}
+                aria-expanded={!!trajectories[char.id]}
+                style={{ marginTop: '6px' }}
+              >
+                {loadingTraj[char.id]
+                  ? '⌛ Loading Trajectory...'
+                  : trajectories[char.id]
+                  ? '▼ ARCHETYPE TRAJECTORY (Hide)'
+                  : '▶ ARCHETYPE TRAJECTORY (Observational Alignment & Drift)'}
+              </button>
+
+              {/* Trajectory Details */}
+              {trajectories[char.id] && (
+                <div className="trajectory-container">
+                  <div className="trajectory-header">
+                    <span className="trajectory-title">
+                      OBSERVED: {trajectories[char.id].current_dominant_archetype || trajectories[char.id].initial_archetype || 'NEUTRAL'}
+                    </span>
+                    <span className="trajectory-stability">
+                      Stability: {Math.round(trajectories[char.id].stability_score * 100)}%
+                    </span>
+                  </div>
+                  <div className="trajectory-summary-text">
+                    {trajectories[char.id].trajectory_summary}
+                  </div>
+                  {trajectories[char.id].shift_points && trajectories[char.id].shift_points.length > 0 ? (
+                    <div className="shift-points-list">
+                      {trajectories[char.id].shift_points.map((sp, idx) => (
+                        <div key={idx} className="shift-point-item">
+                          <span className="shift-point-tick">TICK {sp.tick}</span>
+                          <span className="archetype-pill primary">{sp.dominant_archetype}</span>
+                          <span>{sp.rationale}</span>
+                          {sp.evidence_event_ids && sp.evidence_event_ids.length > 0 && (
+                            <span className="shift-point-evidence">
+                              {sp.evidence_event_ids.length} events
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted text-sm" style={{ margin: 0 }}>
+                      No archetype shifts observed across current event history.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

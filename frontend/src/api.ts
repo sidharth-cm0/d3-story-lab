@@ -16,6 +16,8 @@ import {
   CompletenessReport,
   FieldAuthority,
   CharacterDynamicsProfile,
+  ArchetypeType,
+  ArchetypeTrajectory,
 } from './types';
 
 const BASE_URL = '/api';
@@ -539,5 +541,86 @@ export async function projectDraftConsciousWant(
     method: 'POST',
   });
   if (!res.ok) throw new Error('Failed to project draft conscious want');
+  return res.json();
+}
+
+export async function getCharacterArchetype(
+  projectId: string,
+  characterId: string
+): Promise<{
+  character_id: string;
+  primary_archetype?: ArchetypeType | null;
+  secondary_archetype?: ArchetypeType | null;
+  primary_authority?: string;
+  secondary_authority?: string;
+  provenance: Record<string, any>;
+}> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/archetype`);
+  if (!res.ok) throw new Error('Failed to get character archetype');
+  return res.json();
+}
+
+export async function updateCharacterArchetype(
+  projectId: string,
+  characterId: string,
+  primaryArchetype?: ArchetypeType | null,
+  secondaryArchetype?: ArchetypeType | null,
+  lockedFields?: string[],
+  force?: boolean
+): Promise<{
+  character_id: string;
+  primary_archetype?: ArchetypeType | null;
+  secondary_archetype?: ArchetypeType | null;
+  provenance: Record<string, any>;
+}> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/archetype`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      primary_archetype: primaryArchetype,
+      secondary_archetype: secondaryArchetype,
+      locked_fields: lockedFields,
+      force,
+    }),
+  });
+  if (!res.ok) throw new Error('Failed to update character archetype');
+  return res.json();
+}
+
+export async function inferCharacterArchetype(
+  projectId: string,
+  characterId: string
+): Promise<{
+  character_id: string;
+  primary_archetype?: ArchetypeType | null;
+  secondary_archetype?: ArchetypeType | null;
+  primary_authority?: string;
+  secondary_authority?: string;
+  provenance: Record<string, any>;
+}> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/archetype/infer`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to infer character archetype');
+  return res.json();
+}
+
+export async function inferDraftArchetype(
+  projectId: string,
+  draftId: string
+): Promise<{ draft: CharacterProfileDraft; completeness: CompletenessReport }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/drafts/${draftId}/archetype/infer`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to infer draft archetype');
+  return res.json();
+}
+
+export async function getCharacterArchetypeTrajectory(
+  projectId: string,
+  characterId: string
+): Promise<ArchetypeTrajectory> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/archetype-trajectory`);
+  if (!res.ok) throw new Error('Failed to get character archetype trajectory');
   return res.json();
 }

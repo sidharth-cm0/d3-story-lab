@@ -14,6 +14,7 @@ from .scribe import Scribe
 from .completion import StoryCompletionEngine, StoryOutline, StoryInputType, ActBeat
 from .synopsis import SynopsisGenerator, StorySynopsis
 from .arc_tracker import CharacterArcTracker
+from .archetype_analyzer import ArchetypeTrajectoryAnalyzer
 from .subtext import SubtextAnalyzer, DeceptionClassification, SubtextAnalysis
 from .performance_cues import (
     PerformanceCueGenerator,
@@ -53,6 +54,7 @@ __all__ = [
     "SynopsisGenerator",
     "StorySynopsis",
     "CharacterArcTracker",
+    "ArchetypeTrajectoryAnalyzer",
     "SubtextAnalyzer",
     "DeceptionClassification",
     "SubtextAnalysis",

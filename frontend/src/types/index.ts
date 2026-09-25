@@ -95,6 +95,20 @@ export interface CharacterInput {
   linked_character_id?: string | null;
 }
 
+export type ArchetypeType =
+  | 'HERO'
+  | 'RULER'
+  | 'CAREGIVER'
+  | 'CREATOR'
+  | 'INNOCENT'
+  | 'SAGE'
+  | 'EXPLORER'
+  | 'OUTLAW'
+  | 'MAGICIAN'
+  | 'LOVER'
+  | 'JESTER'
+  | 'EVERYMAN';
+
 export interface CharacterDynamicsProfile {
   core_value?: string;
   shadow_value?: string | null;
@@ -108,6 +122,8 @@ export interface CharacterDynamicsProfile {
   lifestyle?: string | null;
   speech_style?: string | null;
   conflict_strategy?: string | null;
+  primary_archetype?: ArchetypeType | null;
+  secondary_archetype?: ArchetypeType | null;
   provenance?: Record<string, FieldProvenance>;
 }
 
@@ -679,6 +695,25 @@ export interface CharacterArcReport {
   relationship_deltas: Record<string, string | number>;
   ending_state: Record<string, any>;
   arc_trajectory: string;
+  is_observed_only: boolean;
+}
+
+export interface ArchetypeShiftPoint {
+  tick: number;
+  dominant_archetype: ArchetypeType;
+  confidence: number;
+  evidence_event_ids: string[];
+  rationale: string;
+}
+
+export interface ArchetypeTrajectory {
+  character_id: string;
+  character_name: string;
+  initial_archetype?: ArchetypeType | null;
+  current_dominant_archetype?: ArchetypeType | null;
+  shift_points: ArchetypeShiftPoint[];
+  trajectory_summary: string;
+  stability_score: number;
   is_observed_only: boolean;
 }
 
