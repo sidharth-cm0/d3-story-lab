@@ -18,6 +18,9 @@ import {
   CharacterDynamicsProfile,
   ArchetypeType,
   ArchetypeTrajectory,
+  ConflictGraph,
+  ConflictEdge,
+  Relationship,
 } from './types';
 
 const BASE_URL = '/api';
@@ -622,5 +625,37 @@ export async function getCharacterArchetypeTrajectory(
 ): Promise<ArchetypeTrajectory> {
   const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/archetype-trajectory`);
   if (!res.ok) throw new Error('Failed to get character archetype trajectory');
+  return res.json();
+}
+
+export async function getProjectConflicts(projectId: string): Promise<ConflictGraph> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/conflicts`);
+  if (!res.ok) throw new Error('Failed to fetch project conflicts');
+  return res.json();
+}
+
+export async function deriveProjectConflicts(projectId: string): Promise<ConflictGraph> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/conflicts/derive`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to derive project conflicts');
+  return res.json();
+}
+
+export async function getPairwiseConflict(
+  projectId: string,
+  charAId: string,
+  charBId: string
+): Promise<ConflictEdge> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/conflicts/${charAId}/${charBId}`);
+  if (!res.ok) throw new Error('Failed to fetch pairwise conflict');
+  return res.json();
+}
+
+export async function getProjectRelationships(
+  projectId: string
+): Promise<{ relationships: Relationship[] }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/relationships`);
+  if (!res.ok) throw new Error('Failed to fetch project relationships');
   return res.json();
 }

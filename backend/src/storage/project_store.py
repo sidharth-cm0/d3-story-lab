@@ -26,6 +26,7 @@ from src.domain.story_structure import (
     CharacterArcReport,
 )
 from src.domain.character_creation import CharacterInput, CharacterProfileDraft
+from src.domain.conflict import ConflictGraph
 
 
 class ProjectStorageError(Exception):
@@ -83,6 +84,7 @@ class ProjectData(BaseModel):
     character_arcs: Optional[Dict[str, CharacterArcReport]] = None
     character_inputs: Optional[Dict[str, CharacterInput]] = None
     character_drafts: Optional[Dict[str, CharacterProfileDraft]] = None
+    conflict_graph: Optional[ConflictGraph] = None
 
 
 class ProjectStore:
@@ -151,7 +153,7 @@ class ProjectStore:
                 world["facts"] = {}
 
         # Safe defaults for optional fields
-        for field in ("story_structure", "story_blueprint", "scenes", "causal_summary", "character_arcs", "event_log", "character_inputs", "character_drafts"):
+        for field in ("story_structure", "story_blueprint", "scenes", "causal_summary", "character_arcs", "event_log", "character_inputs", "character_drafts", "conflict_graph"):
             if field not in data:
                 data[field] = None
 
@@ -229,6 +231,7 @@ class ProjectStore:
             character_arcs=project.character_arcs,
             character_inputs=project.character_inputs,
             character_drafts=project.character_drafts,
+            conflict_graph=project.conflict_graph,
         )
 
         data_dict = project_to_save.model_dump(mode="json")
@@ -309,6 +312,7 @@ class ProjectStore:
             character_arcs=project.character_arcs,
             character_inputs=project.character_inputs,
             character_drafts=project.character_drafts,
+            conflict_graph=project.conflict_graph,
         )
 
         data_dict = project_to_save.model_dump(mode="json")

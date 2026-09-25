@@ -60,6 +60,13 @@ from src.domain.archetype import (
     ArchetypeShiftPoint,
     ArchetypeTrajectory,
 )
+from src.domain.conflict import (
+    ConflictDimension,
+    ConflictEvidence,
+    ConflictEdge,
+    ConflictGraph,
+)
+from src.narrative.conflict_engine import ConflictEngine
 from src.generator.initializer import WorldInitializerService
 from src.generator.character_normalizer import CharacterProfileNormalizer
 from src.generator.character_enricher import CharacterEnrichmentService
@@ -1553,6 +1560,66 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             "draft": enriched.model_dump(mode="json"),
             "completeness": completeness.model_dump(mode="json"),
         }
+
+    # Conflict and Relationship Endpoints (Phase D)
+    @app.get("/api/projects/{project_id}/conflicts")
+    def get_project_conflicts(project_id: str):
+        """Retrieve ConflictGraph for the project cast (derives on the fly if not yet stored)."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if proj.conflict_graph:
+            return proj.conflict_graph.model_dump(mode="json")
+        graph = ConflictEngine.derive_conflict_graph(proj.world, project_id)
+        return graph.model_dump(mode="json")
+
+    @app.post("/api/projects/{project_id}/conflicts/derive")
+    def derive_project_conflicts(project_id: str):
+        """Derive and persist a fresh ConflictGraph for the project, respecting locked edges."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        graph = ConflictEngine.derive_conflict_graph(
+            proj.world, project_id, existing_graph=proj.conflict_graph
+        )
+        proj.conflict_graph = graph
+        store.save_project(proj)
+        return graph.model_dump(mode="json")
+
+    @app.get("/api/projects/{project_id}/conflicts/{char_a_id}/{char_b_id}")
+    def get_pairwise_conflict(project_id: str, char_a_id: str, char_b_id: str):
+        """Get or derive pairwise ConflictEdge between two characters."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if char_a_id not in proj.world.characters or char_b_id not in proj.world.characters:
+            raise HTTPException(status_code=404, detail="One or both characters not found")
+        if proj.conflict_graph:
+            edge = proj.conflict_graph.get_edge(char_a_id, char_b_id)
+            if edge:
+                return edge.model_dump(mode="json")
+        edge = ConflictEngine.derive_pairwise_conflict(proj.world, char_a_id, char_b_id)
+        return edge.model_dump(mode="json")
+
+    @app.get("/api/projects/{project_id}/relationships")
+    def get_project_relationships(project_id: str):
+        """Retrieve all multidimensional relationships with event provenance for a project."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        rels = [r.model_dump(mode="json") for r in proj.world.relationships.values()]
+        return {"relationships": rels}
+
+    @app.get("/api/projects/{project_id}/relationships/{char_a_id}/{char_b_id}")
+    def get_specific_relationship(project_id: str, char_a_id: str, char_b_id: str):
+        """Retrieve a specific multidimensional relationship with event provenance between two characters."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        rel = proj.world.get_relationship(char_a_id, char_b_id)
+        if not rel:
+            raise HTTPException(status_code=404, detail="Relationship not found")
+        return rel.model_dump(mode="json")
 
     @app.get("/api/projects/{project_id}/causal-continuity")
     def get_causal_continuity(project_id: str):

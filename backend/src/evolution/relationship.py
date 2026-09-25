@@ -54,24 +54,56 @@ class RelationshipUpdater:
         char_b_id: str,
         delta_affinity: float = 0.0,
         delta_trust: float = 0.0,
+        delta_affection: float = 0.0,
+        delta_fear: float = 0.0,
+        delta_dependency: float = 0.0,
+        delta_respect: float = 0.0,
+        delta_resentment: float = 0.0,
+        delta_suspicion: float = 0.0,
+        delta_power_imbalance: float = 0.0,
         note: str = "",
+        event_id: Optional[str] = None,
     ) -> Relationship:
-        """Apply deltas to affinity and trust with bounding [-1.0, 1.0]"""
+        """Apply deltas to relationship dimensions with bounding [-1.0, 1.0] and event provenance."""
         rel = cls.get_or_create_relationship(world, char_a_id, char_b_id)
 
-        new_affinity = round(max(-1.0, min(1.0, rel.affinity + delta_affinity)), 2)
-        new_trust = round(max(-1.0, min(1.0, rel.trust + delta_trust)), 2)
+        deltas = {
+            "affinity": delta_affinity,
+            "trust": delta_trust,
+            "affection": delta_affection,
+            "fear": delta_fear,
+            "dependency": delta_dependency,
+            "respect": delta_respect,
+            "resentment": delta_resentment,
+            "suspicion": delta_suspicion,
+            "power_imbalance": delta_power_imbalance,
+        }
+
+        updated_values = {}
+        prov = dict(rel.event_provenance) if rel.event_provenance else {}
+
+        for dim, delta in deltas.items():
+            curr = getattr(rel, dim, 0.0)
+            if delta != 0.0:
+                new_val = round(max(-1.0, min(1.0, curr + delta)), 2)
+                updated_values[dim] = new_val
+                if event_id:
+                    existing_evs = list(prov.get(dim, []))
+                    if event_id not in existing_evs:
+                        existing_evs.append(event_id)
+                    prov[dim] = existing_evs
+            else:
+                updated_values[dim] = curr
 
         new_history = rel.history
         if note:
             new_history = f"{rel.history}; {note}".strip("; ")
 
-        updated_rel = rel.model_copy(
-            update={
-                "affinity": new_affinity,
-                "trust": new_trust,
-                "history": new_history,
-            }
-        )
+        updated_values["history"] = new_history
+        updated_values["event_provenance"] = prov
+        if event_id:
+            updated_values["last_event_id"] = event_id
+
+        updated_rel = rel.model_copy(update=updated_values)
         world.relationships[updated_rel.id] = updated_rel
         return updated_rel

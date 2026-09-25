@@ -58,6 +58,12 @@ from .archetype import (
     ArchetypeShiftPoint,
     ArchetypeTrajectory,
 )
+from .conflict import (
+    ConflictDimension,
+    ConflictEvidence,
+    ConflictEdge,
+    ConflictGraph,
+)
 
 __all__ = [
     "SimulationClock",
@@ -122,4 +128,8 @@ __all__ = [
     "ArchetypeType",
     "ArchetypeShiftPoint",
     "ArchetypeTrajectory",
+    "ConflictDimension",
+    "ConflictEvidence",
+    "ConflictEdge",
+    "ConflictGraph",
 ]

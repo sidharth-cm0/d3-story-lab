@@ -147,9 +147,61 @@ class TestAPI:
 
             app = create_app(store_dir=tmpdir)
             client = TestClient(app)
-
             res = client.get("/api/projects/corrupt_proj")
             assert res.status_code == 500
             data = res.json()
             assert "error" in data or "detail" in data
             assert "ProjectCorruptedError" in str(data) or "corrupted or malformed JSON" in str(data)
+
+    def test_conflict_and_relationship_endpoints(self, client):
+        create_res = client.post(
+            "/api/projects",
+            json={
+                "seed_prompt": "Two rival detectives investigate the same high-stakes heist.",
+                "title": "Dual Detectives",
+            },
+        )
+        assert create_res.status_code == 200
+        pid = create_res.json()["id"]
+
+        world_res = client.get(f"/api/projects/{pid}/world")
+        chars = list(world_res.json()["characters"].keys())
+        assert len(chars) >= 2
+        c1, c2 = chars[0], chars[1]
+
+        # 1. GET conflicts
+        conflicts_res = client.get(f"/api/projects/{pid}/conflicts")
+        assert conflicts_res.status_code == 200
+        conflicts_data = conflicts_res.json()
+        assert "edges" in conflicts_data
+        assert conflicts_data["project_id"] == pid
+
+        # 2. POST conflicts/derive
+        derive_res = client.post(f"/api/projects/{pid}/conflicts/derive")
+        assert derive_res.status_code == 200
+        derived_data = derive_res.json()
+        assert "edges" in derived_data
+
+        # 3. GET pairwise conflict
+        pairwise_res = client.get(f"/api/projects/{pid}/conflicts/{c1}/{c2}")
+        assert pairwise_res.status_code == 200
+        edge_data = pairwise_res.json()
+        assert "dimensions" in edge_data
+        assert "aggregate_intensity" in edge_data
+        assert edge_data["is_analytical_only"] is True
+
+        # 4. GET relationships
+        rels_res = client.get(f"/api/projects/{pid}/relationships")
+        assert rels_res.status_code == 200
+        rels_data = rels_res.json()
+        assert "relationships" in rels_data
+
+        # 5. GET specific relationship if exists or test error
+        spec_res = client.get(f"/api/projects/{pid}/relationships/{c1}/{c2}")
+        # Could be 200 if relationship exists or 404 if not yet connected
+        assert spec_res.status_code in (200, 404)
+        if spec_res.status_code == 200:
+            rel = spec_res.json()
+            assert "affection" in rel
+            assert "suspicion" in rel
+            assert "event_provenance" in rel

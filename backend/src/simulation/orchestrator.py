@@ -367,6 +367,8 @@ class SimulationOrchestrator:
                             contradiction_found = True
                             break
 
+                ev_id = result.events_created[0] if result.events_created else None
+
                 if contradiction_found:
                     # Recipient realizes actor is lying
                     BeliefUpdater.form_or_reinforce_belief(
@@ -381,7 +383,10 @@ class SimulationOrchestrator:
                         actor.id,
                         delta_trust=-0.25,
                         delta_affinity=-0.20,
+                        delta_suspicion=0.30,
+                        delta_resentment=0.20,
                         note=f"Caught lying about {topic}",
+                        event_id=ev_id,
                     )
                     EmotionUpdater.adjust_emotion(recipient, delta_anger=0.25, delta_fear=0.1)
                 else:
@@ -403,17 +408,54 @@ class SimulationOrchestrator:
                         has_secret = any(topic in s.statement.lower() for s in self.world.get_character_secrets(recipient.id))
                         if has_secret:
                             EmotionUpdater.adjust_emotion(recipient, delta_fear=0.3, delta_happiness=-0.2)
-                            RelationshipUpdater.apply_interaction(self.world, recipient.id, actor.id, delta_trust=-0.15, note="Accused with secret")
+                            RelationshipUpdater.apply_interaction(
+                                self.world,
+                                recipient.id,
+                                actor.id,
+                                delta_trust=-0.15,
+                                delta_fear=0.20,
+                                delta_suspicion=0.25,
+                                delta_resentment=0.20,
+                                note="Accused with secret",
+                                event_id=ev_id,
+                            )
                         else:
                             EmotionUpdater.adjust_emotion(recipient, delta_anger=0.25)
-                            RelationshipUpdater.apply_interaction(self.world, recipient.id, actor.id, delta_trust=-0.1, note="Falsely accused")
+                            RelationshipUpdater.apply_interaction(
+                                self.world,
+                                recipient.id,
+                                actor.id,
+                                delta_trust=-0.1,
+                                delta_resentment=0.25,
+                                delta_suspicion=0.15,
+                                note="Falsely accused",
+                                event_id=ev_id,
+                            )
                     elif social_intent == "cooperate":
-                        RelationshipUpdater.apply_interaction(self.world, recipient.id, actor.id, delta_trust=0.1, delta_affinity=0.1, note="Cooperation offered")
+                        RelationshipUpdater.apply_interaction(
+                            self.world,
+                            recipient.id,
+                            actor.id,
+                            delta_trust=0.1,
+                            delta_affinity=0.1,
+                            delta_affection=0.1,
+                            delta_respect=0.1,
+                            note="Cooperation offered",
+                            event_id=ev_id,
+                        )
                         EmotionUpdater.adjust_emotion(recipient, delta_happiness=0.1)
                     elif social_intent == "warn":
                         EmotionUpdater.adjust_emotion(recipient, delta_fear=0.2, delta_curiosity=0.2)
                     else:
-                        RelationshipUpdater.apply_interaction(self.world, recipient.id, actor.id, delta_trust=0.05, note="Conversation")
+                        RelationshipUpdater.apply_interaction(
+                            self.world,
+                            recipient.id,
+                            actor.id,
+                            delta_trust=0.05,
+                            delta_respect=0.05,
+                            note="Conversation",
+                            event_id=ev_id,
+                        )
 
         elif proposal.action_type in (ActionType.TAKE_OBJECT, ActionType.PICKUP):
             obj_id = proposal.target_id

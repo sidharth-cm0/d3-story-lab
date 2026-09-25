@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { WorldState, ArchetypeTrajectory } from '../types';
+import React, { useState, useEffect } from 'react';
+import { WorldState, ArchetypeTrajectory, ConflictGraph } from '../types';
 import { formatDisplayValue } from '../utils/format';
 import { ParticleHalo } from './granular';
 import { CharacterWorkstation } from './CharacterWorkstation';
@@ -21,12 +21,39 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
   const [showWorkstation, setShowWorkstation] = useState(false);
   const [trajectories, setTrajectories] = useState<Record<string, ArchetypeTrajectory>>({});
   const [loadingTraj, setLoadingTraj] = useState<Record<string, boolean>>({});
+  const [conflictGraph, setConflictGraph] = useState<ConflictGraph | null>(null);
+  const [loadingConflicts, setLoadingConflicts] = useState(false);
+  const [expandedConflicts, setExpandedConflicts] = useState<Record<string, boolean>>({});
 
   const characters = Object.values(world.characters || {});
   const locations = world.locations || {};
   const secrets = world.secrets || {};
   const beliefs = world.beliefs || {};
   const goals = world.goals || {};
+  const relationships = world.relationships || {};
+
+  useEffect(() => {
+    const pid = projectId || world.id;
+    if (pid) {
+      api.getProjectConflicts(pid)
+        .then((cg) => setConflictGraph(cg))
+        .catch(() => {});
+    }
+  }, [projectId, world.id]);
+
+  const handleDeriveConflicts = async () => {
+    const pid = projectId || world.id;
+    if (!pid) return;
+    setLoadingConflicts(true);
+    try {
+      const cg = await api.deriveProjectConflicts(pid);
+      setConflictGraph(cg);
+    } catch (err) {
+      console.error('Failed to derive conflicts:', err);
+    } finally {
+      setLoadingConflicts(false);
+    }
+  };
 
   const toggleDebug = (charId: string) => {
     setDebugActive((prev) => ({ ...prev, [charId]: !prev[charId] }));
@@ -88,6 +115,15 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span className="badge badge-subtle">{characters.length} ACTIVE</span>
           <button
+            className="btn-secondary"
+            onClick={handleDeriveConflicts}
+            disabled={loadingConflicts}
+            style={{ fontSize: '11px', padding: '6px 12px' }}
+            title="Derive deterministic interpersonal conflict graph"
+          >
+            {loadingConflicts ? '⚡ Analyzing...' : '⚡ Analyze Conflicts'}
+          </button>
+          <button
             className={`btn-primary ${showWorkstation ? 'active' : ''}`}
             onClick={() => setShowWorkstation(!showWorkstation)}
             style={{ fontSize: '11px', padding: '6px 14px' }}
@@ -115,6 +151,12 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
           const isSelected = selectedCharId === char.id;
           const emo = char.emotional_state || { happiness: 0, fear: 0, anger: 0, trust: 0, curiosity: 0.5 };
           const stateWord = calculateStateWord(emo.fear ?? 0, emo.anger ?? 0, emo.trust ?? 0);
+          const charRelationships = Object.values(relationships).filter(
+            (rel) => rel.character_a_id === char.id || rel.character_b_id === char.id
+          );
+          const charConflicts = (conflictGraph?.edges || []).filter(
+            (edge) => edge.source_character_id === char.id || edge.target_character_id === char.id
+          );
 
           return (
             <div
@@ -212,6 +254,172 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
                   })}
                 </div>
               </div>
+
+              {/* Multidimensional Relationships (Phase D) */}
+              {charRelationships.length > 0 && (
+                <div className="actor-field-group">
+                  <span className="field-group-title">RELATIONSHIPS</span>
+                  <div className="actor-relationships-list">
+                    {charRelationships.map((rel) => {
+                      const otherId = rel.character_a_id === char.id ? rel.character_b_id : rel.character_a_id;
+                      const otherChar = world.characters?.[otherId];
+                      const otherName = otherChar?.name || otherId;
+
+                      return (
+                        <div key={rel.id} className="actor-relationship-card">
+                          <div className="relationship-card-header">
+                            <span className="relationship-peer-name">▸ {otherName}</span>
+                            {rel.last_event_id && (
+                              <span className="relationship-event-tag" title={`Updated by event: ${rel.last_event_id}`}>
+                                evt: {rel.last_event_id.slice(-6)}
+                              </span>
+                            )}
+                          </div>
+                          {rel.history && (
+                            <div className="relationship-history-snippet">{rel.history}</div>
+                          )}
+                          <div className="relationship-dimensions-grid">
+                            <span className={`dim-pill ${rel.trust >= 0 ? 'pos' : 'neg'}`}>
+                              Trust: {rel.trust > 0 ? `+${rel.trust.toFixed(2)}` : rel.trust.toFixed(2)}
+                            </span>
+                            <span className={`dim-pill ${rel.affinity >= 0 ? 'pos' : 'neg'}`}>
+                              Affinity: {rel.affinity > 0 ? `+${rel.affinity.toFixed(2)}` : rel.affinity.toFixed(2)}
+                            </span>
+                            {rel.affection !== undefined && rel.affection !== 0 && (
+                              <span className={`dim-pill ${rel.affection >= 0 ? 'pos' : 'neg'}`}>
+                                Affection: {rel.affection > 0 ? `+${rel.affection.toFixed(2)}` : rel.affection.toFixed(2)}
+                              </span>
+                            )}
+                            {rel.fear !== undefined && rel.fear !== 0 && (
+                              <span className="dim-pill neg">
+                                Fear: {rel.fear > 0 ? `+${rel.fear.toFixed(2)}` : rel.fear.toFixed(2)}
+                              </span>
+                            )}
+                            {rel.respect !== undefined && rel.respect !== 0 && (
+                              <span className={`dim-pill ${rel.respect >= 0 ? 'pos' : 'neg'}`}>
+                                Respect: {rel.respect > 0 ? `+${rel.respect.toFixed(2)}` : rel.respect.toFixed(2)}
+                              </span>
+                            )}
+                            {rel.resentment !== undefined && rel.resentment !== 0 && (
+                              <span className="dim-pill neg">
+                                Resentment: {rel.resentment > 0 ? `+${rel.resentment.toFixed(2)}` : rel.resentment.toFixed(2)}
+                              </span>
+                            )}
+                            {rel.suspicion !== undefined && rel.suspicion !== 0 && (
+                              <span className="dim-pill neg">
+                                Suspicion: {rel.suspicion > 0 ? `+${rel.suspicion.toFixed(2)}` : rel.suspicion.toFixed(2)}
+                              </span>
+                            )}
+                            {rel.dependency !== undefined && rel.dependency !== 0 && (
+                              <span className="dim-pill neutral">
+                                Dependency: {rel.dependency > 0 ? `+${rel.dependency.toFixed(2)}` : rel.dependency.toFixed(2)}
+                              </span>
+                            )}
+                            {rel.power_imbalance !== undefined && rel.power_imbalance !== 0 && (
+                              <span className="dim-pill neutral">
+                                Power: {rel.power_imbalance > 0 ? `+${rel.power_imbalance.toFixed(2)}` : rel.power_imbalance.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* High-level Conflict Summary / Pairwise Intensity (Phase D) */}
+              {charConflicts.length > 0 && (
+                <div className="actor-field-group conflict-field-group">
+                  <div className="conflict-section-header">
+                    <span className="field-group-title text-amber">DRAMATIC CONFLICT (ANALYSIS)</span>
+                    <span className="conflict-count-badge">
+                      {charConflicts.length} EDGE{charConflicts.length > 1 ? 'S' : ''}
+                      {conflictGraph?.derived_at_tick !== undefined && conflictGraph?.derived_at_tick !== null && (
+                        <span className="conflict-tick-badge" style={{ marginLeft: '6px' }}>
+                          (TICK {conflictGraph.derived_at_tick})
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="actor-conflict-list">
+                    {charConflicts.map((edge, idx) => {
+                      const otherId = edge.source_character_id === char.id ? edge.target_character_id : edge.source_character_id;
+                      const otherChar = world.characters?.[otherId];
+                      const otherName = otherChar?.name || otherId;
+                      const edgeKey = `${char.id}_${otherId}_${idx}`;
+                      const isExpanded = !!expandedConflicts[edgeKey];
+                      const pct = Math.round(edge.aggregate_intensity * 100);
+                      const intensityClass = pct >= 70 ? 'high' : pct >= 40 ? 'medium' : 'low';
+
+                      return (
+                        <div key={edgeKey} className="actor-conflict-card">
+                          <div
+                            className="conflict-card-row"
+                            onClick={() => setExpandedConflicts((prev) => ({ ...prev, [edgeKey]: !prev[edgeKey] }))}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <div className="conflict-card-target">
+                              <span className="conflict-target-bullet">⚡</span>
+                              <span className="conflict-target-name">vs {otherName}</span>
+                            </div>
+                            <div className="conflict-card-badges">
+                              {edge.is_locked && (
+                                <span
+                                  className="conflict-lock-pill"
+                                  title="User-locked design premise preserved"
+                                  style={{
+                                    fontSize: '0.7em',
+                                    background: '#332a1e',
+                                    color: '#ffb74d',
+                                    padding: '1px 5px',
+                                    borderRadius: '3px',
+                                    marginRight: '4px',
+                                  }}
+                                >
+                                  LOCKED
+                                </span>
+                              )}
+                              <span className={`conflict-intensity-pill ${intensityClass}`}>
+                                {intensityClass.toUpperCase()} ({pct}%)
+                              </span>
+                              <span className="conflict-expand-icon">{isExpanded ? '▲' : '▼'}</span>
+                            </div>
+                          </div>
+                          <div className="conflict-dimension-tags">
+                            {Object.entries(edge.dimensions || {}).map(([dim, score]) => (
+                              <span key={dim} className="conflict-dim-tag" title={`Score: ${score}`}>
+                                {dim.replace(/_/g, ' ').toUpperCase()}
+                              </span>
+                            ))}
+                          </div>
+                          {isExpanded && edge.evidence && edge.evidence.length > 0 && (
+                            <div className="conflict-evidence-panel">
+                              <div className="conflict-evidence-title">TRACEABLE CONFLICT EVIDENCE</div>
+                              <ul className="conflict-evidence-list">
+                                {edge.evidence.map((ev, evIdx) => (
+                                  <li key={evIdx} className="conflict-evidence-item">
+                                    <span className="evidence-dim-badge">{ev.dimension.replace(/_/g, ' ')}</span>
+                                    {ev.is_user_authored && (
+                                      <span
+                                        className="evidence-author-badge"
+                                        style={{ fontSize: '0.7em', color: '#ffb74d', marginRight: '4px' }}
+                                      >
+                                        [USER DESIGN]
+                                      </span>
+                                    )}
+                                    <span className="evidence-desc">{ev.description}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Private State Boundary Toggle */}
               <button

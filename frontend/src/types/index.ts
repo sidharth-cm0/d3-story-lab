@@ -213,6 +213,24 @@ export interface Secret {
   importance: number;
 }
 
+export interface Relationship {
+  id: string;
+  character_a_id: string;
+  character_b_id: string;
+  affinity: number;
+  trust: number;
+  affection?: number;
+  fear?: number;
+  dependency?: number;
+  respect?: number;
+  resentment?: number;
+  suspicion?: number;
+  power_imbalance?: number;
+  event_provenance?: Record<string, string[]>;
+  last_event_id?: string | null;
+  history?: string;
+}
+
 export interface Event {
   id: string;
   tick: number;
@@ -234,6 +252,7 @@ export interface WorldState {
   goals: Record<string, Goal>;
   beliefs: Record<string, Belief>;
   secrets: Record<string, Secret>;
+  relationships?: Record<string, Relationship>;
   events: Record<string, Event>;
   facts?: Record<string, DiscoveredFact>;
 }
@@ -770,4 +789,46 @@ export interface ProjectData {
   scenes?: any[];
   causal_summary?: CausalContinuitySummary;
   character_arcs?: Record<string, CharacterArcReport>;
+  conflict_graph?: ConflictGraph | null;
+}
+
+export type ConflictDimension =
+  | 'goal_opposition'
+  | 'value_opposition'
+  | 'belief_contradiction'
+  | 'resource_competition'
+  | 'secret_exposure_risk'
+  | 'relationship_tension'
+  | 'dependency'
+  | 'historical_grievance'
+  | 'power_conflict'
+  | 'moral_conflict';
+
+export interface ConflictEvidence {
+  dimension: ConflictDimension;
+  source_id: string;
+  target_id?: string | null;
+  description: string;
+  metadata?: Record<string, any>;
+  is_user_authored?: boolean;
+}
+
+export interface ConflictEdge {
+  source_character_id: string;
+  target_character_id: string;
+  dimensions: Partial<Record<ConflictDimension, number>>;
+  evidence: ConflictEvidence[];
+  aggregate_intensity: number;
+  last_updated?: string;
+  is_analytical_only?: boolean;
+  authority?: FieldAuthority;
+  is_locked?: boolean;
+  locked_dimensions?: ConflictDimension[];
+}
+
+export interface ConflictGraph {
+  project_id: string;
+  edges: ConflictEdge[];
+  generated_at?: string;
+  derived_at_tick?: number | null;
 }
