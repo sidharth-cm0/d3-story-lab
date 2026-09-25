@@ -271,3 +271,9 @@ class SufficiencyReport(BaseModel):
         "CONTINUE", "ADJUST_PRESSURE_AND_CONTINUE", "PROCEED", "HALT_INSUFFICIENT"
     ]
     reason: str
+    conflict_escalated: bool = False
+    relationship_threshold_crossed: bool = False
+    belief_or_secret_revealed: bool = False
+    arc_movement_detected: bool = False
+    has_unresolved_tension: bool = False
+    dramatic_signals: Dict[str, Any] = Field(default_factory=dict)

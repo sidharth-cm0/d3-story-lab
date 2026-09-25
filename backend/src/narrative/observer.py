@@ -183,6 +183,87 @@ class Observer:
         else:
             dramatic_intensity = base_intensity
 
+        # 7. Phase F Dramatic Signal Boosts
+        # 7a. Relationship Threshold Crossing
+        rel_threshold_bonus = 0.0
+        if event.event_type == EventType.RELATIONSHIP_CHANGED:
+            if metadata.get("threshold_crossing") or metadata.get("major_shift") or rel_mag >= 0.5:
+                rel_threshold_bonus = 0.25
+        elif metadata.get("threshold_crossing"):
+            rel_threshold_bonus = 0.25
+        elif world is not None and len(event.actor_ids) >= 2:
+            for rel in getattr(world, "relationships", {}).values():
+                if (rel.character_a_id == event.actor_ids[0] and rel.character_b_id == event.actor_ids[1]) or \
+                   (rel.character_a_id == event.actor_ids[1] and rel.character_b_id == event.actor_ids[0]):
+                    if abs(getattr(rel, "trust", 0.0)) >= 0.7 or abs(getattr(rel, "affinity", 0.0)) >= 0.7 or \
+                       getattr(rel, "resentment", 0.0) >= 0.6 or getattr(rel, "fear", 0.0) >= 0.6:
+                        rel_threshold_bonus = 0.20
+                        break
+
+        # 7b. Secret Revelation
+        secret_rev_bonus = 0.0
+        if metadata.get("secret_revealed") or metadata.get("speech_act") == "reveal" or \
+           ("reveal" in desc and any(w in desc for w in ["secret", "truth", "clue", "ledger", "dossier"])):
+            secret_rev_bonus = 0.30
+        elif world is not None and hasattr(world, "propositions"):
+            for char in getattr(world, "characters", {}).values():
+                for pid, k_item in getattr(char, "knowledge", {}).items():
+                    if getattr(k_item, "acquired_at_event", None) == event.id:
+                        prop = world.propositions.get(pid)
+                        if prop and getattr(prop, "is_secret", False):
+                            secret_rev_bonus = 0.30
+                            break
+
+        # 7c. Major Conflict Escalation
+        conflict_esc_bonus = 0.0
+        if metadata.get("conflict_escalation") or metadata.get("is_confrontation"):
+            conflict_esc_bonus = 0.25
+        elif has_confront and len(event.actor_ids) >= 2:
+            conflict_esc_bonus = 0.25
+        elif world is not None and len(event.actor_ids) >= 2:
+            try:
+                from .conflict_engine import ConflictEngine
+                c_edge = ConflictEngine.derive_pairwise_conflict(world, event.actor_ids[0], event.actor_ids[1])
+                if c_edge.aggregate_intensity >= 0.6 and (has_confront or "speech_act" in metadata):
+                    conflict_esc_bonus = 0.25
+            except Exception:
+                pass
+
+        # 7d. Archetype Alignment Shift
+        archetype_shift_bonus = 0.0
+        if metadata.get("archetype_shift"):
+            archetype_shift_bonus = 0.20
+        elif world is not None and event.actor_ids:
+            char_id = event.actor_ids[0]
+            char = getattr(world, "characters", {}).get(char_id)
+            if char and getattr(char, "dynamics", None) and getattr(char.dynamics, "primary_archetype", None):
+                try:
+                    from .archetype_analyzer import ArchetypeTrajectoryAnalyzer
+                    traj = ArchetypeTrajectoryAnalyzer.analyze_trajectory(char_id, world, [event])
+                    if any(event.id in getattr(sp, "evidence_event_ids", []) for sp in traj.shift_points):
+                        archetype_shift_bonus = 0.20
+                except Exception:
+                    pass
+
+        # 7e. Belief Flip
+        belief_flip_bonus = 0.0
+        if metadata.get("belief_flip") or (event.event_type == EventType.BELIEF_FORMED and (metadata.get("inverted") or "now" in desc)):
+            belief_flip_bonus = 0.25
+
+        # 7f. Irreversible Choice / Sacrifice
+        sacrifice_bonus = 0.0
+        if metadata.get("sacrifice") or metadata.get("irreversible_choice") or any(w in desc for w in ["destroys", "shreds", "burns", "sacrifices"]):
+            sacrifice_bonus = 0.20
+
+        drama_boosts = (
+            rel_threshold_bonus
+            + secret_rev_bonus
+            + conflict_esc_bonus
+            + archetype_shift_bonus
+            + belief_flip_bonus
+            + sacrifice_bonus
+        )
+
         signals: dict[str, float] = {
             "state_delta_magnitude": round(state_delta_mag, 3),
             "knowledge_change_magnitude": round(knowledge_mag, 3),
@@ -190,15 +271,21 @@ class Observer:
             "goal_progress_delta": round(goal_mag, 3),
             "beat_binding_bonus": round(beat_bonus, 3),
             "dramatic_intensity": round(dramatic_intensity, 3),
+            "relationship_threshold_bonus": round(rel_threshold_bonus, 3),
+            "secret_revelation_bonus": round(secret_rev_bonus, 3),
+            "conflict_escalation_bonus": round(conflict_esc_bonus, 3),
+            "archetype_shift_bonus": round(archetype_shift_bonus, 3),
+            "belief_flip_bonus": round(belief_flip_bonus, 3),
+            "sacrifice_bonus": round(sacrifice_bonus, 3),
         }
 
         # Explainable final score
         if is_idle:
             final_score = 0.10
         elif has_confront:
-            final_score = max(0.80, min(1.0, round(dramatic_intensity + 0.15 * knowledge_mag, 3)))
+            final_score = max(0.80, min(1.0, round(dramatic_intensity + 0.15 * knowledge_mag + min(0.20, drama_boosts), 3)))
         elif has_urgent:
-            final_score = max(0.60, min(1.0, round(dramatic_intensity, 3)))
+            final_score = max(0.60, min(1.0, round(dramatic_intensity + min(0.20, drama_boosts), 3)))
         else:
             combined = (
                 dramatic_intensity * 0.60
@@ -207,14 +294,19 @@ class Observer:
                 + 0.15 * rel_mag
                 + 0.15 * goal_mag
                 + beat_bonus
+                + min(0.35, drama_boosts * 0.5)
             )
-            final_score = min(1.0, max(0.05, round(combined, 3)))
+            if drama_boosts >= 0.25:
+                final_score = max(0.65, min(1.0, round(combined, 3)))
+            else:
+                final_score = min(1.0, max(0.05, round(combined, 3)))
 
         return EventSalience(
             event_id=event.id,
             score=round(final_score, 3),
             signals=signals,
         )
+
 
 
     def score_all_events(

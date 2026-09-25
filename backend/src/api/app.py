@@ -98,6 +98,9 @@ from src.narrative.structure_selector import StructureSelector
 from src.narrative.blueprint_generator import StoryBlueprintGenerator
 from src.narrative.scene_builder import SceneBuilder
 from src.narrative.scene_projection import ObservableSceneProjector
+from src.narrative.dramatic_signals import extract_dramatic_signals, DramaticSignalsReport
+from src.narrative.sufficiency_gate import NarrativeSufficiencyGate
+
 from src.narrative.causal_analyzer import CausalContinuityAnalyzer
 from src.narrative.arc_tracker import CharacterArcTracker
 from src.storage.project_store import (
@@ -1771,7 +1774,70 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         )
         return report.model_dump(mode="json")
 
+    # Phase F: Dramatic Signals, Director Pressure, and Sufficiency Gate Endpoints
+    @app.get("/api/projects/{project_id}/dramatic-signals")
+    def get_project_dramatic_signals(project_id: str):
+        """Retrieve pure read-only dramatic signals for project world state and event history."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        signals = extract_dramatic_signals(
+            world=proj.world,
+            events=list(proj.world.events.values()),
+            existing_graph=proj.conflict_graph,
+        )
+        return signals.model_dump(mode="json")
+
+    @app.get("/api/projects/{project_id}/director/pressure-signals")
+    def get_director_pressure_signals(project_id: str):
+        """Evaluate and return Director pressure signals and potential bounded environmental interventions."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        director = DirectorAgent(blueprint=proj.story_blueprint)
+        signals = extract_dramatic_signals(
+            world=proj.world,
+            events=list(proj.world.events.values()),
+            existing_graph=proj.conflict_graph,
+        )
+        potential_intervention = director.evaluate_dramatic_pressure(
+            world=proj.world,
+            conflict_graph=proj.conflict_graph,
+        )
+        return {
+            "project_id": project_id,
+            "current_tick": proj.world.current_tick,
+            "can_intervene": director.can_intervene(proj.world.current_tick),
+            "unresolved_tension_level": signals.unresolved_tension_level,
+            "unresolved_conflicts_count": len(signals.unresolved_conflicts),
+            "stalled_relationships_count": len(signals.stalled_relationships),
+            "dramatic_need_opportunities_count": len(signals.dramatic_need_opportunities),
+            "potential_intervention": potential_intervention.model_dump(mode="json") if potential_intervention else None,
+        }
+
+    @app.get("/api/projects/{project_id}/sufficiency/evaluation")
+    def get_project_sufficiency_evaluation(project_id: str, budget_ticks: Optional[int] = None, hard_cap: Optional[int] = None):
+        """Evaluate narrative sufficiency with dramatic signals against current blueprint and world state."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if not proj.story_blueprint:
+            raise HTTPException(status_code=400, detail="Project does not have an active story blueprint")
+        gate = NarrativeSufficiencyGate()
+        current_budget = budget_ticks or max(proj.world.current_tick + 5, 20)
+        cap = hard_cap or max(current_budget, 100)
+        report = gate.evaluate(
+            blueprint=proj.story_blueprint,
+            world=proj.world,
+            current_tick=proj.world.current_tick,
+            current_budget_ticks=current_budget,
+            hard_cap_ticks=cap,
+            events=list(proj.world.events.values()),
+        )
+        return report.model_dump(mode="json")
+
     @app.get("/api/projects/{project_id}/causal-continuity")
+
     def get_causal_continuity(project_id: str):
         proj = store.load_project(project_id)
         if not proj:

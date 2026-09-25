@@ -284,3 +284,152 @@ class DirectorAgent:
                 )
 
         return events
+
+    def evaluate_dramatic_pressure(
+        self,
+        world: WorldState,
+        differ: Optional[Any] = None,
+        conflict_graph: Optional[Any] = None,
+        inactivity_count: int = 0,
+        stagnation_count: int = 0,
+    ) -> Optional[DirectorIntervention]:
+        """Evaluate if world-level dramatic pressure should be applied based on dramatic signals.
+
+        CRITICAL INVARIANTS:
+        - Director pressure is strictly environmental / circumstance-based.
+        - Director NEVER dictates character action proposals, dialogue, or internal state.
+        - Respects pacing budget and cooldown (can_intervene).
+        - Passes through ActionValidator gates identically to character actions.
+        """
+        if not self.can_intervene(world.current_tick):
+            return None
+
+        # Do not disrupt initial scene establishment before tick 2
+        if world.current_tick < 2:
+            return None
+
+        # Only intervene if characters are stalling/inactive or at evaluation intervals
+        is_stalling = inactivity_count >= 1 or stagnation_count >= 2
+        is_eval_interval = (world.current_tick % max(1, self.evaluation_interval_ticks)) == 0
+        if not is_stalling and not is_eval_interval:
+            return None
+
+        # Extract dramatic signals via pure helper
+        from ..narrative.dramatic_signals import extract_dramatic_signals
+        signals = extract_dramatic_signals(
+            world=world,
+            events=list(world.events.values()),
+            differ=differ,
+            existing_graph=conflict_graph,
+        )
+
+        # 1. High-intensity unresolved conflict pressure
+        if signals.unresolved_conflicts:
+            top_conflict = max(signals.unresolved_conflicts, key=lambda c: c.aggregate_intensity)
+            if top_conflict.aggregate_intensity >= 0.5:
+                char_a = world.characters.get(top_conflict.source_character_id)
+                char_b = world.characters.get(top_conflict.target_character_id)
+
+                loc_a = char_a.current_location_id if char_a else None
+                loc_b = char_b.current_location_id if char_b else None
+
+                # Determine target location
+                target_loc = loc_a or loc_b or next(iter(world.locations.keys()), "loc_room307")
+
+                # If co-located in high conflict, apply environmental deadline or obstacle
+                if loc_a and loc_a == loc_b:
+                    step = len(self.interventions_history) % 3
+                    if step == 0:
+                        return DirectorIntervention(
+                            intervention_type=DirectorInterventionType.ANNOUNCE_DEADLINE,
+                            description="A building-wide automated warning chimes: security lockdown commences in five minutes.",
+                            target_location_id=target_loc,
+                            metadata={
+                                "trigger_signal": "unresolved_conflict",
+                                "conflict_source": top_conflict.source_character_id,
+                                "conflict_target": top_conflict.target_character_id,
+                                "conflict_intensity": top_conflict.aggregate_intensity,
+                                "urgency": "high",
+                            },
+                        )
+                    elif step == 1:
+                        return DirectorIntervention(
+                            intervention_type=DirectorInterventionType.INTRODUCE_OBSTACLE,
+                            description="The pneumatic access door seals shut as security protocol engages.",
+                            target_location_id=target_loc,
+                            metadata={
+                                "trigger_signal": "unresolved_conflict",
+                                "conflict_source": top_conflict.source_character_id,
+                                "conflict_target": top_conflict.target_character_id,
+                                "conflict_intensity": top_conflict.aggregate_intensity,
+                                "urgency": "high",
+                            },
+                        )
+                    else:
+                        return DirectorIntervention(
+                            intervention_type=DirectorInterventionType.TIME_PRESSURE,
+                            description="Footsteps approach briskly in the corridor outside.",
+                            target_location_id=target_loc,
+                            metadata={
+                                "trigger_signal": "unresolved_conflict",
+                                "conflict_source": top_conflict.source_character_id,
+                                "conflict_target": top_conflict.target_character_id,
+                                "conflict_intensity": top_conflict.aggregate_intensity,
+                                "urgency": "medium",
+                            },
+                        )
+                else:
+                    # Separated characters in conflict: provide clue or communication pressure
+                    return DirectorIntervention(
+                        intervention_type=DirectorInterventionType.REVEAL_CLUE,
+                        description="A priority courier dispatch is deposited at the reception desk.",
+                        target_location_id=target_loc,
+                        metadata={
+                            "trigger_signal": "unresolved_conflict_separated",
+                            "conflict_source": top_conflict.source_character_id,
+                            "conflict_target": top_conflict.target_character_id,
+                            "conflict_intensity": top_conflict.aggregate_intensity,
+                            "urgency": "medium",
+                        },
+                    )
+
+        # 2. Stalled relationship tension
+        if signals.stalled_relationships:
+            stalled = signals.stalled_relationships[0]
+            target_loc = stalled.get("location_id") or next(iter(world.locations.keys()), "loc_room307")
+            return DirectorIntervention(
+                intervention_type=DirectorInterventionType.PHONE_RING,
+                description="The desk phone rings loudly, cutting through the tense silence.",
+                target_location_id=target_loc,
+                metadata={
+                    "trigger_signal": "stalled_relationship",
+                    "character_a_id": stalled.get("character_a_id"),
+                    "character_b_id": stalled.get("character_b_id"),
+                    "tension_dimension": stalled.get("tension_dimension"),
+                    "urgency": "medium",
+                },
+            )
+
+        # 3. Analytical dramatic need opportunity
+        if signals.dramatic_need_opportunities:
+            for opp in signals.dramatic_need_opportunities:
+                if opp.get("theme") in ("truth_revelation", "moral_cost"):
+                    target_loc = opp.get("location_id") or next(iter(world.locations.keys()), "loc_room307")
+                    int_type = (
+                        DirectorInterventionType.REVEAL_CLUE
+                        if opp.get("suggested_pressure") == "REVEAL_CLUE"
+                        else DirectorInterventionType.NEW_INFORMATION
+                    )
+                    return DirectorIntervention(
+                        intervention_type=int_type,
+                        description="An unsealed envelope bearing confidential markings lies in plain view.",
+                        target_location_id=target_loc,
+                        metadata={
+                            "trigger_signal": "dramatic_need_opportunity",
+                            "target_character_id": opp.get("character_id"),
+                            "theme": opp.get("theme"),
+                            "urgency": "low",
+                        },
+                    )
+
+        return None

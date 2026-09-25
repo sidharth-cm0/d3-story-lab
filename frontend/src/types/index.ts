@@ -238,6 +238,8 @@ export interface Event {
   actor_ids: string[];
   location_id: string | null;
   description: string;
+  source?: string;
+  caused_by?: string[];
   metadata: Record<string, any>;
 }
 

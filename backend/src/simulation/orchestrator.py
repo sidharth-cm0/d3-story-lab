@@ -204,11 +204,19 @@ class SimulationOrchestrator:
                     self.world, self.recorder, self.validator, self.total_ticks
                 )
 
-        # 5. Director evaluates pacing and potentially intervenes
+        # 5. Director evaluates pacing and dramatic pressure, potentially intervening
         if hasattr(self.director, "evaluate_pacing"):
             intervention = self.director.evaluate_pacing(
                 self.world, self._inactivity_count, stagnation_count=self._stagnation_count
             )
+            if not intervention and hasattr(self.director, "evaluate_dramatic_pressure"):
+                intervention = self.director.evaluate_dramatic_pressure(
+                    self.world,
+                    differ=self.differ,
+                    inactivity_count=self._inactivity_count,
+                    stagnation_count=self._stagnation_count,
+                )
+
             if intervention:
                 int_event = self.director.inject_intervention(self.world, self.recorder, intervention, validator=self.validator)
                 if int_event:
@@ -295,6 +303,8 @@ class SimulationOrchestrator:
                     self.world.current_tick,
                     current_budget,
                     effective_hard_cap,
+                    differ=self.differ,
+                    events=list(self.world.events.values()),
                 )
                 self.last_sufficiency_report = report
 
@@ -323,6 +333,8 @@ class SimulationOrchestrator:
                 self.world.current_tick,
                 current_budget,
                 effective_hard_cap,
+                differ=self.differ,
+                events=list(self.world.events.values()),
             )
 
         return all_results

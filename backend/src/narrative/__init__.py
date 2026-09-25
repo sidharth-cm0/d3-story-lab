@@ -32,6 +32,18 @@ from .scene_projection import (
     scan_for_internal_vocabulary,
 )
 
+from .dramatic_signals import (
+    DramaticSignalsReport,
+    extract_dramatic_signals,
+    get_unresolved_conflicts,
+    get_relationship_threshold_crossings,
+    get_stalled_relationships,
+    get_archetype_movements,
+    get_dramatic_need_opportunities,
+    detect_secret_revelations,
+    detect_belief_flips,
+)
+
 __all__ = [
     "NarrativeBeat",
     "NarrativeBeatType",
@@ -69,4 +81,13 @@ __all__ = [
     "ObservableSceneProjection",
     "ObservableSceneProjector",
     "scan_for_internal_vocabulary",
+    "DramaticSignalsReport",
+    "extract_dramatic_signals",
+    "get_unresolved_conflicts",
+    "get_relationship_threshold_crossings",
+    "get_stalled_relationships",
+    "get_archetype_movements",
+    "get_dramatic_need_opportunities",
+    "detect_secret_revelations",
+    "detect_belief_flips",
 ]
