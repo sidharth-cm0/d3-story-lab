@@ -36,6 +36,11 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
   const [formBeliefs, setFormBeliefs] = useState('');
   const [formTraits, setFormTraits] = useState('');
   const [formClothing, setFormClothing] = useState('');
+  const [formConsciousWant, setFormConsciousWant] = useState('');
+  const [formDramaticNeed, setFormDramaticNeed] = useState('');
+  const [formCoreValue, setFormCoreValue] = useState('');
+  const [formFear, setFormFear] = useState('');
+  const [formContradiction, setFormContradiction] = useState('');
   const [lockedFields, setLockedFields] = useState<Record<string, boolean>>({
     name: false,
     role: false,
@@ -44,6 +49,11 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
     beliefs: false,
     traits: false,
     clothing: false,
+    conscious_want: false,
+    dramatic_need: false,
+    core_value: false,
+    fear: false,
+    contradiction: false,
   });
 
   // Review mode state
@@ -81,6 +91,11 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
           beliefs: formBeliefs.trim() ? formBeliefs.split('\n').filter(Boolean) : undefined,
           personality_traits: formTraits.trim() ? formTraits.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
           visual_profile: formClothing.trim() ? { clothing: formClothing.trim() } : undefined,
+          conscious_want: formConsciousWant.trim() || undefined,
+          dramatic_need: formDramaticNeed.trim() || undefined,
+          core_value: formCoreValue.trim() || undefined,
+          fear: formFear.trim() || undefined,
+          contradiction: formContradiction.trim() || undefined,
           locked_fields: activeLocks,
         };
         res = await api.intakeCharacter(projectId, undefined, payload, false);
@@ -111,11 +126,15 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
     }
   };
 
+  const getFieldAuthority = (fieldName: string): FieldAuthority | undefined => {
+    return draft?.provenance[fieldName]?.authority || draft?.dynamics?.provenance?.[fieldName]?.authority;
+  };
+
   const handleToggleLockInReview = async (fieldName: string) => {
     if (!draft) return;
     setError(null);
     try {
-      const isCurrentlyLocked = draft.provenance[fieldName]?.authority === 'USER_LOCKED';
+      const isCurrentlyLocked = getFieldAuthority(fieldName) === 'USER_LOCKED';
       if (isCurrentlyLocked) {
         const res = await api.unlockCharacterField(projectId, draft.id, fieldName);
         setDraft(res.draft);
@@ -125,6 +144,21 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
       }
     } catch (err: any) {
       setError(err.message || 'Failed to toggle lock');
+    }
+  };
+
+  const handleProjectWant = async () => {
+    if (!draft) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.projectDraftConsciousWant(projectId, draft.id);
+      setDraft(res.draft);
+      setCompleteness(res.completeness);
+    } catch (err: any) {
+      setError(err.message || 'Failed to project conscious want to goals');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -401,6 +435,112 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
                   onChange={(e) => setFormClothing(e.target.value)}
                 />
               </div>
+
+              {/* Guided Mode Character Dynamics Fields */}
+              <div className="form-field-row">
+                <div className="form-field-header">
+                  <label>Conscious Want (Projects to Active Goal)</label>
+                  <label className="lock-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={lockedFields.conscious_want}
+                      onChange={() => toggleFieldLockInForm('conscious_want')}
+                    />
+                    <span>🔒 Lock Value</span>
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  className="workstation-input"
+                  placeholder="e.g. Expose the classified transaction ledger"
+                  value={formConsciousWant}
+                  onChange={(e) => setFormConsciousWant(e.target.value)}
+                />
+              </div>
+
+              <div className="form-field-row">
+                <div className="form-field-header">
+                  <label>Dramatic Need (Analytical Only — Not Simulation Goal)</label>
+                  <label className="lock-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={lockedFields.dramatic_need}
+                      onChange={() => toggleFieldLockInForm('dramatic_need')}
+                    />
+                    <span>🔒 Lock Value</span>
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  className="workstation-input"
+                  placeholder="e.g. Learn to accept vulnerability and trust allies"
+                  value={formDramaticNeed}
+                  onChange={(e) => setFormDramaticNeed(e.target.value)}
+                />
+              </div>
+
+              <div className="form-field-row">
+                <div className="form-field-header">
+                  <label>Core Value</label>
+                  <label className="lock-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={lockedFields.core_value}
+                      onChange={() => toggleFieldLockInForm('core_value')}
+                    />
+                    <span>🔒 Lock Value</span>
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  className="workstation-input"
+                  placeholder="e.g. Truth and accountability"
+                  value={formCoreValue}
+                  onChange={(e) => setFormCoreValue(e.target.value)}
+                />
+              </div>
+
+              <div className="form-field-row">
+                <div className="form-field-header">
+                  <label>Deepest Fear</label>
+                  <label className="lock-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={lockedFields.fear}
+                      onChange={() => toggleFieldLockInForm('fear')}
+                    />
+                    <span>🔒 Lock Value</span>
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  className="workstation-input"
+                  placeholder="e.g. Unwitting complicity in institutional crimes"
+                  value={formFear}
+                  onChange={(e) => setFormFear(e.target.value)}
+                />
+              </div>
+
+              <div className="form-field-row">
+                <div className="form-field-header">
+                  <label>Core Contradiction</label>
+                  <label className="lock-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={lockedFields.contradiction}
+                      onChange={() => toggleFieldLockInForm('contradiction')}
+                    />
+                    <span>🔒 Lock Value</span>
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  className="workstation-input"
+                  placeholder="e.g. Demands total transparency while concealing personal history"
+                  value={formContradiction}
+                  onChange={(e) => setFormContradiction(e.target.value)}
+                />
+              </div>
             </div>
           )}
 
@@ -662,6 +802,276 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
                   >
                     {draft.provenance.visual_profile?.authority === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
                   </button>
+                </div>
+              </div>
+
+              {/* PHASE B: CHARACTER DYNAMICS & DRAMATIC CONTEXT */}
+              <div className="review-dynamics-section">
+                <div className="review-dynamics-header">
+                  <span className="dynamics-section-kicker">PHASE B DESIGN METADATA</span>
+                  <h4 className="dynamics-section-title">🎭 CHARACTER DYNAMICS &amp; DRAMATIC CONTEXT</h4>
+                  <p className="dynamics-section-note">
+                    Design-time profile for dramatic starting conditions. <strong>Conscious Want</strong> can project into the active simulation Goal model. <strong>Dramatic Need</strong> remains <em>strictly analytical</em> and never influences character action selection or decision policies.
+                  </p>
+                </div>
+
+                {/* Conscious Want */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <div className="dynamics-title-line">
+                      <span className="review-field-name">Conscious Want</span>
+                      <span className="dynamics-tag tag-want">🎯 Projects to Simulation Goal</span>
+                    </div>
+                    <div className="review-field-value">
+                      {draft.dynamics?.conscious_want || <em className="text-muted">No conscious want specified</em>}
+                    </div>
+                    {draft.dynamics?.conscious_want && (!draft.goals || !draft.goals.includes(draft.dynamics.conscious_want)) && (
+                      <button
+                        className="btn-project-want"
+                        onClick={handleProjectWant}
+                        disabled={loading}
+                        title="Explicitly add conscious want to active simulation goals"
+                      >
+                        ⚡ Project Want → Goal
+                      </button>
+                    )}
+                    {(draft.provenance.conscious_want?.source_snippet || draft.provenance.conscious_want?.inference_rule) && (
+                      <div className="review-field-snippet">
+                        {draft.provenance.conscious_want.source_snippet
+                          ? `Source: "${draft.provenance.conscious_want.source_snippet}"`
+                          : `Rule: ${draft.provenance.conscious_want.inference_rule}`}
+                      </div>
+                    )}
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('conscious_want'))}
+                    <button
+                      className="btn-lock-toggle"
+                      onClick={() => handleToggleLockInReview('conscious_want')}
+                    >
+                      {getFieldAuthority('conscious_want') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Dramatic Need */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <div className="dynamics-title-line">
+                      <span className="review-field-name">Dramatic Need</span>
+                      <span className="dynamics-tag tag-need">🧠 Analytical Only (Inactive in Simulation)</span>
+                    </div>
+                    <div className="review-field-value">
+                      {draft.dynamics?.dramatic_need || <em className="text-muted">No dramatic need specified</em>}
+                    </div>
+                    <div className="dramatic-need-notice">
+                      ⚠️ Analytical invariant: Dramatic Need is never converted to a Goal and never directly drives ActionProposal or DecisionPolicy.
+                    </div>
+                    {(draft.provenance.dramatic_need?.source_snippet || draft.provenance.dramatic_need?.inference_rule) && (
+                      <div className="review-field-snippet">
+                        {draft.provenance.dramatic_need.source_snippet
+                          ? `Source: "${draft.provenance.dramatic_need.source_snippet}"`
+                          : `Rule: ${draft.provenance.dramatic_need.inference_rule}`}
+                      </div>
+                    )}
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('dramatic_need'))}
+                    <button
+                      className="btn-lock-toggle"
+                      onClick={() => handleToggleLockInReview('dramatic_need')}
+                    >
+                      {getFieldAuthority('dramatic_need') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Core Value & Shadow Value */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Core Value &amp; Shadow Value</span>
+                    <div className="review-field-value">
+                      {draft.dynamics?.core_value ? (
+                        <div>
+                          <div><strong>Core Value:</strong> {draft.dynamics.core_value}</div>
+                          {draft.dynamics.shadow_value && (
+                            <div><strong>Shadow Value:</strong> {draft.dynamics.shadow_value}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <em className="text-muted">No values specified</em>
+                      )}
+                    </div>
+                    {(draft.provenance.core_value?.source_snippet || draft.provenance.core_value?.inference_rule) && (
+                      <div className="review-field-snippet">
+                        {draft.provenance.core_value.source_snippet
+                          ? `Source: "${draft.provenance.core_value.source_snippet}"`
+                          : `Rule: ${draft.provenance.core_value.inference_rule}`}
+                      </div>
+                    )}
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('core_value'))}
+                    <button
+                      className="btn-lock-toggle"
+                      onClick={() => handleToggleLockInReview('core_value')}
+                    >
+                      {getFieldAuthority('core_value') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Fear */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Deepest Fear</span>
+                    <div className="review-field-value">
+                      {draft.dynamics?.fear || <em className="text-muted">No fear specified</em>}
+                    </div>
+                    {(draft.provenance.fear?.source_snippet || draft.provenance.fear?.inference_rule) && (
+                      <div className="review-field-snippet">
+                        {draft.provenance.fear.source_snippet
+                          ? `Source: "${draft.provenance.fear.source_snippet}"`
+                          : `Rule: ${draft.provenance.fear.inference_rule}`}
+                      </div>
+                    )}
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('fear'))}
+                    <button
+                      className="btn-lock-toggle"
+                      onClick={() => handleToggleLockInReview('fear')}
+                    >
+                      {getFieldAuthority('fear') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Contradiction */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Core Contradiction</span>
+                    <div className="review-field-value">
+                      {draft.dynamics?.contradiction || <em className="text-muted">No contradiction specified</em>}
+                    </div>
+                    {(draft.provenance.contradiction?.source_snippet || draft.provenance.contradiction?.inference_rule) && (
+                      <div className="review-field-snippet">
+                        {draft.provenance.contradiction.source_snippet
+                          ? `Source: "${draft.provenance.contradiction.source_snippet}"`
+                          : `Rule: ${draft.provenance.contradiction.inference_rule}`}
+                      </div>
+                    )}
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('contradiction'))}
+                    <button
+                      className="btn-lock-toggle"
+                      onClick={() => handleToggleLockInReview('contradiction')}
+                    >
+                      {getFieldAuthority('contradiction') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Moral Boundary */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Moral Boundary</span>
+                    <div className="review-field-value">
+                      {draft.dynamics?.moral_boundary || <em className="text-muted">No boundary specified</em>}
+                    </div>
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('moral_boundary'))}
+                    <button
+                      className="btn-lock-toggle"
+                      onClick={() => handleToggleLockInReview('moral_boundary')}
+                    >
+                      {getFieldAuthority('moral_boundary') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Habits & Mannerisms */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Habits &amp; Mannerisms</span>
+                    <div className="review-field-value">
+                      {draft.dynamics?.habits && draft.dynamics.habits.length > 0 && (
+                        <div style={{ marginBottom: 4 }}>
+                          <strong>Habits:</strong> {draft.dynamics.habits.join(', ')}
+                        </div>
+                      )}
+                      {draft.dynamics?.mannerisms && draft.dynamics.mannerisms.length > 0 && (
+                        <div>
+                          <strong>Mannerisms:</strong> {draft.dynamics.mannerisms.join(', ')}
+                        </div>
+                      )}
+                      {(!draft.dynamics?.habits || draft.dynamics.habits.length === 0) &&
+                       (!draft.dynamics?.mannerisms || draft.dynamics.mannerisms.length === 0) && (
+                        <em className="text-muted">No behavioral signatures specified</em>
+                      )}
+                    </div>
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('habits'))}
+                    <button
+                      className="btn-lock-toggle"
+                      onClick={() => handleToggleLockInReview('habits')}
+                    >
+                      {getFieldAuthority('habits') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Speech Style & Lifestyle */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Speech Style &amp; Lifestyle</span>
+                    <div className="review-field-value">
+                      {draft.dynamics?.speech_style && (
+                        <div style={{ marginBottom: 4 }}>
+                          <strong>Speech Style:</strong> {draft.dynamics.speech_style}
+                        </div>
+                      )}
+                      {draft.dynamics?.lifestyle && (
+                        <div>
+                          <strong>Lifestyle:</strong> {draft.dynamics.lifestyle}
+                        </div>
+                      )}
+                      {!draft.dynamics?.speech_style && !draft.dynamics?.lifestyle && (
+                        <em className="text-muted">None specified</em>
+                      )}
+                    </div>
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('speech_style'))}
+                    <button
+                      className="btn-lock-toggle"
+                      onClick={() => handleToggleLockInReview('speech_style')}
+                    >
+                      {getFieldAuthority('speech_style') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Conflict Strategy */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Conflict / Pressure Strategy</span>
+                    <div className="review-field-value">
+                      {draft.dynamics?.conflict_strategy || <em className="text-muted">None specified</em>}
+                    </div>
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('conflict_strategy'))}
+                    <button
+                      className="btn-lock-toggle"
+                      onClick={() => handleToggleLockInReview('conflict_strategy')}
+                    >
+                      {getFieldAuthority('conflict_strategy') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

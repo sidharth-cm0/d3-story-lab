@@ -95,6 +95,22 @@ export interface CharacterInput {
   linked_character_id?: string | null;
 }
 
+export interface CharacterDynamicsProfile {
+  core_value?: string;
+  shadow_value?: string | null;
+  conscious_want?: string;
+  dramatic_need?: string;
+  fear?: string;
+  contradiction?: string;
+  moral_boundary?: string | null;
+  habits?: string[];
+  mannerisms?: string[];
+  lifestyle?: string | null;
+  speech_style?: string | null;
+  conflict_strategy?: string | null;
+  provenance?: Record<string, FieldProvenance>;
+}
+
 export interface CharacterProfileDraft {
   id: string;
   project_id?: string | null;
@@ -109,6 +125,7 @@ export interface CharacterProfileDraft {
   emotional_state: Record<string, number>;
   visual_profile?: ActorVisualProfile | null;
   current_location_id?: string | null;
+  dynamics?: CharacterDynamicsProfile | null;
   provenance: Record<string, FieldProvenance>;
   created_at: string;
   updated_at: string;
@@ -139,6 +156,7 @@ export interface Character {
   visual_profile?: ActorVisualProfile;
   input_id?: string | null;
   field_provenance?: Record<string, FieldProvenance>;
+  dynamics?: CharacterDynamicsProfile | null;
 }
 
 export interface WorldObject {

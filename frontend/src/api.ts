@@ -15,6 +15,7 @@ import {
   CharacterInput,
   CompletenessReport,
   FieldAuthority,
+  CharacterDynamicsProfile,
 } from './types';
 
 const BASE_URL = '/api';
@@ -480,5 +481,63 @@ export async function acceptCharacterDraft(
     const err = await res.json().catch(() => ({ detail: 'Failed to accept character' }));
     throw new Error(err.detail || 'Failed to accept character');
   }
+  return res.json();
+}
+
+export async function getCharacterDynamics(
+  projectId: string,
+  characterId: string
+): Promise<CharacterDynamicsProfile> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/dynamics`);
+  if (!res.ok) throw new Error('Failed to get character dynamics');
+  return res.json();
+}
+
+export async function updateCharacterDynamics(
+  projectId: string,
+  characterId: string,
+  dynamics: Partial<CharacterDynamicsProfile>,
+  lockedFields?: string[],
+  force?: boolean
+): Promise<CharacterDynamicsProfile> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/dynamics`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...dynamics, locked_fields: lockedFields, force }),
+  });
+  if (!res.ok) throw new Error('Failed to update character dynamics');
+  return res.json();
+}
+
+export async function enrichCharacterDynamics(
+  projectId: string,
+  characterId: string
+): Promise<CharacterDynamicsProfile> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/dynamics/enrich`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to enrich character dynamics');
+  return res.json();
+}
+
+export async function projectCharacterConsciousWant(
+  projectId: string,
+  characterId: string
+): Promise<{ character_id: string; goal: any; conscious_want: string; dramatic_need: string; is_need_projected: boolean }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/project-want`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to project conscious want');
+  return res.json();
+}
+
+export async function projectDraftConsciousWant(
+  projectId: string,
+  draftId: string
+): Promise<{ draft: CharacterProfileDraft; completeness: CompletenessReport; conscious_want: string; is_need_projected: boolean }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/drafts/${draftId}/project-want`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to project draft conscious want');
   return res.json();
 }

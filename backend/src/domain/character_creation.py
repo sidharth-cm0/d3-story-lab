@@ -33,6 +33,9 @@ class FieldProvenance(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+from .character_dynamics import CharacterDynamicsProfile, DYNAMICS_FIELD_NAMES
+
+
 class CharacterInput(BaseModel):
     """Immutable record of the raw user input (natural-language text and/or structured form data)."""
 
@@ -62,6 +65,10 @@ class CharacterProfileDraft(BaseModel):
     emotional_state: Dict[str, float] = Field(default_factory=dict)
     visual_profile: Optional[ActorVisualProfile] = None
     current_location_id: Optional[str] = None
+    dynamics: CharacterDynamicsProfile = Field(
+        default_factory=CharacterDynamicsProfile,
+        description="Character dynamics design profile",
+    )
     provenance: Dict[str, FieldProvenance] = Field(default_factory=dict)
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -70,6 +77,10 @@ class CharacterProfileDraft(BaseModel):
 
     def get_authority(self, field_name: str) -> Optional[FieldAuthority]:
         """Get the authority of a field, or None if no provenance recorded."""
+        if field_name in DYNAMICS_FIELD_NAMES and self.dynamics:
+            auth = self.dynamics.get_authority(field_name)
+            if auth is not None:
+                return auth
         prov = self.provenance.get(field_name)
         return prov.authority if prov else None
 
@@ -80,6 +91,13 @@ class CharacterProfileDraft(BaseModel):
     def lock_field(self, field_name: str) -> None:
         """Lock a field so it cannot be overwritten by enrichment or regeneration."""
         now = datetime.now(timezone.utc).isoformat()
+        if field_name in DYNAMICS_FIELD_NAMES and self.dynamics:
+            self.dynamics.lock_field(field_name)
+            if field_name in self.dynamics.provenance:
+                self.provenance[field_name] = self.dynamics.provenance[field_name]
+            self.updated_at = now
+            return
+
         current_val = getattr(self, field_name, None)
         existing = self.provenance.get(field_name)
 
@@ -99,6 +117,13 @@ class CharacterProfileDraft(BaseModel):
     def unlock_field(self, field_name: str) -> None:
         """Unlock a previously locked field."""
         now = datetime.now(timezone.utc).isoformat()
+        if field_name in DYNAMICS_FIELD_NAMES and self.dynamics:
+            self.dynamics.unlock_field(field_name)
+            if field_name in self.dynamics.provenance:
+                self.provenance[field_name] = self.dynamics.provenance[field_name]
+            self.updated_at = now
+            return
+
         existing = self.provenance.get(field_name)
         if not existing:
             return
@@ -129,6 +154,20 @@ class CharacterProfileDraft(BaseModel):
 
         Returns True if the field was updated, False if blocked by authority rules.
         """
+        if field_name in DYNAMICS_FIELD_NAMES and self.dynamics:
+            updated = self.dynamics.set_field(
+                field_name=field_name,
+                value=value,
+                authority=authority,
+                source_snippet=source_snippet,
+                inference_rule=inference_rule,
+                force=force,
+            )
+            if updated and field_name in self.dynamics.provenance:
+                self.provenance[field_name] = self.dynamics.provenance[field_name]
+                self.updated_at = datetime.now(timezone.utc).isoformat()
+            return updated
+
         existing = self.provenance.get(field_name)
         if not force and existing:
             # Rule 1: USER_LOCKED fields can NEVER be overwritten

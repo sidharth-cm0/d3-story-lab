@@ -13,6 +13,11 @@ vi.mock('../api', async (importOriginal) => {
     lockCharacterField: vi.fn(),
     unlockCharacterField: vi.fn(),
     acceptCharacterDraft: vi.fn(),
+    projectDraftConsciousWant: vi.fn(),
+    getCharacterDynamics: vi.fn(),
+    updateCharacterDynamics: vi.fn(),
+    enrichCharacterDynamics: vi.fn(),
+    projectCharacterConsciousWant: vi.fn(),
   };
 });
 
@@ -286,5 +291,173 @@ describe('CharacterWorkstation Component (Phase A)', () => {
 
     // Returns to input step with original text preserved
     expect(screen.getByDisplayValue('Original raw text')).toBeTruthy();
+  });
+
+  it('displays Phase B Character Dynamics fields in Review Panel with Conscious Want and Dramatic Need distinction', async () => {
+    const draftWithDynamics: CharacterProfileDraft = {
+      ...mockDraft,
+      dynamics: {
+        core_value: 'Objective truth and justice',
+        conscious_want: 'Expose the corrupt commissioner',
+        dramatic_need: 'Learn to trust his partner and accept vulnerability',
+        fear: 'Being framed by the syndicate',
+        contradiction: 'Demands honesty but keeps secrets',
+        moral_boundary: 'Will not fabricate evidence',
+        habits: ['Checks room exits'],
+        mannerisms: ['Direct unblinking eye contact'],
+        lifestyle: 'Nocturnal, sparse office',
+        speech_style: 'Clipped, interrogative',
+        conflict_strategy: 'Methodical evidential pressure',
+        provenance: {
+          conscious_want: {
+            field_name: 'conscious_want',
+            authority: 'USER_PREFERRED',
+            source_snippet: 'Expose commissioner',
+            created_at: '2026-09-24T12:00:00Z',
+          },
+          dramatic_need: {
+            field_name: 'dramatic_need',
+            authority: 'SYSTEM_INFERRED',
+            inference_rule: 'role_inference:investigator_need',
+            created_at: '2026-09-24T12:00:00Z',
+          },
+          core_value: {
+            field_name: 'core_value',
+            authority: 'USER_LOCKED',
+            created_at: '2026-09-24T12:00:00Z',
+          },
+        },
+      },
+    };
+
+    vi.mocked(api.intakeCharacter).mockResolvedValueOnce({
+      input: mockInput,
+      draft: draftWithDynamics,
+      completeness: mockCompleteness,
+    });
+
+    render(<CharacterWorkstation projectId={mockProjectId} />);
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Detective Marcus Vance/i), {
+      target: { value: 'Investigator prompt' },
+    });
+    fireEvent.click(screen.getByText(/Normalize & Review Profile/i));
+
+    // Confirm section header and note
+    expect(await screen.findByText(/CHARACTER DYNAMICS & DRAMATIC CONTEXT/i)).toBeTruthy();
+    expect(screen.getByText(/Design-time profile for dramatic starting conditions/i)).toBeTruthy();
+
+    // Confirm values rendered
+    expect(screen.getByText(/Expose the corrupt commissioner/i)).toBeTruthy();
+    expect(screen.getByText(/Learn to trust his partner and accept vulnerability/i)).toBeTruthy();
+    expect(screen.getByText(/Analytical invariant: Dramatic Need is never converted to a Goal/i)).toBeTruthy();
+
+    // Check analytical only badge
+    expect(screen.getByText(/🧠 Analytical Only \(Inactive in Simulation\)/i)).toBeTruthy();
+    expect(screen.getByText(/🎯 Projects to Simulation Goal/i)).toBeTruthy();
+  });
+
+  it('projects conscious want to simulation goals on user action', async () => {
+    const draftWithWant: CharacterProfileDraft = {
+      ...mockDraft,
+      goals: ['Existing goal 1'],
+      dynamics: {
+        conscious_want: 'Uncover the dock conspiracy',
+        dramatic_need: 'Acknowledge personal past mistakes',
+        provenance: {},
+      },
+    };
+
+    const updatedDraft: CharacterProfileDraft = {
+      ...draftWithWant,
+      goals: ['Uncover the dock conspiracy', 'Existing goal 1'],
+    };
+
+    vi.mocked(api.intakeCharacter).mockResolvedValueOnce({
+      input: mockInput,
+      draft: draftWithWant,
+      completeness: mockCompleteness,
+    });
+
+    vi.mocked(api.projectDraftConsciousWant).mockResolvedValueOnce({
+      draft: updatedDraft,
+      completeness: mockCompleteness,
+      conscious_want: 'Uncover the dock conspiracy',
+      is_need_projected: false,
+    });
+
+    render(<CharacterWorkstation projectId={mockProjectId} />);
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Detective Marcus Vance/i), {
+      target: { value: 'Prompt' },
+    });
+    fireEvent.click(screen.getByText(/Normalize & Review Profile/i));
+
+    await screen.findByText(/CHARACTER DYNAMICS & DRAMATIC CONTEXT/i);
+
+    const projectBtn = screen.getByText(/⚡ Project Want → Goal/i);
+    fireEvent.click(projectBtn);
+
+    await waitFor(() => {
+      expect(api.projectDraftConsciousWant).toHaveBeenCalledWith(mockProjectId, 'draft_123');
+    });
+  });
+
+  it('allows locking and unlocking dynamics fields in Review Panel', async () => {
+    const draftWithDynamics: CharacterProfileDraft = {
+      ...mockDraft,
+      dynamics: {
+        core_value: 'Truth',
+        provenance: {
+          core_value: {
+            field_name: 'core_value',
+            authority: 'USER_PREFERRED',
+            created_at: '2026-09-24T12:00:00Z',
+          },
+        },
+      },
+    };
+
+    const lockedDraft: CharacterProfileDraft = {
+      ...draftWithDynamics,
+      dynamics: {
+        ...draftWithDynamics.dynamics,
+        provenance: {
+          core_value: {
+            field_name: 'core_value',
+            authority: 'USER_LOCKED',
+            created_at: '2026-09-24T12:00:00Z',
+            locked_at: '2026-09-24T12:05:00Z',
+          },
+        },
+      },
+    };
+
+    vi.mocked(api.intakeCharacter).mockResolvedValueOnce({
+      input: mockInput,
+      draft: draftWithDynamics,
+      completeness: mockCompleteness,
+    });
+
+    vi.mocked(api.lockCharacterField).mockResolvedValueOnce({
+      draft: lockedDraft,
+      field_name: 'core_value',
+      authority: 'USER_LOCKED',
+    });
+
+    render(<CharacterWorkstation projectId={mockProjectId} />);
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Detective Marcus Vance/i), {
+      target: { value: 'Prompt' },
+    });
+    fireEvent.click(screen.getByText(/Normalize & Review Profile/i));
+
+    await screen.findByText(/CHARACTER DYNAMICS & DRAMATIC CONTEXT/i);
+
+    // Find the lock button for core_value
+    const lockButtons = screen.getAllByRole('button', { name: /🔒 Lock/i });
+    // Click one of the lock buttons in the dynamics section
+    fireEvent.click(lockButtons[lockButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(api.lockCharacterField).toHaveBeenCalled();
+    });
   });
 });

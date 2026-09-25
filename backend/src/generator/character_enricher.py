@@ -19,15 +19,17 @@ class CharacterEnrichmentService:
 
         Returns False if the field is USER_LOCKED or USER_PREFERRED.
         """
-        prov = draft.provenance.get(field_name)
-        if not prov:
+        auth = draft.get_authority(field_name)
+        if auth in (FieldAuthority.USER_LOCKED, FieldAuthority.USER_PREFERRED):
+            return False
+
+        if not auth:
             val = getattr(draft, field_name, None)
+            if val is None and hasattr(draft, "dynamics") and draft.dynamics:
+                val = getattr(draft.dynamics, field_name, None)
             if val is None or val == [] or val == {} or val == "":
                 return True
             return True
-
-        if prov.authority in (FieldAuthority.USER_LOCKED, FieldAuthority.USER_PREFERRED):
-            return False
 
         return True
 
@@ -179,5 +181,102 @@ class CharacterEnrichmentService:
                 )
 
             draft.set_field("visual_profile", vis, FieldAuthority.SYSTEM_INFERRED, inference_rule="role_inference:visual_profile")
+
+        # 7. Character Dynamics Fields (Design Metadata)
+        premise_ctx = f" regarding the situation ({premise[:40]}...)" if premise else ""
+        if any(k in role_lower for k in ("detective", "investigator", "inspector")):
+            dyn_data = {
+                "core_value": ("Objective truth and accountability", "role_inference:investigator_core_value"),
+                "shadow_value": ("Obsessive control over the narrative", "role_inference:investigator_shadow_value"),
+                "conscious_want": (f"Uncover the concealed facts behind the current inquiry{premise_ctx}.", "role_inference:investigator_want"),
+                "dramatic_need": ("Acknowledge personal culpability and learn to trust allies.", "role_inference:investigator_need"),
+                "fear": ("Being misled or becoming complicit in institutional deception.", "role_inference:investigator_fear"),
+                "contradiction": ("Demands full disclosure from others while harboring personal secrets.", "role_inference:investigator_contradiction"),
+                "moral_boundary": ("Will not fabricate evidence or frame an innocent suspect.", "role_inference:investigator_moral_boundary"),
+                "habits": (["Checks line of sight and room exits upon entering.", "Meticulously cross-references written notes."], "role_inference:investigator_habits"),
+                "mannerisms": (["Direct, unblinking gaze when listening.", "Subtle tapping of pen against notebook."], "role_inference:investigator_mannerisms"),
+                "lifestyle": ("Nocturnal work rhythm, minimalist apartment, constant case files.", "role_inference:investigator_lifestyle"),
+                "speech_style": ("Precise, interrogative cadence with dry, economical phrasing.", "role_inference:investigator_speech_style"),
+                "conflict_strategy": ("Methodical pressure, tactical silence, and evidential confrontation.", "role_inference:investigator_conflict_strategy"),
+            }
+        elif any(k in role_lower for k in ("courier", "smuggler", "runner")):
+            dyn_data = {
+                "core_value": ("Personal autonomy and survival", "role_inference:courier_core_value"),
+                "shadow_value": ("Cynical detachment and self-preservation", "role_inference:courier_shadow_value"),
+                "conscious_want": (f"Deliver the critical item to the destination cleanly{premise_ctx}.", "role_inference:courier_want"),
+                "dramatic_need": ("Recognize when a cause is worth risking personal safety for.", "role_inference:courier_need"),
+                "fear": ("Capture, confinement, and loss of independence.", "role_inference:courier_fear"),
+                "contradiction": ("Claims loyalty only to the fee, but protects vulnerable bystanders.", "role_inference:courier_contradiction"),
+                "moral_boundary": ("Refuses to traffic lethal biocontaminants or harm bystanders.", "role_inference:courier_moral_boundary"),
+                "habits": (["Constantly scans peripheral crowds for surveillance tails.", "Keeps hands near concealed pockets."], "role_inference:courier_habits"),
+                "mannerisms": (["Restless foot-shifting, quick darting glances.", "Speaks while checking surroundings."], "role_inference:courier_mannerisms"),
+                "lifestyle": ("Nomadic existence across transit hubs, modular lightweight gear.", "role_inference:courier_lifestyle"),
+                "speech_style": ("Fast-paced, colloquial street jargon, evasive answers to personal queries.", "role_inference:courier_speech_style"),
+                "conflict_strategy": ("Rapid evasion and immediate disengagement over static confrontation.", "role_inference:courier_conflict_strategy"),
+            }
+        elif any(k in role_lower for k in ("analyst", "scientist", "doctor", "surgeon", "neurosurgeon", "researcher")):
+            dyn_data = {
+                "core_value": ("Empirical rigor and preservation of truth", "role_inference:analyst_core_value"),
+                "shadow_value": ("Intellectual arrogance and emotional detachment", "role_inference:analyst_shadow_value"),
+                "conscious_want": (f"Authenticate contested records and secure sensitive findings{premise_ctx}.", "role_inference:analyst_want"),
+                "dramatic_need": ("Accept human vulnerability and unpredictable emotional factors.", "role_inference:analyst_need"),
+                "fear": ("Catastrophic error due to incomplete data or external tampering.", "role_inference:analyst_fear"),
+                "contradiction": ("Pursues objective reality while ignoring emotional impact on colleagues.", "role_inference:analyst_contradiction"),
+                "moral_boundary": ("Will not falsify analytical conclusions under political pressure.", "role_inference:analyst_moral_boundary"),
+                "habits": (["Adjusts glasses or rubs temples when evaluating conflicting claims.", "Organizes workspaces into strict functional zones."], "role_inference:analyst_habits"),
+                "mannerisms": (["Calculated pauses before answering, steepled fingers.", "Even, monotone vocal delivery."], "role_inference:analyst_mannerisms"),
+                "lifestyle": ("Structured schedules, sterile lab or office environment, coffee dependency.", "role_inference:analyst_lifestyle"),
+                "speech_style": ("Articulate, qualified statements filled with technical precision.", "role_inference:analyst_speech_style"),
+                "conflict_strategy": ("Defuses conflict with verifiable facts, logic, and policy constraints.", "role_inference:analyst_conflict_strategy"),
+            }
+        elif any(k in role_lower for k in ("executive", "director", "corporate")):
+            dyn_data = {
+                "core_value": ("Strategic order and organizational dominance", "role_inference:executive_core_value"),
+                "shadow_value": ("Machiavellian leverage and ruthless expendability", "role_inference:executive_shadow_value"),
+                "conscious_want": (f"Protect organizational assets and contain damaging leaks{premise_ctx}.", "role_inference:executive_want"),
+                "dramatic_need": ("Confront the moral cost of relentless ambition.", "role_inference:executive_need"),
+                "fear": ("Loss of status, public humiliation, and irrelevance.", "role_inference:executive_fear"),
+                "contradiction": ("Preaches collective mission while treating subordinates as disposable.", "role_inference:executive_contradiction"),
+                "moral_boundary": ("Avoids overt criminal acts that leave direct personal paper trails.", "role_inference:executive_moral_boundary"),
+                "habits": (["Checks timepiece during conversations to signal dominance.", "Maintains an uncluttered, authoritative desk."], "role_inference:executive_habits"),
+                "mannerisms": (["Smooth, measured posture with practiced smiles that do not reach the eyes.", "Minimal unscripted movement."], "role_inference:executive_mannerisms"),
+                "lifestyle": ("Luxury surroundings, executive lounges, private transportation.", "role_inference:executive_lifestyle"),
+                "speech_style": ("Diplomatic, persuasive rhetoric laced with veiled imperatives.", "role_inference:executive_speech_style"),
+                "conflict_strategy": ("Institutional leverage, behind-the-scenes pressure, and strategic compromise.", "role_inference:executive_conflict_strategy"),
+            }
+        elif any(k in role_lower for k in ("operative", "agent", "spy")):
+            dyn_data = {
+                "core_value": ("Mission execution and operational discipline", "role_inference:operative_core_value"),
+                "shadow_value": ("Total emotional suppression", "role_inference:operative_shadow_value"),
+                "conscious_want": (f"Execute the operational mandate without compromise{premise_ctx}.", "role_inference:operative_want"),
+                "dramatic_need": ("Rediscover genuine identity beneath layers of tactical deception.", "role_inference:operative_need"),
+                "fear": ("Compromised cover and psychological unraveling.", "role_inference:operative_fear"),
+                "contradiction": ("Lives entirely by lies in service of an overarching truth.", "role_inference:operative_contradiction"),
+                "moral_boundary": ("Refuses to betray direct comrades in the field.", "role_inference:operative_moral_boundary"),
+                "habits": (["Memorizes floorplans and vehicle plates automatically.", "Maintains sanitized digital footprints."], "role_inference:operative_habits"),
+                "mannerisms": (["Relaxed readiness, unreadable neutral facial expression.", "Economy of physical gesture."], "role_inference:operative_mannerisms"),
+                "lifestyle": ("Sparse safehouses, compartmentalized relationships, ready travel bag.", "role_inference:operative_lifestyle"),
+                "speech_style": ("Guarded, neutral tone, answers with questions when pressed.", "role_inference:operative_speech_style"),
+                "conflict_strategy": ("Calculated de-escalation followed by sudden, decisive neutralization.", "role_inference:operative_conflict_strategy"),
+            }
+        else:
+            dyn_data = {
+                "core_value": ("Integrity and self-determination", "default_inference:generic_core_value"),
+                "shadow_value": ("Defensive skepticism", "default_inference:generic_shadow_value"),
+                "conscious_want": (f"Protect personal standing and navigate the unfolding crisis{premise_ctx}.", "default_inference:generic_want"),
+                "dramatic_need": ("Face unaddressed vulnerability and accept necessary change.", "default_inference:generic_need"),
+                "fear": ("Helplessness in the face of escalating events.", "default_inference:generic_fear"),
+                "contradiction": ("Desires connection yet pushes people away under stress.", "default_inference:generic_contradiction"),
+                "moral_boundary": ("Will not compromise fundamental personal loyalties.", "default_inference:generic_moral_boundary"),
+                "habits": (["Paces when thinking through complex dilemmas.", "Regularly double-checks personal belongings."], "default_inference:generic_habits"),
+                "mannerisms": (["Expressive brow, earnest eye contact with slight hesitation.", "Quick self-correcting smile."], "role_inference:generic_mannerisms"),
+                "lifestyle": ("Pragmatic urban routine, balancing work and survival.", "default_inference:generic_lifestyle"),
+                "speech_style": ("Direct and sincere, occasionally hesitant when uncertain.", "default_inference:generic_speech_style"),
+                "conflict_strategy": ("Direct confrontation tempered by moral appeal.", "default_inference:generic_conflict_strategy"),
+            }
+
+        for field_name, (val, rule) in dyn_data.items():
+            if self.can_enrich_field(draft, field_name):
+                draft.set_field(field_name, val, FieldAuthority.SYSTEM_INFERRED, inference_rule=rule)
 
         return draft

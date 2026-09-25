@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 from .continuity import ActorVisualProfile
 from .proposition import KnowledgeItem
 from .character_creation import FieldProvenance
+from .character_dynamics import CharacterDynamicsProfile
 
 
 class EmotionalState(BaseModel):
@@ -87,6 +88,10 @@ class Character(BaseModel):
     field_provenance: Dict[str, FieldProvenance] = Field(
         default_factory=dict,
         description="Design-time field authority and provenance map",
+    )
+    dynamics: Optional[CharacterDynamicsProfile] = Field(
+        default=None,
+        description="Design-time character dynamics profile",
     )
 
     def knows(self, proposition_id: str) -> Optional[KnowledgeItem]:

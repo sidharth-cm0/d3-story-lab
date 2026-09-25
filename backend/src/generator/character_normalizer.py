@@ -100,18 +100,27 @@ class CharacterProfileNormalizer:
                 v = m.group(2).strip()
                 kv_pairs[k] = v
 
+        # Also search inline key-value pairs (e.g., "Core Value: Medical ethics. Conscious Want: Find truth.")
+        for m in re.finditer(r"\b([A-Za-z][A-Za-z\s]{1,30})[:=]\s*([^\n;]+?)(?=\s+[A-Z][A-Za-z\s]{1,30}[:=]|\.\s+[A-Z]|\n|$)", text):
+            k = m.group(1).strip().lower()
+            v = m.group(2).strip().rstrip(".")
+            if k not in kv_pairs and len(k) > 1:
+                kv_pairs[k] = v
+
         # 1. Name extraction
         name_val = kv_pairs.get("name")
         if name_val:
             draft.set_field("name", name_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Name: {name_val}")
         else:
             # Try patterns: "Meet <Name>", "Dr. <Name>", "<Name> is a...", "Detective <Name>"
-            m_meet = re.search(r"(?:meet|introducing)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)", text, re.IGNORECASE)
-            m_is = re.search(r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:is a|is an|\bas\b|,)", text)
-            m_title = re.search(r"\b(Detective|Dr\.|Doctor|Agent|Officer|Inspector|Captain)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)", text)
+            m_meet = re.search(r"(?:meet|introducing)\s+(?:(Dr\.|Doctor|Detective|Agent|Officer|Inspector|Captain)\s+)?([A-Z][a-zA-Z'\-]+(?:\s+[A-Z][a-zA-Z'\-]+)*)", text, re.IGNORECASE)
+            m_title = re.search(r"\b(Detective|Dr\.|Doctor|Agent|Officer|Inspector|Captain)\s+([A-Z][a-zA-Z'\-]+(?:\s+[A-Z][a-zA-Z'\-]+)*)", text)
+            m_is = re.search(r"^([A-Z][a-zA-Z'\-]+(?:\s+[A-Z][a-zA-Z'\-]+)*)\s+(?:is a|is an|\bas\b|,)", text)
 
             if m_meet:
-                cand = m_meet.group(1).strip()
+                title = m_meet.group(1) or ""
+                name_body = m_meet.group(2).strip()
+                cand = f"{title} {name_body}".strip() if title else name_body
                 draft.set_field("name", cand, FieldAuthority.USER_PREFERRED, source_snippet=m_meet.group(0))
             elif m_title:
                 cand = f"{m_title.group(1)} {m_title.group(2)}".strip()
@@ -121,7 +130,7 @@ class CharacterProfileNormalizer:
                 draft.set_field("name", cand, FieldAuthority.USER_PREFERRED, source_snippet=m_is.group(0))
             else:
                 # First two capitalized words
-                words = re.findall(r"\b[A-Z][a-z]+\b", text)
+                words = re.findall(r"\b[A-Z][a-zA-Z'\-]+\b", text)
                 if words:
                     cand = " ".join(words[:2]) if len(words) >= 2 else words[0]
                     draft.set_field("name", cand, FieldAuthority.USER_PREFERRED, source_snippet=cand)
@@ -263,6 +272,95 @@ class CharacterProfileNormalizer:
         # Description
         draft.set_field("description", text, FieldAuthority.USER_PREFERRED, source_snippet=text[:120])
 
+        # 8. Character Dynamics Fields
+        # Core Value
+        cv_val = kv_pairs.get("core value") or kv_pairs.get("value") or kv_pairs.get("values")
+        if cv_val:
+            draft.set_field("core_value", cv_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Value: {cv_val}")
+        else:
+            m_val = re.search(r"\b(?:values?|stands for|driven by|deeply values?)\s+([^.,;\n]+)", text, re.IGNORECASE)
+            if m_val:
+                draft.set_field("core_value", m_val.group(1).strip().capitalize(), FieldAuthority.USER_PREFERRED, source_snippet=m_val.group(0))
+
+        # Shadow Value
+        sv_val = kv_pairs.get("shadow value") or kv_pairs.get("shadow")
+        if sv_val:
+            draft.set_field("shadow_value", sv_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Shadow: {sv_val}")
+
+        # Conscious Want
+        want_val = kv_pairs.get("conscious want") or kv_pairs.get("want") or kv_pairs.get("wants")
+        if want_val:
+            draft.set_field("conscious_want", want_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Want: {want_val}")
+        elif draft.goals and len(draft.goals) > 0:
+            draft.set_field("conscious_want", draft.goals[0], FieldAuthority.USER_PREFERRED, source_snippet=draft.goals[0])
+
+        # Dramatic Need (Analytical Only - Never directly drives simulation)
+        need_val = kv_pairs.get("dramatic need") or kv_pairs.get("need") or kv_pairs.get("needs")
+        if need_val:
+            draft.set_field("dramatic_need", need_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Need: {need_val}")
+        else:
+            m_need = re.search(
+                r"\b(?:dramatic need|deep down,? (?:he|she|they) needs? to|needs? to learn to|unconsciously needs? to)\s+([^.,;\n]+)",
+                text,
+                re.IGNORECASE,
+            )
+            if m_need:
+                draft.set_field("dramatic_need", m_need.group(1).strip().capitalize(), FieldAuthority.USER_PREFERRED, source_snippet=m_need.group(0))
+
+        # Fear
+        fear_val = kv_pairs.get("fear") or kv_pairs.get("fears") or kv_pairs.get("deepest fear")
+        if fear_val:
+            draft.set_field("fear", fear_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Fear: {fear_val}")
+        else:
+            m_fear = re.search(r"\b(?:fears?\s+(?:that\s+)?|terrified of\s+|afraid of\s+)([^.,;\n]+)", text, re.IGNORECASE)
+            if m_fear:
+                draft.set_field("fear", m_fear.group(1).strip().capitalize(), FieldAuthority.USER_PREFERRED, source_snippet=m_fear.group(0))
+
+        # Contradiction
+        contra_val = kv_pairs.get("contradiction") or kv_pairs.get("paradox")
+        if contra_val:
+            draft.set_field("contradiction", contra_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Contradiction: {contra_val}")
+        else:
+            m_contra = re.search(r"\b(?:paradoxically|yet secretly|despite this,? (?:he|she|they))\s+([^.,;\n]+)", text, re.IGNORECASE)
+            if m_contra:
+                draft.set_field("contradiction", m_contra.group(1).strip().capitalize(), FieldAuthority.USER_PREFERRED, source_snippet=m_contra.group(0))
+
+        # Moral Boundary
+        mb_val = kv_pairs.get("moral boundary") or kv_pairs.get("boundary") or kv_pairs.get("line")
+        if mb_val:
+            draft.set_field("moral_boundary", mb_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Moral Boundary: {mb_val}")
+
+        # Habits
+        hab_val = kv_pairs.get("habit") or kv_pairs.get("habits")
+        if hab_val:
+            h_list = [h.strip() for h in re.split(r"[;,]\s*", hab_val) if h.strip()]
+            draft.set_field("habits", h_list, FieldAuthority.USER_PREFERRED, source_snippet=f"Habits: {hab_val}")
+
+        # Mannerisms
+        man_val = kv_pairs.get("mannerism") or kv_pairs.get("mannerisms")
+        if man_val:
+            m_list = [m.strip() for m in re.split(r"[;,]\s*", man_val) if m.strip()]
+            draft.set_field("mannerisms", m_list, FieldAuthority.USER_PREFERRED, source_snippet=f"Mannerisms: {man_val}")
+
+        # Lifestyle
+        life_val = kv_pairs.get("lifestyle")
+        if life_val:
+            draft.set_field("lifestyle", life_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Lifestyle: {life_val}")
+
+        # Speech Style
+        speech_val = kv_pairs.get("speech style") or kv_pairs.get("voice") or kv_pairs.get("speech")
+        if speech_val:
+            draft.set_field("speech_style", speech_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Speech Style: {speech_val}")
+        else:
+            m_speech = re.search(r"\b(?:speaks? with|speaks? in|speech style is)\s+([^.,;\n]+)", text, re.IGNORECASE)
+            if m_speech:
+                draft.set_field("speech_style", m_speech.group(1).strip().capitalize(), FieldAuthority.USER_PREFERRED, source_snippet=m_speech.group(0))
+
+        # Conflict Strategy
+        strat_val = kv_pairs.get("conflict strategy") or kv_pairs.get("conflict") or kv_pairs.get("pressure response") or kv_pairs.get("social strategy")
+        if strat_val:
+            draft.set_field("conflict_strategy", strat_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Strategy: {strat_val}")
+
     def _apply_structured_payload(self, payload: Dict[str, Any], draft: CharacterProfileDraft) -> None:
         """Apply structured form data to the draft with field authorities."""
         locked_fields = set(payload.get("locked_fields", []))
@@ -348,3 +446,30 @@ class CharacterProfileNormalizer:
         # Location
         if payload.get("current_location_id"):
             draft.set_field("current_location_id", str(payload["current_location_id"]), get_auth("current_location_id"), source_snippet="form:current_location_id")
+
+        # Dynamics fields from structured payload
+        dynamics_data = payload.get("dynamics") or {}
+        if not isinstance(dynamics_data, dict):
+            dynamics_data = {}
+
+        for df in (
+            "core_value", "shadow_value", "conscious_want", "dramatic_need",
+            "fear", "contradiction", "moral_boundary", "lifestyle",
+            "speech_style", "conflict_strategy"
+        ):
+            val = dynamics_data.get(df) if df in dynamics_data else payload.get(df)
+            if val is not None and str(val).strip():
+                auth = FieldAuthority.USER_LOCKED if (df in locked_fields or f"dynamics.{df}" in locked_fields) else FieldAuthority.USER_PREFERRED
+                draft.set_field(df, str(val).strip(), auth, source_snippet=f"form:{df}")
+
+        for list_df in ("habits", "mannerisms"):
+            val = dynamics_data.get(list_df) if list_df in dynamics_data else payload.get(list_df)
+            if val is not None:
+                if isinstance(val, str):
+                    items = [item.strip() for item in re.split(r"[\n,;]+", val) if item.strip()]
+                elif isinstance(val, list):
+                    items = [str(item).strip() for item in val if str(item).strip()]
+                else:
+                    items = []
+                auth = FieldAuthority.USER_LOCKED if (list_df in locked_fields or f"dynamics.{list_df}" in locked_fields) else FieldAuthority.USER_PREFERRED
+                draft.set_field(list_df, items, auth, source_snippet=f"form:{list_df}")

@@ -51,6 +51,10 @@ from src.domain.character_completeness import (
     CompletenessReport,
     calculate_character_completeness,
 )
+from src.domain.character_dynamics import (
+    CharacterDynamicsProfile,
+    DYNAMICS_FIELD_NAMES,
+)
 from src.generator.initializer import WorldInitializerService
 from src.generator.character_normalizer import CharacterProfileNormalizer
 from src.generator.character_enricher import CharacterEnrichmentService
@@ -163,6 +167,24 @@ class UpdateFieldRequest(BaseModel):
     field_name: str
     value: Any
     authority: Optional[FieldAuthority] = FieldAuthority.USER_LOCKED
+
+
+class UpdateDynamicsRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    core_value: Optional[str] = None
+    shadow_value: Optional[str] = None
+    conscious_want: Optional[str] = None
+    dramatic_need: Optional[str] = None
+    fear: Optional[str] = None
+    contradiction: Optional[str] = None
+    moral_boundary: Optional[str] = None
+    habits: Optional[List[str]] = None
+    mannerisms: Optional[List[str]] = None
+    lifestyle: Optional[str] = None
+    speech_style: Optional[str] = None
+    conflict_strategy: Optional[str] = None
+    locked_fields: Optional[List[str]] = None
+    force: Optional[bool] = False
 
 
 class GenerateScreenplayRequest(BaseModel):
@@ -367,7 +389,10 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
     def get_or_create_orchestrator(project: ProjectData) -> SimulationOrchestrator:
         pid = project.metadata.id
         if pid in orchestrator_cache:
-            return orchestrator_cache[pid]
+            cached = orchestrator_cache[pid]
+            if set(cached.world.characters.keys()) == set(project.world.characters.keys()):
+                return cached
+            orchestrator_cache.pop(pid, None)
 
         provider = get_llm_provider()
         orch = SimulationOrchestrator(
@@ -1043,6 +1068,22 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             proj.world.goals[gid] = goal
             char_goals.append(gid)
 
+        # Safe projection of conscious_want -> Goal (if not already represented)
+        if draft.dynamics and draft.dynamics.conscious_want and draft.dynamics.conscious_want.strip():
+            want_desc = draft.dynamics.conscious_want.strip()
+            if not any(g_desc.strip().lower() == want_desc.lower() for g_desc in draft.goals):
+                want_gid = f"goal_{char_id}_want"
+                want_goal = Goal(
+                    id=want_gid,
+                    character_id=char_id,
+                    description=want_desc,
+                    priority=0.9,
+                    status=GoalStatus.ACTIVE,
+                    reason="Conscious want projected from dynamics profile",
+                )
+                proj.world.goals[want_gid] = want_goal
+                char_goals.insert(0, want_gid)
+
         # Create Secrets
         char_secrets: List[str] = []
         for s_idx, s_desc in enumerate(draft.secrets):
@@ -1084,6 +1125,7 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             current_location_id=loc_id,
             input_id=draft.input_id,
             field_provenance=dict(draft.provenance),
+            dynamics=draft.dynamics.model_copy(deep=True) if draft.dynamics else None,
         )
 
         proj.world.characters[char_id] = char
@@ -1093,11 +1135,199 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             proj.character_inputs[draft.input_id].linked_character_id = char_id
 
         store.save_project(proj)
+        orchestrator_cache.pop(project_id, None)
 
         return {
             "character": char.model_dump(mode="json"),
             "character_id": char_id,
             "draft_id": draft_id,
+        }
+
+    # --- Phase B: Character Dynamics & Safe Projection Endpoints ---
+
+    @app.get("/api/projects/{project_id}/characters/{character_id}/dynamics")
+    def get_character_dynamics(project_id: str, character_id: str):
+        """Get CharacterDynamicsProfile design metadata for a character."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+        dyn = char.dynamics or CharacterDynamicsProfile()
+        return dyn.model_dump(mode="json")
+
+    @app.put("/api/projects/{project_id}/characters/{character_id}/dynamics")
+    def update_character_dynamics(project_id: str, character_id: str, req: UpdateDynamicsRequest):
+        """Update CharacterDynamicsProfile design metadata respecting FieldAuthority locks."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+        if char.dynamics is None:
+            char.dynamics = CharacterDynamicsProfile()
+
+        locked_set = set(req.locked_fields or [])
+
+        # Update each field if provided
+        for field_name in (
+            "core_value", "shadow_value", "conscious_want", "dramatic_need",
+            "fear", "contradiction", "moral_boundary", "lifestyle",
+            "speech_style", "conflict_strategy"
+        ):
+            val = getattr(req, field_name)
+            if val is not None:
+                auth = FieldAuthority.USER_LOCKED if field_name in locked_set else FieldAuthority.USER_PREFERRED
+                success = char.dynamics.set_field(
+                    field_name=field_name,
+                    value=val,
+                    authority=auth,
+                    source_snippet=f"api_update:{field_name}",
+                    force=bool(req.force),
+                )
+                if not success and not req.force:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Field '{field_name}' is USER_LOCKED and cannot be overwritten without force=True",
+                    )
+                if field_name in char.dynamics.provenance:
+                    char.field_provenance[field_name] = char.dynamics.provenance[field_name]
+
+        for list_field in ("habits", "mannerisms"):
+            val = getattr(req, list_field)
+            if val is not None:
+                auth = FieldAuthority.USER_LOCKED if list_field in locked_set else FieldAuthority.USER_PREFERRED
+                success = char.dynamics.set_field(
+                    field_name=list_field,
+                    value=val,
+                    authority=auth,
+                    source_snippet=f"api_update:{list_field}",
+                    force=bool(req.force),
+                )
+                if not success and not req.force:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Field '{list_field}' is USER_LOCKED and cannot be overwritten without force=True",
+                    )
+                if list_field in char.dynamics.provenance:
+                    char.field_provenance[list_field] = char.dynamics.provenance[list_field]
+
+        proj.world.characters[character_id] = char
+        store.save_project(proj)
+        return char.dynamics.model_dump(mode="json")
+
+    @app.post("/api/projects/{project_id}/characters/{character_id}/dynamics/enrich")
+    def enrich_character_dynamics(project_id: str, character_id: str):
+        """Enrich missing and unlocked dynamics fields on an existing character."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+
+        temp_draft = CharacterProfileDraft(
+            id=f"enrich_{char.id}",
+            name=char.name,
+            role=char.role,
+            description=char.description,
+            personality_traits=dict(char.personality_traits),
+            dynamics=char.dynamics.model_copy(deep=True) if char.dynamics else CharacterDynamicsProfile(),
+            provenance=dict(char.field_provenance),
+        )
+        if char.dynamics and char.dynamics.provenance:
+            temp_draft.dynamics.provenance.update(char.dynamics.provenance)
+            temp_draft.provenance.update(char.dynamics.provenance)
+
+        enricher = CharacterEnrichmentService()
+        enriched_draft = enricher.enrich(temp_draft, premise=proj.metadata.seed_prompt)
+
+        char.dynamics = enriched_draft.dynamics
+        char.field_provenance.update(enriched_draft.dynamics.provenance)
+        proj.world.characters[character_id] = char
+        store.save_project(proj)
+
+        return char.dynamics.model_dump(mode="json")
+
+    @app.post("/api/projects/{project_id}/characters/{character_id}/project-want")
+    def project_character_conscious_want_to_goal(project_id: str, character_id: str):
+        """Safely project character's conscious_want into the canonical Goal model.
+
+        CRITICAL INVARIANT:
+        dramatic_need remains analytical only and must NEVER be projected to Goal.
+        Does not overwrite a USER_LOCKED Goal.
+        """
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+        if not char.dynamics or not char.dynamics.conscious_want or not char.dynamics.conscious_want.strip():
+            raise HTTPException(status_code=400, detail="Character has no conscious_want defined")
+
+        want_text = char.dynamics.conscious_want.strip()
+        want_gid = f"goal_{char.id}_want"
+
+        # Check existing goal and locks
+        prov = char.field_provenance.get("goals")
+        if prov and prov.authority == FieldAuthority.USER_LOCKED and want_gid in char.goals:
+            raise HTTPException(status_code=400, detail="Character goals are USER_LOCKED")
+
+        want_goal = Goal(
+            id=want_gid,
+            character_id=char.id,
+            description=want_text,
+            priority=0.9,
+            status=GoalStatus.ACTIVE,
+            reason="Conscious want projected from dynamics profile",
+        )
+        proj.world.goals[want_gid] = want_goal
+        if want_gid not in char.goals:
+            char.goals.insert(0, want_gid)
+
+        proj.world.characters[character_id] = char
+        store.save_project(proj)
+
+        return {
+            "character_id": character_id,
+            "goal": want_goal.model_dump(mode="json"),
+            "conscious_want": want_text,
+            "dramatic_need": char.dynamics.dramatic_need,
+            "is_need_projected": False,
+        }
+
+    @app.post("/api/projects/{project_id}/characters/drafts/{draft_id}/project-want")
+    def project_draft_conscious_want_to_goal(project_id: str, draft_id: str):
+        """Safely project draft's conscious_want into draft.goals."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        draft = (proj.character_drafts or {}).get(draft_id)
+        if not draft:
+            raise HTTPException(status_code=404, detail="Character draft not found")
+        if not draft.dynamics or not draft.dynamics.conscious_want or not draft.dynamics.conscious_want.strip():
+            raise HTTPException(status_code=400, detail="Draft has no conscious_want defined")
+
+        want_text = draft.dynamics.conscious_want.strip()
+        if draft.is_locked("goals"):
+            raise HTTPException(status_code=400, detail="Draft goals are USER_LOCKED")
+
+        if not any(g.strip().lower() == want_text.lower() for g in draft.goals):
+            draft.goals.insert(0, want_text)
+            draft.set_field("goals", draft.goals, FieldAuthority.USER_PREFERRED, source_snippet=f"project_want:{want_text}", force=True)
+
+        completeness = calculate_character_completeness(draft)
+        proj.character_drafts[draft_id] = draft
+        store.save_project(proj)
+
+        return {
+            "draft": draft.model_dump(mode="json"),
+            "completeness": completeness.model_dump(mode="json"),
+            "conscious_want": want_text,
+            "is_need_projected": False,
         }
 
     # Standalone character endpoints (in-memory, no project ID required)

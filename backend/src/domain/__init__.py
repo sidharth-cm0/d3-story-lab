@@ -49,6 +49,10 @@ from .character_completeness import (
     CompletenessReport,
     calculate_character_completeness,
 )
+from .character_dynamics import (
+    CharacterDynamicsProfile,
+    DYNAMICS_FIELD_NAMES,
+)
 
 __all__ = [
     "SimulationClock",
@@ -108,4 +112,6 @@ __all__ = [
     "CharacterProfileDraft",
     "CompletenessReport",
     "calculate_character_completeness",
+    "CharacterDynamicsProfile",
+    "DYNAMICS_FIELD_NAMES",
 ]
