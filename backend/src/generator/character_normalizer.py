@@ -13,6 +13,10 @@ from src.domain.character_creation import (
     CharacterInput,
     CharacterProfileDraft,
 )
+from src.domain.character_reference import (
+    CharacterReferenceProfile,
+    REFERENCE_FIELD_NAMES,
+)
 from src.domain.archetype import ArchetypeType
 
 # Known personality keywords for deterministic extraction
@@ -376,6 +380,106 @@ class CharacterProfileNormalizer:
             if parsed_sec_arch:
                 draft.set_field("secondary_archetype", parsed_sec_arch, FieldAuthority.USER_PREFERRED, source_snippet=f"Secondary Archetype: {sec_arch_val}")
 
+        # 9. Character Reference Profile Fields (Stable Visual Identity)
+        # apparent_age_range
+        age_ref = kv_pairs.get("apparent age") or kv_pairs.get("age") or (age_str if (age_match or age_decade) else None)
+        if age_ref:
+            draft.set_field("apparent_age_range", age_ref, FieldAuthority.USER_PREFERRED, source_snippet=f"Age: {age_ref}")
+
+        # build
+        build_val = kv_pairs.get("build") or kv_pairs.get("physique") or kv_pairs.get("frame")
+        if build_val:
+            draft.set_field("build", build_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Build: {build_val}")
+        else:
+            m_build = re.search(r"\b(lean athletic|slender|athletic|stocky|wiry|muscular|burly|tall and lean|compact frame|slight build)\b", text, re.IGNORECASE)
+            if m_build:
+                draft.set_field("build", m_build.group(1).capitalize(), FieldAuthority.USER_PREFERRED, source_snippet=m_build.group(0))
+
+        # height_impression
+        height_val = kv_pairs.get("height") or kv_pairs.get("height impression")
+        if height_val:
+            draft.set_field("height_impression", height_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Height: {height_val}")
+        else:
+            m_height = re.search(r"\b(tall and imposing|short and compact|average height|towering|statuesque|approx\.?\s*\d(?:ft|'|\s*cm))\b", text, re.IGNORECASE)
+            if m_height:
+                draft.set_field("height_impression", m_height.group(1).capitalize(), FieldAuthority.USER_PREFERRED, source_snippet=m_height.group(0))
+
+        # face_description
+        face_ref = kv_pairs.get("face") or kv_pairs.get("face description") or kv_pairs.get("face traits") or (face_str if face_match else None)
+        if face_ref:
+            draft.set_field("face_description", face_ref, FieldAuthority.USER_PREFERRED, source_snippet=f"Face: {face_ref}")
+
+        # hair
+        hair_val = kv_pairs.get("hair") or kv_pairs.get("hairstyle")
+        if hair_val:
+            draft.set_field("hair", hair_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Hair: {hair_val}")
+        else:
+            m_hair = re.search(r"\b(?:with\s+)?([a-z\s\-]+(?:hair|curls|buzz cut|shaved head|ponytail|fade|braids))\b", text, re.IGNORECASE)
+            if m_hair:
+                draft.set_field("hair", m_hair.group(1).strip().capitalize(), FieldAuthority.USER_PREFERRED, source_snippet=m_hair.group(0))
+
+        # grooming
+        grooming_val = kv_pairs.get("grooming")
+        if grooming_val:
+            draft.set_field("grooming", grooming_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Grooming: {grooming_val}")
+        else:
+            m_groom = re.search(r"\b(clean-shaven|stubble|five o'clock shadow|neatly groomed|disheveled|unkempt|beard|mustache)\b", text, re.IGNORECASE)
+            if m_groom:
+                draft.set_field("grooming", m_groom.group(1).capitalize(), FieldAuthority.USER_PREFERRED, source_snippet=m_groom.group(0))
+
+        # distinguishing_features
+        feat_val = kv_pairs.get("distinguishing features") or kv_pairs.get("features") or kv_pairs.get("scars") or kv_pairs.get("marks")
+        if feat_val:
+            draft.set_field("distinguishing_features", feat_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Features: {feat_val}")
+        else:
+            m_feat = re.search(r"\b([a-z\s\-]+(?:scar|tattoo|burn mark|eyepatch|birthmark|gold tooth)[a-z\s\-]*)", text, re.IGNORECASE)
+            if m_feat:
+                draft.set_field("distinguishing_features", m_feat.group(1).strip().capitalize(), FieldAuthority.USER_PREFERRED, source_snippet=m_feat.group(0))
+
+        # baseline_wardrobe
+        wardrobe_val = kv_pairs.get("wardrobe") or kv_pairs.get("attire") or (clothing_str if cloth_match else None)
+        if wardrobe_val:
+            draft.set_field("baseline_wardrobe", wardrobe_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Wardrobe: {wardrobe_val}")
+
+        # wardrobe_palette
+        palette_val = kv_pairs.get("palette") or kv_pairs.get("wardrobe palette") or kv_pairs.get("colors")
+        if palette_val:
+            pal_items = [p.strip() for p in re.split(r"[,;/]+", palette_val) if p.strip()]
+            draft.set_field("wardrobe_palette", pal_items, FieldAuthority.USER_PREFERRED, source_snippet=f"Palette: {palette_val}")
+
+        # posture
+        posture_val = kv_pairs.get("posture") or kv_pairs.get("stance")
+        if posture_val:
+            draft.set_field("posture", posture_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Posture: {posture_val}")
+
+        # body_language
+        bl_val = kv_pairs.get("body language")
+        if bl_val:
+            draft.set_field("body_language", bl_val, FieldAuthority.USER_PREFERRED, source_snippet=f"Body Language: {bl_val}")
+
+        # signature_objects
+        sig_val = kv_pairs.get("signature objects") or kv_pairs.get("signature items") or kv_pairs.get("props")
+        if sig_val:
+            sig_items = [s.strip() for s in re.split(r"[,;\n]+", sig_val) if s.strip()]
+            draft.set_field("signature_objects", sig_items, FieldAuthority.USER_PREFERRED, source_snippet=f"Objects: {sig_val}")
+        else:
+            m_carry = re.search(r"\b(?:carries|carrying|holds|holding|wields|wielding|armed with|equipped with)\s+(?:a|an|the)\s+([a-zA-Z\s\-]+?)(?:\.|\,|$|\sand\b)", text, re.IGNORECASE)
+            if m_carry:
+                obj_name = m_carry.group(1).strip()
+                draft.set_field("signature_objects", [obj_name], FieldAuthority.USER_PREFERRED, source_snippet=m_carry.group(0))
+
+        # usual_environments
+        env_val = kv_pairs.get("usual environments") or kv_pairs.get("environment") or kv_pairs.get("environments")
+        if env_val:
+            env_items = [e.strip() for e in re.split(r"[,;\n]+", env_val) if e.strip()]
+            draft.set_field("usual_environments", env_items, FieldAuthority.USER_PREFERRED, source_snippet=f"Environment: {env_val}")
+
+        # Single-authority rule: derive from dynamics for unpopulated visual fields
+        draft.reference_profile.sync_from_dynamics(draft.dynamics)
+
+        # Keep legacy visual_profile synchronized
+        draft.visual_profile = draft.reference_profile.to_actor_visual_profile(draft.id, draft.name)
+
     def _apply_structured_payload(self, payload: Dict[str, Any], draft: CharacterProfileDraft) -> None:
         """Apply structured form data to the draft with field authorities."""
         locked_fields = set(payload.get("locked_fields", []))
@@ -497,3 +601,53 @@ class CharacterProfileNormalizer:
                 if parsed_val:
                     auth = FieldAuthority.USER_LOCKED if (af in locked_fields or f"dynamics.{af}" in locked_fields) else FieldAuthority.USER_PREFERRED
                     draft.set_field(af, parsed_val, auth, source_snippet=f"form:{af}")
+
+        # Reference profile fields from structured payload
+        ref_data = payload.get("reference_profile") or {}
+        if not isinstance(ref_data, dict):
+            ref_data = {}
+
+        for rf in (
+            "apparent_age_range", "build", "height_impression", "face_description",
+            "hair", "grooming", "distinguishing_features", "baseline_wardrobe",
+            "posture", "body_language",
+        ):
+            val = ref_data.get(rf) if rf in ref_data else payload.get(rf)
+            if val is not None and str(val).strip():
+                auth = FieldAuthority.USER_LOCKED if (rf in locked_fields or f"reference_profile.{rf}" in locked_fields) else FieldAuthority.USER_PREFERRED
+                draft.set_field(rf, str(val).strip(), auth, source_snippet=f"form:{rf}")
+
+        for list_rf in ("wardrobe_palette", "signature_objects", "usual_environments"):
+            val = ref_data.get(list_rf) if list_rf in ref_data else payload.get(list_rf)
+            if val is not None:
+                if isinstance(val, str):
+                    items = [item.strip() for item in re.split(r"[\n,;]+", val) if item.strip()]
+                elif isinstance(val, list):
+                    items = [str(item).strip() for item in val if str(item).strip()]
+                else:
+                    items = []
+                auth = FieldAuthority.USER_LOCKED if (list_rf in locked_fields or f"reference_profile.{list_rf}" in locked_fields) else FieldAuthority.USER_PREFERRED
+                draft.set_field(list_rf, items, auth, source_snippet=f"form:{list_rf}")
+
+        # If visual_profile was passed directly in payload, map missing fields to reference_profile
+        if payload.get("visual_profile") is not None:
+            vp_input = payload["visual_profile"]
+            if isinstance(vp_input, dict):
+                if not draft.reference_profile.apparent_age_range and vp_input.get("age"):
+                    draft.set_field("apparent_age_range", str(vp_input["age"]), FieldAuthority.USER_PREFERRED, source_snippet="form:visual_profile.age")
+                if not draft.reference_profile.baseline_wardrobe and vp_input.get("clothing"):
+                    draft.set_field("baseline_wardrobe", str(vp_input["clothing"]), FieldAuthority.USER_PREFERRED, source_snippet="form:visual_profile.clothing")
+                if not draft.reference_profile.face_description and vp_input.get("face_traits"):
+                    draft.set_field("face_description", str(vp_input["face_traits"]), FieldAuthority.USER_PREFERRED, source_snippet="form:visual_profile.face_traits")
+                if not draft.reference_profile.hair and vp_input.get("hairstyle"):
+                    draft.set_field("hair", str(vp_input["hairstyle"]), FieldAuthority.USER_PREFERRED, source_snippet="form:visual_profile.hairstyle")
+                if not draft.reference_profile.build and vp_input.get("build"):
+                    draft.set_field("build", str(vp_input["build"]), FieldAuthority.USER_PREFERRED, source_snippet="form:visual_profile.build")
+                if not draft.reference_profile.signature_objects and vp_input.get("signature_items"):
+                    draft.set_field("signature_objects", list(vp_input["signature_items"]), FieldAuthority.USER_PREFERRED, source_snippet="form:visual_profile.signature_items")
+
+        # Single-authority derivation from dynamics
+        draft.reference_profile.sync_from_dynamics(draft.dynamics)
+
+        # Keep legacy visual_profile synchronized
+        draft.visual_profile = draft.reference_profile.to_actor_visual_profile(draft.id, draft.name)

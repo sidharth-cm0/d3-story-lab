@@ -149,7 +149,7 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
   };
 
   const getFieldAuthority = (fieldName: string): FieldAuthority | undefined => {
-    return draft?.provenance[fieldName]?.authority || draft?.dynamics?.provenance?.[fieldName]?.authority;
+    return draft?.provenance[fieldName]?.authority || draft?.dynamics?.provenance?.[fieldName]?.authority || draft?.reference_profile?.provenance?.[fieldName]?.authority;
   };
 
   const handleToggleLockInReview = async (fieldName: string) => {
@@ -862,32 +862,113 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
                 </div>
               </div>
 
-              {/* Visual Profile */}
-              <div className="review-item-row">
-                <div className="review-item-main">
-                  <span className="review-field-name">Visual Profile / Attire</span>
-                  <div className="review-field-value">
-                    {draft.visual_profile ? (
-                      <div>
-                        <div><strong>Attire:</strong> {draft.visual_profile.clothing}</div>
-                        <div><strong>Face/Build:</strong> {draft.visual_profile.age}, {draft.visual_profile.face_traits}, {draft.visual_profile.build}</div>
-                      </div>
-                    ) : (
-                      <em className="text-muted">No visual identity specified</em>
-                    )}
-                  </div>
-                  {draft.provenance.visual_profile?.inference_rule && (
-                    <div className="review-field-snippet">Rule: {draft.provenance.visual_profile.inference_rule}</div>
-                  )}
+              {/* PHASE G: CHARACTER VISUAL REFERENCE PROFILE */}
+              <div className="review-dynamics-section" data-testid="visual-reference-section">
+                <div className="review-dynamics-header">
+                  <span className="dynamics-section-kicker">PHASE G VISUAL IDENTITY</span>
+                  <h4 className="dynamics-section-title">🎨 VISUAL REFERENCE PROFILE</h4>
+                  <p className="dynamics-section-note">
+                    Authoritative visual identity for storyboard consistency. <strong>Never</strong> influences character decision policy or action proposals.
+                  </p>
                 </div>
-                <div className="review-item-controls">
-                  {renderAuthorityBadge(draft.provenance.visual_profile?.authority)}
-                  <button
-                    className="btn-lock-toggle"
-                    onClick={() => handleToggleLockInReview('visual_profile')}
-                  >
-                    {draft.provenance.visual_profile?.authority === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
-                  </button>
+
+                {/* Apparent Age Range & Build */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Apparent Age &amp; Build</span>
+                    <div className="review-field-value">
+                      <div><strong>Age Range:</strong> {draft.reference_profile?.apparent_age_range || <em className="text-muted">Not specified</em>}</div>
+                      <div><strong>Build / Height:</strong> {[draft.reference_profile?.build, draft.reference_profile?.height_impression].filter(Boolean).join(' • ') || <em className="text-muted">Not specified</em>}</div>
+                    </div>
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('apparent_age_range'))}
+                    <button className="btn-lock-toggle" onClick={() => handleToggleLockInReview('apparent_age_range')}>
+                      {getFieldAuthority('apparent_age_range') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Face & Hair */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Face &amp; Hair</span>
+                    <div className="review-field-value">
+                      <div><strong>Face:</strong> {draft.reference_profile?.face_description || <em className="text-muted">Not specified</em>}</div>
+                      <div><strong>Hair / Grooming:</strong> {[draft.reference_profile?.hair, draft.reference_profile?.grooming].filter(Boolean).join(' • ') || <em className="text-muted">Not specified</em>}</div>
+                      {draft.reference_profile?.distinguishing_features && draft.reference_profile.distinguishing_features.length > 0 && (
+                        <div><strong>Distinguishing Features:</strong> {draft.reference_profile.distinguishing_features.join(', ')}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('face_description'))}
+                    <button className="btn-lock-toggle" onClick={() => handleToggleLockInReview('face_description')}>
+                      {getFieldAuthority('face_description') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Baseline Wardrobe & Palette */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Wardrobe &amp; Palette</span>
+                    <div className="review-field-value">
+                      <div><strong>Baseline Wardrobe:</strong> {draft.reference_profile?.baseline_wardrobe || draft.visual_profile?.clothing || <em className="text-muted">Not specified</em>}</div>
+                      {draft.reference_profile?.wardrobe_palette && draft.reference_profile.wardrobe_palette.length > 0 && (
+                        <div><strong>Palette:</strong> {draft.reference_profile.wardrobe_palette.join(', ')}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('baseline_wardrobe'))}
+                    <button className="btn-lock-toggle" onClick={() => handleToggleLockInReview('baseline_wardrobe')}>
+                      {getFieldAuthority('baseline_wardrobe') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Posture & Body Language */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Posture &amp; Body Language</span>
+                    <div className="review-field-value">
+                      <div><strong>Posture:</strong> {draft.reference_profile?.posture || <em className="text-muted">Not specified</em>}</div>
+                      {draft.reference_profile?.body_language && draft.reference_profile.body_language.length > 0 && (
+                        <div><strong>Body Language:</strong> {draft.reference_profile.body_language.join(', ')}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('posture'))}
+                    <button className="btn-lock-toggle" onClick={() => handleToggleLockInReview('posture')}>
+                      {getFieldAuthority('posture') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Signature Objects & Environments */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Signature Objects &amp; Environments</span>
+                    <div className="review-field-value">
+                      {draft.reference_profile?.signature_objects && draft.reference_profile.signature_objects.length > 0 && (
+                        <div><strong>Signature Objects:</strong> {draft.reference_profile.signature_objects.join(', ')}</div>
+                      )}
+                      {draft.reference_profile?.usual_environments && draft.reference_profile.usual_environments.length > 0 && (
+                        <div><strong>Usual Environments:</strong> {draft.reference_profile.usual_environments.join(', ')}</div>
+                      )}
+                      {(!draft.reference_profile?.signature_objects?.length && !draft.reference_profile?.usual_environments?.length) && (
+                        <em className="text-muted">None specified</em>
+                      )}
+                    </div>
+                  </div>
+                  <div className="review-item-controls">
+                    {renderAuthorityBadge(getFieldAuthority('signature_objects'))}
+                    <button className="btn-lock-toggle" onClick={() => handleToggleLockInReview('signature_objects')}>
+                      {getFieldAuthority('signature_objects') === 'USER_LOCKED' ? '🔓 Unlock' : '🔒 Lock'}
+                    </button>
+                  </div>
                 </div>
               </div>
 

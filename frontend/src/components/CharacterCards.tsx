@@ -233,24 +233,27 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
               </div>
 
               {/* Visual Identity & Continuity Profile */}
-              {char.visual_profile && (
+              {(char.reference_profile || char.visual_profile) && (
                 <div className="actor-visual-profile-box">
-                  <div className="profile-box-title">VISUAL IDENTITY PROFILE</div>
+                  <div className="profile-box-title">VISUAL IDENTITY PROFILE {char.reference_profile ? '(AUTHORITATIVE)' : ''}</div>
                   <div className="profile-detail-row">
                     <span className="profile-detail-label">ATTIRE:</span>
-                    <span className="profile-detail-val">{formatDisplayValue(char.visual_profile.clothing)}</span>
+                    <span className="profile-detail-val">{formatDisplayValue(char.reference_profile?.baseline_wardrobe || char.visual_profile?.clothing)}</span>
                   </div>
                   <div className="profile-detail-row">
                     <span className="profile-detail-label">LOOKS:</span>
                     <span className="profile-detail-val">
-                      {formatDisplayValue(`${char.visual_profile.age} • ${char.visual_profile.face_traits} • ${char.visual_profile.hairstyle}`)}
+                      {char.reference_profile
+                        ? formatDisplayValue([char.reference_profile.apparent_age_range, char.reference_profile.build, char.reference_profile.face_description, char.reference_profile.hair].filter(Boolean).join(' • '))
+                        : formatDisplayValue(`${char.visual_profile?.age} • ${char.visual_profile?.face_traits} • ${char.visual_profile?.hairstyle}`)}
                     </span>
                   </div>
-                  {char.visual_profile.signature_items && char.visual_profile.signature_items.length > 0 && (
+                  {((char.reference_profile?.signature_objects && char.reference_profile.signature_objects.length > 0) ||
+                    (char.visual_profile?.signature_items && char.visual_profile.signature_items.length > 0)) && (
                     <div className="profile-detail-row">
                       <span className="profile-detail-label">SIGNATURE:</span>
                       <span className="profile-detail-val text-amber">
-                        {char.visual_profile.signature_items.join(', ')}
+                        {(char.reference_profile?.signature_objects || char.visual_profile?.signature_items || []).join(', ')}
                       </span>
                     </div>
                   )}

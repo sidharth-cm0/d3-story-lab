@@ -27,6 +27,8 @@ class CharacterEnrichmentService:
             val = getattr(draft, field_name, None)
             if val is None and hasattr(draft, "dynamics") and draft.dynamics:
                 val = getattr(draft.dynamics, field_name, None)
+            if val is None and hasattr(draft, "reference_profile") and draft.reference_profile:
+                val = getattr(draft.reference_profile, field_name, None)
             if val is None or val == [] or val == {} or val == "":
                 return True
             return True
@@ -292,5 +294,77 @@ class CharacterEnrichmentService:
                 draft.provenance["primary_archetype"] = draft.dynamics.provenance["primary_archetype"]
             if "secondary_archetype" in draft.dynamics.provenance:
                 draft.provenance["secondary_archetype"] = draft.dynamics.provenance["secondary_archetype"]
+
+        # 8. Character Reference Profile (Stable Visual Identity)
+        if any(k in role_lower for k in ("detective", "investigator", "inspector")):
+            ref_data = {
+                "apparent_age_range": ("Late 30s", "role_inference:investigator_age"),
+                "build": ("Lean athletic frame, upright posture", "role_inference:investigator_build"),
+                "height_impression": ("Approx. 6ft (183cm)", "role_inference:investigator_height"),
+                "face_description": ("Angular jawline, sharp observant eyes with faint crow's feet", "role_inference:investigator_face"),
+                "hair": ("Short dark hair with slight silvering at temples", "role_inference:investigator_hair"),
+                "grooming": ("Neatly trimmed stubble, clean collar", "role_inference:investigator_grooming"),
+                "distinguishing_features": ("Faint scar near right temple", "role_inference:investigator_features"),
+                "baseline_wardrobe": ("Dark wool trench coat over a collared shirt and tailored trousers", "role_inference:investigator_wardrobe"),
+                "wardrobe_palette": (["charcoal", "slate gray", "matte black", "muted navy"], "role_inference:investigator_palette"),
+                "posture": ("Upright guarded stance, watchful composure", "role_inference:investigator_posture"),
+                "signature_objects": (["Pocket notebook with brass pen", "Vintage silver watch"], "role_inference:investigator_objects"),
+                "usual_environments": (["Subterranean archives", "Dimly lit interrogation rooms"], "role_inference:investigator_environments"),
+            }
+        elif any(k in role_lower for k in ("courier", "smuggler", "runner")):
+            ref_data = {
+                "apparent_age_range": ("Late 20s", "role_inference:courier_age"),
+                "build": ("Compact and wiry frame, quick reflexes", "role_inference:courier_build"),
+                "height_impression": ("Average height, agile silhouette", "role_inference:courier_height"),
+                "face_description": ("Sharp watchful gaze with alert brow", "role_inference:courier_face"),
+                "hair": ("Close-cropped dark hair", "role_inference:courier_hair"),
+                "grooming": ("Practical and low-maintenance", "role_inference:courier_grooming"),
+                "distinguishing_features": ("Faded burn mark on left forearm", "role_inference:courier_features"),
+                "baseline_wardrobe": ("Weatherproof hooded jacket, cargo pants, reinforced boots", "role_inference:courier_wardrobe"),
+                "wardrobe_palette": (["graphite", "oil black", "weathered olive"], "role_inference:courier_palette"),
+                "posture": ("Restless readiness, coiled to move", "role_inference:courier_posture"),
+                "signature_objects": (["Heavy-duty courier pouch", "Waterproof flashlight"], "role_inference:courier_objects"),
+                "usual_environments": (["Industrial transit bays", "Rooftops and service corridors"], "role_inference:courier_environments"),
+            }
+        elif any(k in role_lower for k in ("analyst", "scientist", "doctor", "surgeon", "neurosurgeon", "researcher")):
+            ref_data = {
+                "apparent_age_range": ("Early 40s", "role_inference:analyst_age"),
+                "build": ("Slender, precise posture", "role_inference:analyst_build"),
+                "height_impression": ("Average height, composed frame", "role_inference:analyst_height"),
+                "face_description": ("Meticulous, observant eyes, narrow spectacles", "role_inference:analyst_face"),
+                "hair": ("Combed dark brown hair, side-parted", "role_inference:analyst_hair"),
+                "grooming": ("Impeccably clean-shaven", "role_inference:analyst_grooming"),
+                "distinguishing_features": ("Wire-rimmed reading glasses", "role_inference:analyst_features"),
+                "baseline_wardrobe": ("Pressed lab coat or tailored dark blazer with pressed shirt", "role_inference:analyst_wardrobe"),
+                "wardrobe_palette": (["sterile white", "slate gray", "deep navy"], "role_inference:analyst_palette"),
+                "posture": ("Erect, academic, deliberate stillness", "role_inference:analyst_posture"),
+                "signature_objects": (["Encrypted data pad", "Stylus pen"], "role_inference:analyst_objects"),
+                "usual_environments": (["Sterile laboratories", "Secure server rooms"], "role_inference:analyst_environments"),
+            }
+        else:
+            ref_data = {
+                "apparent_age_range": ("Mid 30s", "default_inference:generic_age"),
+                "build": ("Standard athletic build", "default_inference:generic_build"),
+                "height_impression": ("Average height, upright stance", "default_inference:generic_height"),
+                "face_description": ("Composed facial expression with observant eyes", "default_inference:generic_face"),
+                "hair": ("Neatly trimmed dark hair", "default_inference:generic_hair"),
+                "grooming": ("Neatly groomed", "default_inference:generic_grooming"),
+                "distinguishing_features": ("Quiet, unyielding gaze", "default_inference:generic_features"),
+                "baseline_wardrobe": ("Subdued tailored outerwear suitable for urban settings", "default_inference:generic_wardrobe"),
+                "wardrobe_palette": (["charcoal", "dark gray", "black"], "default_inference:generic_palette"),
+                "posture": ("Composed and alert posture", "default_inference:generic_posture"),
+                "signature_objects": (["Leather-bound notebook"], "default_inference:generic_objects"),
+                "usual_environments": (["Urban interior spaces", "Transit corridors"], "default_inference:generic_environments"),
+            }
+
+        for field_name, (val, rule) in ref_data.items():
+            if self.can_enrich_field(draft, field_name):
+                draft.set_field(field_name, val, FieldAuthority.SYSTEM_INFERRED, inference_rule=rule)
+
+        # Single-authority derivation from dynamics
+        draft.reference_profile.sync_from_dynamics(draft.dynamics)
+
+        # Keep legacy visual_profile synchronized
+        draft.visual_profile = draft.reference_profile.to_actor_visual_profile(draft.id, draft.name)
 
         return draft

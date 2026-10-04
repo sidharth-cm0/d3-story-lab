@@ -127,6 +127,39 @@ export interface CharacterDynamicsProfile {
   provenance?: Record<string, FieldProvenance>;
 }
 
+export interface CharacterReferenceProfile {
+  apparent_age_range?: string | null;
+  build?: string | null;
+  height_impression?: string | null;
+  face_description?: string | null;
+  hair?: string | null;
+  grooming?: string | null;
+  distinguishing_features?: string[];
+  baseline_wardrobe?: string | null;
+  wardrobe_palette?: string[];
+  posture?: string | null;
+  body_language?: string[];
+  signature_objects?: string[];
+  usual_environments?: string[];
+  provenance?: Record<string, FieldProvenance>;
+}
+
+export interface CharacterContinuityState {
+  character_id: string;
+  scene_id?: string;
+  tick?: number;
+  wetness?: string | null;
+  injuries?: string[];
+  dirt_or_blood?: string | null;
+  clothing_damage?: string | null;
+  temporary_disguise?: string | null;
+  carried_objects?: string[];
+  missing_signature_objects?: string[];
+  environmental_effects?: string[];
+  source_event_ids?: string[];
+  reasons?: string[];
+}
+
 export interface CharacterProfileDraft {
   id: string;
   project_id?: string | null;
@@ -140,6 +173,7 @@ export interface CharacterProfileDraft {
   beliefs: string[];
   emotional_state: Record<string, number>;
   visual_profile?: ActorVisualProfile | null;
+  reference_profile?: CharacterReferenceProfile | null;
   current_location_id?: string | null;
   dynamics?: CharacterDynamicsProfile | null;
   provenance: Record<string, FieldProvenance>;
@@ -170,6 +204,7 @@ export interface Character {
   known_facts?: string[];
   inventory?: string[];
   visual_profile?: ActorVisualProfile;
+  reference_profile?: CharacterReferenceProfile | null;
   input_id?: string | null;
   field_provenance?: Record<string, FieldProvenance>;
   dynamics?: CharacterDynamicsProfile | null;

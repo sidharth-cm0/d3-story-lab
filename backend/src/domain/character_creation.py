@@ -34,6 +34,7 @@ class FieldProvenance(BaseModel):
 
 
 from .character_dynamics import CharacterDynamicsProfile, DYNAMICS_FIELD_NAMES
+from .character_reference import CharacterReferenceProfile, REFERENCE_FIELD_NAMES
 
 
 class CharacterInput(BaseModel):
@@ -69,6 +70,10 @@ class CharacterProfileDraft(BaseModel):
         default_factory=CharacterDynamicsProfile,
         description="Character dynamics design profile",
     )
+    reference_profile: CharacterReferenceProfile = Field(
+        default_factory=CharacterReferenceProfile,
+        description="Character visual reference design profile",
+    )
     provenance: Dict[str, FieldProvenance] = Field(default_factory=dict)
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -79,6 +84,10 @@ class CharacterProfileDraft(BaseModel):
         """Get the authority of a field, or None if no provenance recorded."""
         if field_name in DYNAMICS_FIELD_NAMES and self.dynamics:
             auth = self.dynamics.get_authority(field_name)
+            if auth is not None:
+                return auth
+        if field_name in REFERENCE_FIELD_NAMES and self.reference_profile:
+            auth = self.reference_profile.get_authority(field_name)
             if auth is not None:
                 return auth
         prov = self.provenance.get(field_name)
@@ -95,6 +104,12 @@ class CharacterProfileDraft(BaseModel):
             self.dynamics.lock_field(field_name)
             if field_name in self.dynamics.provenance:
                 self.provenance[field_name] = self.dynamics.provenance[field_name]
+            self.updated_at = now
+            return
+        if field_name in REFERENCE_FIELD_NAMES and self.reference_profile:
+            self.reference_profile.lock_field(field_name)
+            if field_name in self.reference_profile.provenance:
+                self.provenance[field_name] = self.reference_profile.provenance[field_name]
             self.updated_at = now
             return
 
@@ -121,6 +136,12 @@ class CharacterProfileDraft(BaseModel):
             self.dynamics.unlock_field(field_name)
             if field_name in self.dynamics.provenance:
                 self.provenance[field_name] = self.dynamics.provenance[field_name]
+            self.updated_at = now
+            return
+        if field_name in REFERENCE_FIELD_NAMES and self.reference_profile:
+            self.reference_profile.unlock_field(field_name)
+            if field_name in self.reference_profile.provenance:
+                self.provenance[field_name] = self.reference_profile.provenance[field_name]
             self.updated_at = now
             return
 
@@ -165,6 +186,20 @@ class CharacterProfileDraft(BaseModel):
             )
             if updated and field_name in self.dynamics.provenance:
                 self.provenance[field_name] = self.dynamics.provenance[field_name]
+                self.updated_at = datetime.now(timezone.utc).isoformat()
+            return updated
+
+        if field_name in REFERENCE_FIELD_NAMES and self.reference_profile:
+            updated = self.reference_profile.set_field(
+                field_name=field_name,
+                value=value,
+                authority=authority,
+                source_snippet=source_snippet,
+                inference_rule=inference_rule,
+                force=force,
+            )
+            if updated and field_name in self.reference_profile.provenance:
+                self.provenance[field_name] = self.reference_profile.provenance[field_name]
                 self.updated_at = datetime.now(timezone.utc).isoformat()
             return updated
 

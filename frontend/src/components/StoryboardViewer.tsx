@@ -5,6 +5,7 @@ import {
   StoryboardPanel,
   VisualBible,
   ContinuityReport,
+  CharacterContinuityState,
 } from '../types';
 import {
   fetchVisualBible,
@@ -17,6 +18,7 @@ import {
   externalRenderPage,
   fetchCapabilities,
   runStoryboardSmokeTest,
+  getSceneContinuity,
 } from '../api';
 import { formatDisplayValue, safeExtractSvg } from '../utils/format';
 import { VisualQaView } from './VisualQaView';
@@ -57,6 +59,24 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [smokeTestResult, setSmokeTestResult] = useState<any>(null);
   const [isSmokeTesting, setIsSmokeTesting] = useState<boolean>(false);
+
+  // Phase G event-derived temporary visual continuity
+  const [sceneContinuity, setSceneContinuity] = useState<Record<string, CharacterContinuityState>>({});
+  const [loadingContinuity, setLoadingContinuity] = useState<boolean>(false);
+
+  useEffect(() => {
+    const sceneId = selectedPanel?.scene_id;
+    const projId = project.metadata?.id || (project as any).id;
+    if (!sceneId || !projId) {
+      setSceneContinuity({});
+      return;
+    }
+    setLoadingContinuity(true);
+    getSceneContinuity(projId, sceneId)
+      .then((data) => setSceneContinuity(data || {}))
+      .catch(() => setSceneContinuity({}))
+      .finally(() => setLoadingContinuity(false));
+  }, [selectedPanel?.scene_id, project.metadata?.id]);
 
   const handleRunSmokeTest = async () => {
     setIsSmokeTesting(true);
@@ -1979,6 +1999,49 @@ export const StoryboardViewer: React.FC<StoryboardViewerProps> = ({ project }) =
                               ))}
                             </div>
                           )}
+
+                          {/* Event-Derived Temporary Visual Continuity */}
+                          <div style={{ marginTop: '10px', padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            <div className="pane-kicker" style={{ color: '#38bdf8', marginBottom: '4px', fontSize: '10px' }}>
+                              EVENT-DERIVED CONTINUITY (READ-ONLY)
+                            </div>
+                            {loadingContinuity ? (
+                              <div style={{ fontSize: '11px', color: '#94a3b8' }}>Loading story-caused continuity...</div>
+                            ) : Object.keys(sceneContinuity).length > 0 ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {Object.entries(sceneContinuity).map(([cid, state]) => (
+                                  <div key={cid} style={{ fontSize: '11px', color: '#cbd5e1' }}>
+                                    <strong style={{ color: '#f1f5f9' }}>{cid}:</strong>{' '}
+                                    <span>{state.reasons?.join(', ') || 'Normal baseline appearance'}</span>
+                                    {state.injuries && state.injuries.length > 0 && (
+                                      <div style={{ color: '#f87171', marginLeft: '8px', fontSize: '10px' }}>
+                                        Injuries: {state.injuries.join(', ')}
+                                      </div>
+                                    )}
+                                    {state.dirt_or_blood && (
+                                      <div style={{ color: '#fb923c', marginLeft: '8px', fontSize: '10px' }}>
+                                        Markings: {state.dirt_or_blood}
+                                      </div>
+                                    )}
+                                    {state.clothing_damage && (
+                                      <div style={{ color: '#fbbf24', marginLeft: '8px', fontSize: '10px' }}>
+                                        Wardrobe damage: {state.clothing_damage}
+                                      </div>
+                                    )}
+                                    {state.source_event_ids && state.source_event_ids.length > 0 && (
+                                      <div style={{ color: '#64748b', marginLeft: '8px', fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
+                                        Provenance events: {state.source_event_ids.join(', ')}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                Baseline appearance preserved. No story-caused visual alterations.
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         {/* Compiled Multi-Layer Prompt */}

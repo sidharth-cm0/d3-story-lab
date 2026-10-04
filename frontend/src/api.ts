@@ -23,6 +23,7 @@ import {
   Relationship,
   CharacterHistorySeries,
   CharacterHistoryReport,
+  CharacterContinuityState,
 } from './types';
 
 const BASE_URL = '/api';
@@ -713,5 +714,18 @@ export async function getCharacterHistoryBatch(
   if (targetId) params.append('target_id', targetId);
   const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/history/batch?${params.toString()}`);
   if (!res.ok) throw new Error('Failed to fetch character history batch');
+  return res.json();
+}
+
+export async function getSceneContinuity(
+  projectId: string,
+  sceneId: string,
+  tick?: number
+): Promise<Record<string, CharacterContinuityState>> {
+  const params = new URLSearchParams();
+  if (tick !== undefined) params.append('tick', String(tick));
+  const url = `${BASE_URL}/projects/${projectId}/continuity/${sceneId}${params.toString() ? `?${params.toString()}` : ''}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Failed to fetch scene continuity');
   return res.json();
 }

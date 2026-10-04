@@ -5,6 +5,7 @@ from .continuity import ActorVisualProfile
 from .proposition import KnowledgeItem
 from .character_creation import FieldProvenance
 from .character_dynamics import CharacterDynamicsProfile
+from .character_reference import CharacterReferenceProfile
 
 
 class EmotionalState(BaseModel):
@@ -81,6 +82,9 @@ class Character(BaseModel):
     inventory: List[str] = Field(default_factory=list, description="Object IDs held")
     visual_profile: Optional[ActorVisualProfile] = Field(
         default=None, description="Visual identity profile for continuity"
+    )
+    reference_profile: Optional[CharacterReferenceProfile] = Field(
+        default=None, description="Authoritative stable visual reference profile"
     )
     input_id: Optional[str] = Field(
         default=None, description="Linked CharacterInput ID if created via intake"

@@ -24,6 +24,7 @@ from src.narrative.performance_cues import InternalStateVerbGuard
 from src.narrative.scene_projection import scan_for_internal_vocabulary
 from src.storyboard.sketch.renderer import HandDrawnStoryboardProvider
 from src.storyboard.asset_store import StoryboardAssetStore
+from src.storyboard.continuity_projector import CharacterContinuityState, ContinuityProjector
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class CharacterVisualRef(BaseModel):
     accessories: list[str] = Field(default_factory=list)
     signature_props: list[str] = Field(default_factory=list)
     palette: str
+    source_fields: list[str] = Field(default_factory=list)
 
 
 class LocationVisualRef(BaseModel):
@@ -92,6 +94,7 @@ class ContinuityPack(BaseModel):
     location_ref: LocationVisualRef
     prop_refs: list[PropVisualRef] = Field(default_factory=list)
     prior_panel_reference: str | None = None     # Reference image path/hash from earlier panel (still-image consistency only)
+    character_continuity_states: dict[str, CharacterContinuityState] = Field(default_factory=dict)
 
 
 class StoryboardPanel(BaseModel):
@@ -287,32 +290,77 @@ class VisualBibleBuilder:
         # Extract from world state if present
         char = self.world.characters.get(character_id) if self.world else None
         if char:
-            vp = getattr(char, "visual_profile", None)
-            if vp:
+            crp = getattr(char, "reference_profile", None)
+            if crp:
+                src_fields = []
+                face_desc = crp.face_description
+                if crp.distinguishing_features:
+                    face_desc = f"{face_desc}, {crp.distinguishing_features}" if face_desc else crp.distinguishing_features
+                    src_fields.append("distinguishing_features")
+                if crp.face_description:
+                    src_fields.append("face_description")
+
+                hair_desc = crp.hair
+                if crp.grooming:
+                    hair_desc = f"{hair_desc} ({crp.grooming})" if hair_desc else crp.grooming
+                    src_fields.append("grooming")
+                if crp.hair:
+                    src_fields.append("hair")
+
+                if crp.apparent_age_range:
+                    src_fields.append("apparent_age_range")
+                if crp.build:
+                    src_fields.append("build")
+                if crp.baseline_wardrobe:
+                    src_fields.append("baseline_wardrobe")
+                if crp.signature_objects:
+                    src_fields.append("signature_objects")
+                if crp.wardrobe_palette:
+                    src_fields.append("wardrobe_palette")
+
+                pal_str = ", ".join(crp.wardrobe_palette) if crp.wardrobe_palette else "cool slate gray, charcoal, muted sepia"
+
                 ref = CharacterVisualRef(
                     character_id=character_id,
-                    face=getattr(vp, "face_traits", None) or "guarded features, focused gaze",
-                    hair=getattr(vp, "hair", None) or getattr(vp, "hairstyle", None) or "cropped dark hair",
-                    age_descriptor=getattr(vp, "age", None) or getattr(char, "age_descriptor", "adult"),
-                    build=getattr(vp, "build", None) or "lean, athletic frame",
-                    wardrobe=getattr(vp, "clothing", None) or getattr(vp, "wardrobe", None) or "dark utilitarian attire",
-                    accessories=getattr(vp, "accessories", None) or getattr(vp, "signature_items", None) or [],
-                    signature_props=[],
-                    palette=getattr(vp, "palette", None) or "cool slate gray, charcoal, muted sepia",
+                    face=face_desc or "guarded features, focused gaze",
+                    hair=hair_desc or "cropped dark hair",
+                    age_descriptor=crp.apparent_age_range or getattr(char, "age_descriptor", "adult"),
+                    build=crp.build or "lean, athletic frame",
+                    wardrobe=crp.baseline_wardrobe or "dark utilitarian attire",
+                    accessories=list(crp.signature_objects),
+                    signature_props=list(crp.signature_objects),
+                    palette=pal_str,
+                    source_fields=src_fields,
                 )
             else:
-                role_desc = char.role or "operative"
-                ref = CharacterVisualRef(
-                    character_id=character_id,
-                    face="angular, guarded features",
-                    hair="dark cropped hair",
-                    age_descriptor="adult",
-                    build="athletic frame",
-                    wardrobe=f"utilitarian {role_desc} attire",
-                    accessories=[],
-                    signature_props=[],
-                    palette="monochrome graphite, deep shadows",
-                )
+                vp = getattr(char, "visual_profile", None)
+                if vp:
+                    ref = CharacterVisualRef(
+                        character_id=character_id,
+                        face=getattr(vp, "face_traits", None) or "guarded features, focused gaze",
+                        hair=getattr(vp, "hair", None) or getattr(vp, "hairstyle", None) or "cropped dark hair",
+                        age_descriptor=getattr(vp, "age", None) or getattr(char, "age_descriptor", "adult"),
+                        build=getattr(vp, "build", None) or "lean, athletic frame",
+                        wardrobe=getattr(vp, "clothing", None) or getattr(vp, "wardrobe", None) or "dark utilitarian attire",
+                        accessories=getattr(vp, "accessories", None) or getattr(vp, "signature_items", None) or [],
+                        signature_props=[],
+                        palette=getattr(vp, "palette", None) or "cool slate gray, charcoal, muted sepia",
+                        source_fields=["visual_profile"],
+                    )
+                else:
+                    role_desc = char.role or "operative"
+                    ref = CharacterVisualRef(
+                        character_id=character_id,
+                        face="angular, guarded features",
+                        hair="dark cropped hair",
+                        age_descriptor="adult",
+                        build="athletic frame",
+                        wardrobe=f"utilitarian {role_desc} attire",
+                        accessories=[],
+                        signature_props=[],
+                        palette="monochrome graphite, deep shadows",
+                        source_fields=["role"],
+                    )
         else:
             # Honest placeholder without fabricating specifics
             ref = CharacterVisualRef(
@@ -489,19 +537,30 @@ class StoryboardPromptBuilder:
             p_desc = ", ".join(f"{p.shape} ({p.material}, {p.color})" for p in continuity.prop_refs)
             props_segment = f" PROPS: {p_desc}."
 
-        # 5. Composition Plan Details
+        # 5. Temporary Continuity State (injuries, clothing damage, wetness, carried items)
+        continuity_segment = ""
+        if continuity.character_continuity_states:
+            c_summaries = []
+            for cid, c_state in continuity.character_continuity_states.items():
+                s_desc = c_state.summary_description()
+                if s_desc and s_desc != "normal baseline appearance":
+                    c_summaries.append(f"{cid} [{s_desc}]")
+            if c_summaries:
+                continuity_segment = f" CONTINUITY: {'; '.join(c_summaries)}."
+
+        # 6. Composition Plan Details
         comp = shot.composition_plan
         comp_segment = (
             f"COMPOSITION: depth layers [{', '.join(comp.depth_layers)}], "
             f"focal point {comp.focal_point}."
         )
 
-        # 6. Style Profile
+        # 7. Style Profile
         style_segment = f"STYLE: {self.STYLE_INCLUDE}."
         negative_segment = f"NEGATIVE: {self.STYLE_EXCLUDE}."
 
         assembled_prompt = (
-            f"{framing_segment} {action_segment} {env_segment}{props_segment} "
+            f"{framing_segment} {action_segment}{continuity_segment} {env_segment}{props_segment} "
             f"{comp_segment} {style_segment} {negative_segment}"
         )
 
@@ -520,7 +579,7 @@ class StoryboardPromptBuilder:
 
         # Content hash computation using ContentHashCache
         content_hash = ContentHashCache.compute_hash(
-            shot_prompt=f"{framing_segment} {action_segment} {env_segment}{props_segment}",
+            shot_prompt=f"{framing_segment} {action_segment}{continuity_segment} {env_segment}{props_segment}",
             visual_style_prompt=self.STYLE_INCLUDE,
             character_visual_anchors=",".join(c.face for c in continuity.character_refs),
             aspect_ratio="16:9",
@@ -573,6 +632,7 @@ class GroundedStoryboardRenderer:
         world: Optional[WorldState] = None,
         budget: int = 8,
         project_id: str = "world_init_4bef81",
+        events: Optional[List[Any]] = None,
     ) -> Tuple[List[StoryboardPanel], VisualBible]:
         """Render budgeted keyframes with deterministic SVG fallback and content caching."""
         # 1. Keyframe Selection
@@ -616,12 +676,29 @@ class GroundedStoryboardRenderer:
                 if pid in bible.props
             ]
 
+            # Project temporary character continuity if events are available
+            c_states: Dict[str, CharacterContinuityState] = {}
+            if events:
+                for cid in shot.actor_positions.keys():
+                    c_states[cid] = ContinuityProjector.project_character_continuity(
+                        character_id=cid,
+                        events=events,
+                        scene_id=shot.scene_id,
+                    )
+                if shot.subject_focus and shot.subject_focus not in c_states and shot.subject_focus in bible.characters:
+                    c_states[shot.subject_focus] = ContinuityProjector.project_character_continuity(
+                        character_id=shot.subject_focus,
+                        events=events,
+                        scene_id=shot.scene_id,
+                    )
+
             continuity = ContinuityPack(
                 shot_id=shot.shot_id,
                 character_refs=char_refs,
                 location_ref=location_ref,
                 prop_refs=prop_refs,
                 prior_panel_reference=None,
+                character_continuity_states=c_states,
             )
 
             # Build verified prompt and content hash

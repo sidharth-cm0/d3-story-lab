@@ -99,10 +99,17 @@ def calculate_character_completeness(
         field_scores["personality_traits"] = 0.0
         missing_fields.append("personality_traits")
 
-    # 6. Visual Profile / Appearance
+    # 6. Visual Profile / Appearance (Reference Profile or legacy Visual Profile)
+    ref = get_val("reference_profile")
     vis = get_val("visual_profile")
     has_vis = False
-    if vis is not None:
+    if ref is not None:
+        if isinstance(ref, dict):
+            if any(ref.get(k) for k in ("baseline_wardrobe", "face_description", "build", "hair", "apparent_age_range")):
+                has_vis = True
+        elif any(getattr(ref, k, None) for k in ("baseline_wardrobe", "face_description", "build", "hair", "apparent_age_range")):
+            has_vis = True
+    if not has_vis and vis is not None:
         if isinstance(vis, dict):
             if any(vis.get(k) for k in ("clothing", "face_traits", "build", "hairstyle", "age")):
                 has_vis = True

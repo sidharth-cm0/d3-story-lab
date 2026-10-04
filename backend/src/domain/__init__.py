@@ -53,6 +53,10 @@ from .character_dynamics import (
     CharacterDynamicsProfile,
     DYNAMICS_FIELD_NAMES,
 )
+from .character_reference import (
+    CharacterReferenceProfile,
+    REFERENCE_FIELD_NAMES,
+)
 from .archetype import (
     ArchetypeType,
     ArchetypeShiftPoint,
@@ -130,6 +134,8 @@ __all__ = [
     "calculate_character_completeness",
     "CharacterDynamicsProfile",
     "DYNAMICS_FIELD_NAMES",
+    "CharacterReferenceProfile",
+    "REFERENCE_FIELD_NAMES",
     "ArchetypeType",
     "ArchetypeShiftPoint",
     "ArchetypeTrajectory",

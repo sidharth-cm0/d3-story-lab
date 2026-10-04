@@ -2804,6 +2804,26 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
             "props": {k: v.model_dump(mode="json") for k, v in prop_packs.items()},
         }
 
+    @app.get("/api/projects/{project_id}/continuity/{scene_id}")
+    def get_scene_continuity(project_id: str, scene_id: str, tick: Optional[int] = None):
+        """Pure read-only query returning temporary character continuity states for a scene."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        events = sorted(proj.world.events.values(), key=lambda e: (e.tick, e.id))
+        from src.storyboard.continuity_projector import ContinuityProjector
+        c_states = ContinuityProjector.project_scene_continuity(
+            world=proj.world,
+            events=events,
+            scene_id=scene_id,
+            tick=tick,
+        )
+        return {
+            cid: state.model_dump(mode="json")
+            for cid, state in c_states.items()
+        }
+
+
     @app.get("/api/projects/{project_id}/storyboard/assets/{category}/{filename}")
     def serve_storyboard_asset(project_id: str, category: str, filename: str):
         """Secure asset serving endpoint with strict path containment protection."""
