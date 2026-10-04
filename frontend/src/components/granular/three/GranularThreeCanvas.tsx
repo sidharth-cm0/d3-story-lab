@@ -23,6 +23,9 @@ export interface GranularThreeCanvasProps {
   seed?: number;
   motif?: GranularMotif;
   isHovered?: boolean;
+  isPaused?: boolean;
+  isThrottled?: boolean;
+  throttleFps?: number;
   forceTier?: QualityTier;
   width?: string | number;
   height?: string | number;
@@ -36,6 +39,9 @@ export const GranularThreeCanvas: React.FC<GranularThreeCanvasProps> = ({
   seed = 927,
   motif = 'hero',
   isHovered = false,
+  isPaused = false,
+  isThrottled = false,
+  throttleFps = 30,
   forceTier,
   width = '100%',
   height = '100%',
@@ -101,6 +107,24 @@ export const GranularThreeCanvas: React.FC<GranularThreeCanvasProps> = ({
       sceneRef.current.setMotif(motif);
     }
   }, [motif]);
+
+  // Sync pause state
+  useEffect(() => {
+    if (sceneRef.current) {
+      if (isPaused) {
+        sceneRef.current.pause();
+      } else {
+        sceneRef.current.resume();
+      }
+    }
+  }, [isPaused]);
+
+  // Sync throttled state
+  useEffect(() => {
+    if (sceneRef.current) {
+      sceneRef.current.setThrottled(Boolean(isThrottled), throttleFps || 30);
+    }
+  }, [isThrottled, throttleFps]);
 
   if (shouldRenderFallback) {
     return (

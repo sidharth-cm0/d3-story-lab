@@ -154,6 +154,9 @@ export class GranularThreeScene {
   private lastFrameTime: number = 0;
   private isDisposed: boolean = false;
   private isPaused: boolean = false;
+  private isThrottled: boolean = false;
+  private throttleFps: number = 30;
+  private lastRenderTime: number = 0;
   private isHovered: boolean = false;
   private hoverProgress: number = 0; // 0.0 to 1.0
 
@@ -331,12 +334,44 @@ export class GranularThreeScene {
     return this.motif;
   }
 
+  public pause(): void {
+    this.isPaused = true;
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+  }
+
+  public resume(): void {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    this.lastFrameTime = performance.now();
+    this.lastRenderTime = this.lastFrameTime;
+    if (!this.animationFrameId && !this.isDisposed) {
+      this.animationFrameId = requestAnimationFrame(this.tick.bind(this));
+    }
+  }
+
+  public setThrottled(throttled: boolean, fps: number = 30): void {
+    this.isThrottled = throttled;
+    this.throttleFps = fps;
+  }
+
   private tick(timestamp: number): void {
     if (this.isDisposed) return;
 
     if (this.isPaused) {
       this.animationFrameId = null;
       return;
+    }
+
+    if (this.isThrottled) {
+      const minInterval = 1000 / this.throttleFps;
+      if (timestamp - this.lastRenderTime < minInterval) {
+        this.animationFrameId = requestAnimationFrame(this.tick.bind(this));
+        return;
+      }
+      this.lastRenderTime = timestamp;
     }
 
     const elapsedTotal = (timestamp - this.startTime) / 1000;

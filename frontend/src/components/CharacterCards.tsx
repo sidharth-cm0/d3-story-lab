@@ -11,6 +11,52 @@ interface CharacterCardsProps {
   onCharacterCreated?: () => void;
 }
 
+const SparklineChart: React.FC<{ points: { tick: number; value: number; label?: string | null }[] }> = ({ points }) => {
+  if (!points || points.length === 0) return null;
+  const minTick = Math.min(...points.map((p) => p.tick));
+  const maxTick = Math.max(...points.map((p) => p.tick));
+  const tickRange = Math.max(1, maxTick - minTick);
+  const width = 230;
+  const height = 36;
+  const padX = 10;
+  const padY = 6;
+  const innerW = width - padX * 2;
+  const innerH = height - padY * 2;
+
+  const coords = points.map((p) => {
+    const x = padX + (tickRange > 0 ? ((p.tick - minTick) / tickRange) * innerW : innerW / 2);
+    const clamped = Math.max(-1.0, Math.min(1.0, p.value));
+    const norm = (clamped + 1.0) / 2.0;
+    const y = padY + (1.0 - norm) * innerH;
+    return { x, y, tick: p.tick, val: p.value, label: p.label };
+  });
+
+  const pathD = coords.reduce((acc, pt, idx) => `${acc} ${idx === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`, '');
+  const zeroY = padY + innerH / 2;
+
+  return (
+    <div className="history-sparkline-box" style={{ margin: '6px 0', background: 'rgba(0,0,0,0.35)', borderRadius: '4px', padding: '4px' }}>
+      <svg width={width} height={height} style={{ overflow: 'visible', display: 'block' }}>
+        <line x1={padX} y1={zeroY} x2={width - padX} y2={zeroY} stroke="rgba(255,255,255,0.18)" strokeDasharray="2,2" strokeWidth="1" />
+        <path d={pathD} fill="none" stroke="#58a6ff" strokeWidth="1.8" />
+        {coords.map((pt, idx) => (
+          <circle
+            key={idx}
+            cx={pt.x}
+            cy={pt.y}
+            r="3.5"
+            fill={pt.val >= 0 ? '#3fb950' : '#f85149'}
+            stroke="#161b22"
+            strokeWidth="1.5"
+          >
+            <title>{`T+${pt.tick}: ${pt.val >= 0 ? '+' : ''}${pt.val.toFixed(2)}${pt.label ? ` (${pt.label})` : ''}`}</title>
+          </circle>
+        ))}
+      </svg>
+    </div>
+  );
+};
+
 export const CharacterCards: React.FC<CharacterCardsProps> = ({
   world,
   projectId,
@@ -25,6 +71,7 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
   const [loadingConflicts, setLoadingConflicts] = useState(false);
   const [expandedConflicts, setExpandedConflicts] = useState<Record<string, boolean>>({});
   const [expandedRelHistory, setExpandedRelHistory] = useState<Record<string, boolean>>({});
+  const [selectedDim, setSelectedDim] = useState<Record<string, string>>({});
   const [relHistoryData, setRelHistoryData] = useState<Record<string, CharacterHistorySeries>>({});
   const [loadingRelHistory, setLoadingRelHistory] = useState<Record<string, boolean>>({});
 
@@ -83,15 +130,22 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
     }
   };
 
-  const toggleRelHistory = async (e: React.MouseEvent, charAId: string, charBId: string, relId: string, dimension: string = 'trust') => {
+  const toggleRelHistory = async (
+    e: React.MouseEvent,
+    charAId: string,
+    charBId: string,
+    relId: string,
+    dimension: string = 'trust',
+    forceFetch: boolean = false
+  ) => {
     e.stopPropagation();
     const key = `${charAId}_${relId}_${dimension}`;
-    if (expandedRelHistory[key]) {
+    if (!forceFetch && expandedRelHistory[key]) {
       setExpandedRelHistory((prev) => ({ ...prev, [key]: false }));
       return;
     }
     setExpandedRelHistory((prev) => ({ ...prev, [key]: true }));
-    if (relHistoryData[key]) return;
+    if (!forceFetch && relHistoryData[key]) return;
     setLoadingRelHistory((prev) => ({ ...prev, [key]: true }));
     try {
       const pid = projectId || world.id;
@@ -349,86 +403,130 @@ export const CharacterCards: React.FC<CharacterCardsProps> = ({
                             )}
                           </div>
                           <div className="relationship-timeline-control" style={{ marginTop: '8px' }}>
-                            <button
-                              type="button"
-                              className="btn-history-toggle"
-                              style={{
-                                fontSize: '0.72rem',
-                                padding: '2px 8px',
-                                background: 'rgba(255,255,255,0.06)',
-                                border: '1px solid rgba(255,255,255,0.15)',
-                                borderRadius: '4px',
-                                color: '#aaa',
-                                cursor: 'pointer',
-                              }}
-                              onClick={(e) => toggleRelHistory(e, char.id, otherId, rel.id, 'trust')}
-                              title="View reconstructed trust timeline with event provenance"
-                            >
-                              {expandedRelHistory[`${char.id}_${rel.id}_trust`] ? '▾ Hide History' : '▸ Trust History'}
-                            </button>
-                            {expandedRelHistory[`${char.id}_${rel.id}_trust`] && (
-                              <div
-                                className="rel-history-timeline"
-                                style={{
-                                  marginTop: '6px',
-                                  padding: '6px 8px',
-                                  background: 'rgba(0,0,0,0.25)',
-                                  borderRadius: '4px',
-                                  borderLeft: '2px solid #58a6ff',
-                                  fontSize: '0.75rem',
-                                }}
-                              >
-                                {loadingRelHistory[`${char.id}_${rel.id}_trust`] ? (
-                                  <span className="text-muted">Reconstructing history...</span>
-                                ) : relHistoryData[`${char.id}_${rel.id}_trust`]?.points ? (
-                                  <div className="history-points-list">
-                                    {relHistoryData[`${char.id}_${rel.id}_trust`].points.map((pt, pIdx) => (
+                            {(() => {
+                              const activeDim = selectedDim[rel.id] || 'trust';
+                              const historyKey = `${char.id}_${rel.id}_${activeDim}`;
+                              const isExpanded = Boolean(expandedRelHistory[historyKey]);
+
+                              return (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-history-toggle"
+                                    style={{
+                                      fontSize: '0.72rem',
+                                      padding: '2px 8px',
+                                      background: 'rgba(255,255,255,0.06)',
+                                      border: '1px solid rgba(255,255,255,0.15)',
+                                      borderRadius: '4px',
+                                      color: '#aaa',
+                                      cursor: 'pointer',
+                                    }}
+                                    onClick={(e) => toggleRelHistory(e, char.id, otherId, rel.id, activeDim)}
+                                    title="View reconstructed timeline with event provenance"
+                                  >
+                                    {isExpanded ? '▾ Hide History' : '▸ Trust History'}
+                                  </button>
+                                  {isExpanded && (
+                                    <div
+                                      className="rel-history-timeline"
+                                      style={{
+                                        marginTop: '6px',
+                                        padding: '6px 8px',
+                                        background: 'rgba(0,0,0,0.25)',
+                                        borderRadius: '4px',
+                                        borderLeft: '2px solid #58a6ff',
+                                        fontSize: '0.75rem',
+                                      }}
+                                    >
+                                      {/* Dimension Selector */}
                                       <div
-                                        key={pIdx}
-                                        className="history-point-row"
-                                        style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}
+                                        className="dimension-selector-row"
+                                        style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}
                                       >
-                                        <span className="history-tick font-mono" style={{ color: '#888', minWidth: '42px' }}>
-                                          {`T+${pt.tick}`}
-                                        </span>
-                                        <span
-                                          className={`history-value font-mono ${pt.value >= 0 ? 'text-green' : 'text-red'}`}
-                                          style={{ fontWeight: 600, minWidth: '45px' }}
-                                        >
-                                          {pt.value > 0 ? `+${pt.value.toFixed(2)}` : pt.value.toFixed(2)}
-                                        </span>
-                                        {pt.event_ids && pt.event_ids.length > 0 && (
-                                          <span
-                                            className="history-event-badge"
+                                        {['trust', 'respect', 'affinity', 'suspicion', 'resentment', 'dependency'].map((dim) => (
+                                          <button
+                                            key={dim}
+                                            type="button"
+                                            className={`dim-select-btn ${activeDim === dim ? 'active' : ''}`}
                                             style={{
-                                              padding: '1px 4px',
+                                              fontSize: '0.65rem',
+                                              padding: '1px 5px',
                                               borderRadius: '3px',
-                                              background: 'rgba(88,166,255,0.15)',
-                                              color: '#58a6ff',
-                                              fontSize: '0.7rem',
+                                              background: activeDim === dim ? '#58a6ff' : 'rgba(255,255,255,0.06)',
+                                              color: activeDim === dim ? '#000' : '#ccc',
+                                              border: '1px solid rgba(255,255,255,0.15)',
+                                              cursor: 'pointer',
+                                              fontWeight: activeDim === dim ? 600 : 400,
                                             }}
-                                            title={pt.label || undefined}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedDim((prev) => ({ ...prev, [rel.id]: dim }));
+                                              toggleRelHistory(e, char.id, otherId, rel.id, dim, true);
+                                            }}
                                           >
-                                            {`evt:${pt.event_ids.map((id) => (id.length > 8 ? id.slice(-6) : id)).join(',')}`}
-                                          </span>
-                                        )}
-                                        {pt.label && (
-                                          <span
-                                            className="history-label text-muted"
-                                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                            title={pt.label}
-                                          >
-                                            {pt.label}
-                                          </span>
-                                        )}
+                                            {dim.toUpperCase()}
+                                          </button>
+                                        ))}
                                       </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-muted">No change points</span>
-                                )}
-                              </div>
-                            )}
+
+                                      {loadingRelHistory[historyKey] ? (
+                                        <span className="text-muted">Reconstructing history...</span>
+                                      ) : relHistoryData[historyKey]?.points ? (
+                                        <>
+                                          <SparklineChart points={relHistoryData[historyKey].points} />
+                                          <div className="history-points-list">
+                                            {relHistoryData[historyKey].points.map((pt, pIdx) => (
+                                              <div
+                                                key={pIdx}
+                                                className="history-point-row"
+                                                style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}
+                                              >
+                                                <span className="history-tick font-mono" style={{ color: '#888', minWidth: '42px' }}>
+                                                  {`T+${pt.tick}`}
+                                                </span>
+                                                <span
+                                                  className={`history-value font-mono ${pt.value >= 0 ? 'text-green' : 'text-red'}`}
+                                                  style={{ fontWeight: 600, minWidth: '45px' }}
+                                                >
+                                                  {pt.value > 0 ? `+${pt.value.toFixed(2)}` : pt.value.toFixed(2)}
+                                                </span>
+                                                {pt.event_ids && pt.event_ids.length > 0 && (
+                                                  <span
+                                                    className="history-event-badge"
+                                                    style={{
+                                                      padding: '1px 4px',
+                                                      borderRadius: '3px',
+                                                      background: 'rgba(88,166,255,0.15)',
+                                                      color: '#58a6ff',
+                                                      fontSize: '0.7rem',
+                                                    }}
+                                                    title={pt.label || undefined}
+                                                  >
+                                                    {`evt:${pt.event_ids.map((id) => (id.length > 8 ? id.slice(-6) : id)).join(',')}`}
+                                                  </span>
+                                                )}
+                                                {pt.label && (
+                                                  <span
+                                                    className="history-label text-muted"
+                                                    style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                                    title={pt.label}
+                                                  >
+                                                    {pt.label}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <span className="text-muted">No change points</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
                       );

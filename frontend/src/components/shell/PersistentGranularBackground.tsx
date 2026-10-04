@@ -12,16 +12,22 @@ import { GranularThreeCanvas, viewToMotif } from '../granular';
 
 export interface PersistentGranularBackgroundProps {
   activeView: ActiveView;
+  isPaused?: boolean;
+  isThrottled?: boolean;
   className?: string;
   style?: React.CSSProperties;
 }
 
 export const PersistentGranularBackground: React.FC<PersistentGranularBackgroundProps> = memo(({
   activeView,
+  isPaused = false,
+  isThrottled = false,
   className = '',
   style,
 }) => {
   const motif = viewToMotif(activeView);
+  // Heavy analytics views auto-throttle Three.js rendering to maintain 60fps UI responsiveness
+  const shouldThrottle = isThrottled || activeView === 'actors' || activeView === 'arcs';
 
   return (
     <div
@@ -47,6 +53,9 @@ export const PersistentGranularBackground: React.FC<PersistentGranularBackground
         motif={motif}
         width="100%"
         height="100%"
+        isPaused={isPaused}
+        isThrottled={shouldThrottle}
+        throttleFps={30}
         data-testid="persistent-granular-canvas"
       />
     </div>
