@@ -60,6 +60,8 @@ class CharacterReferenceProfile(BaseModel):
     body_language: str = Field(default="", description="Visible physical carriage and gestural baseline (derived from dynamics mannerisms when available)")
     signature_objects: List[str] = Field(default_factory=list, description="Recognizable personal props/items (e.g. ['Silver pocket watch', 'Leather notebook'])")
     usual_environments: List[str] = Field(default_factory=list, description="Typical spatial settings (derived from dynamics lifestyle when available)")
+    reference_mode: str = Field(default="TEXT_ONLY", description="Visual reference mode: 'TEXT_ONLY' or 'USER_UPLOAD'")
+    reference_image_path: Optional[str] = Field(default=None, description="Path to verified user-uploaded reference image")
 
     provenance: Dict[str, FieldProvenance] = Field(
         default_factory=dict,

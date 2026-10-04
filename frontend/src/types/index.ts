@@ -141,6 +141,8 @@ export interface CharacterReferenceProfile {
   body_language?: string[];
   signature_objects?: string[];
   usual_environments?: string[];
+  reference_mode?: 'TEXT_ONLY' | 'USER_UPLOAD' | string;
+  reference_image_path?: string | null;
   provenance?: Record<string, FieldProvenance>;
 }
 
@@ -585,6 +587,9 @@ export interface StoryboardPanel {
   selected_version?: number;
   versions?: StoryboardImageVersion[];
   aspect_ratio: string;
+  camera_axis_side?: 'LEFT' | 'RIGHT' | 'NEUTRAL' | string | null;
+  axis_crossing_flag?: boolean;
+  screen_direction?: 'LEFT_TO_RIGHT' | 'RIGHT_TO_LEFT' | 'NEUTRAL' | string | null;
   source_event_ids: string[];
   source_screenplay_block_ids?: string[];
   metadata?: Record<string, any>;

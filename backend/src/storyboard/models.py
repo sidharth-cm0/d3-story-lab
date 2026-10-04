@@ -177,6 +177,9 @@ class StoryboardPanel(BaseModel):
     versions: List[StoryboardImageVersion] = Field(default_factory=list)
 
     aspect_ratio: str = "16:9"
+    camera_axis_side: Optional[str] = "LEFT"
+    axis_crossing_flag: bool = False
+    screen_direction: Optional[str] = None
     source_event_ids: List[str] = Field(default_factory=list)
     source_screenplay_block_ids: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)

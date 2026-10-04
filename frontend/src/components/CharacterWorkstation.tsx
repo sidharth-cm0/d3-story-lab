@@ -970,6 +970,34 @@ export const CharacterWorkstation: React.FC<CharacterWorkstationProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {/* Reference Mode & Asset */}
+                <div className="review-item-row dynamics-row">
+                  <div className="review-item-main">
+                    <span className="review-field-name">Visual Reference Asset</span>
+                    <div className="review-field-value">
+                      <div>
+                        <strong>Mode:</strong>{' '}
+                        <span className="badge-chip">
+                          {draft.reference_profile?.reference_mode || 'TEXT_ONLY'}
+                        </span>
+                      </div>
+                      {draft.reference_profile?.reference_image_path ? (
+                        <div style={{ marginTop: '0.5rem' }}>
+                          <img
+                            src={draft.reference_profile.reference_image_path}
+                            alt="Visual Reference"
+                            style={{ maxHeight: '120px', borderRadius: '4px', border: '1px solid var(--border-color, #444)' }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="text-muted" style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                          Operating in verified TEXT_ONLY mode (deterministic prompt compiling).
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* PHASE B: CHARACTER DYNAMICS & DRAMATIC CONTEXT */}

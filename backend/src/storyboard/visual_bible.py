@@ -135,8 +135,25 @@ class VisualBible(BaseModel):
 
         # 1. Characters
         for cid, char in world.characters.items():
+            rp = getattr(char, "reference_profile", None)
             vp = getattr(char, "visual_profile", None)
-            if vp:
+            if rp:
+                ref_img = rp.reference_image_path if rp.reference_mode == "USER_UPLOAD" else None
+                char_refs[cid] = CharacterVisualReference(
+                    character_id=cid,
+                    name=char.name,
+                    role=char.role or "Protagonist",
+                    age=rp.apparent_age_range or "Mid 30s",
+                    build=f"{rp.build}, {rp.height_impression}".strip(", ") or "Lean athletic build, upright guarded posture",
+                    face_features=f"{rp.face_description}, {rp.distinguishing_features}".strip(", ") or "Sharp angular features",
+                    hair=f"{rp.hair}, {rp.grooming}".strip(", ") or "Dark textured hair",
+                    clothing=rp.baseline_wardrobe or "Tailored dark trench coat and collared shirt",
+                    signature_props=list(rp.signature_objects),
+                    color_accents=", ".join(rp.wardrobe_palette) if rp.wardrobe_palette else "Cold charcoal, dark graphite",
+                    expression_tendency=rp.expression_baseline if hasattr(rp, "expression_baseline") and rp.expression_baseline else (rp.body_language or "Guarded, calculating"),
+                    reference_image_url=ref_img,
+                )
+            elif vp:
                 char_refs[cid] = CharacterVisualReference(
                     character_id=cid,
                     name=char.name,

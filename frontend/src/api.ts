@@ -24,6 +24,7 @@ import {
   CharacterHistorySeries,
   CharacterHistoryReport,
   CharacterContinuityState,
+  CharacterReferenceProfile,
 } from './types';
 
 const BASE_URL = '/api';
@@ -727,5 +728,66 @@ export async function getSceneContinuity(
   const url = `${BASE_URL}/projects/${projectId}/continuity/${sceneId}${params.toString() ? `?${params.toString()}` : ''}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error('Failed to fetch scene continuity');
+  return res.json();
+}
+
+export async function getCharacterReferenceProfile(
+  projectId: string,
+  characterId: string
+): Promise<CharacterReferenceProfile> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/reference-profile`);
+  if (!res.ok) throw new Error('Failed to fetch character reference profile');
+  return res.json();
+}
+
+export async function updateCharacterReferenceProfile(
+  projectId: string,
+  characterId: string,
+  payload: Partial<CharacterReferenceProfile> & { locked_fields?: string[]; force?: boolean }
+): Promise<CharacterReferenceProfile> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/reference-profile`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to update character reference profile' }));
+    throw new Error(err.detail || 'Failed to update character reference profile');
+  }
+  return res.json();
+}
+
+export async function setCharacterReferenceMode(
+  projectId: string,
+  characterId: string,
+  mode: 'TEXT_ONLY' | 'USER_UPLOAD'
+): Promise<{ character_id: string; reference_mode: string; reference_image_path?: string }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/reference-mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to set character reference mode' }));
+    throw new Error(err.detail || 'Failed to set character reference mode');
+  }
+  return res.json();
+}
+
+export async function uploadCharacterReferenceImage(
+  projectId: string,
+  characterId: string,
+  filename: string,
+  imageBase64: string
+): Promise<{ character_id: string; reference_image_path: string; reference_mode: string; reference_profile: CharacterReferenceProfile }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/characters/${characterId}/reference-image`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename, image_base64: imageBase64 }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to upload character reference image' }));
+    throw new Error(err.detail || 'Failed to upload character reference image');
+  }
   return res.json();
 }

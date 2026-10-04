@@ -176,6 +176,9 @@ class StoryboardPlanner:
                 focal_depth_plane="background",
                 lighting_profile_id="MOONLIT_INDUSTRIAL" if "dock" in loc_name.lower() or "night" in loc_name.lower() else "NOIR_HARD",
                 aspect_ratio=aspect_ratio,
+                camera_axis_side="NEUTRAL",
+                axis_crossing_flag=False,
+                screen_direction="NEUTRAL",
                 source_event_ids=list(scene.source_event_ids[:2]),
                 source_screenplay_block_ids=[scene.blocks[0].id] if scene.blocks else [],
                 metadata={
@@ -378,6 +381,9 @@ class StoryboardPlanner:
                         sfx_label=detected_sfx,
                         continuity_notes=f"Preserves {char_name} attire and visual identity traits.",
                         aspect_ratio=aspect_ratio,
+                        camera_axis_side="LEFT",
+                        axis_crossing_flag=False,
+                        screen_direction="LEFT_TO_RIGHT",
                         source_event_ids=list(block.source_event_ids),
                         source_screenplay_block_ids=[block.id],
                         metadata={
@@ -548,6 +554,9 @@ class StoryboardPlanner:
                         caption=f"{speaker_name}: \"{dialogue_text}\"",
                         continuity_notes=f"Matches {speaker_name} facial features, hairstyle, and wardrobe.",
                         aspect_ratio=aspect_ratio,
+                        camera_axis_side="LEFT",
+                        axis_crossing_flag=False,
+                        screen_direction="LEFT_TO_RIGHT",
                         source_event_ids=list(dict.fromkeys(source_ids)),
                         source_screenplay_block_ids=block_ids,
                         metadata={

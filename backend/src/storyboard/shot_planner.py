@@ -70,6 +70,11 @@ class CompositionPlan(BaseModel):
     gaze_vectors: dict[str, str] = Field(default_factory=dict)
     depth_layers: list[str] = Field(default_factory=lambda: ["foreground", "midground", "background"])
     focal_point: str = ""
+    camera_axis_side: Optional[str] = "LEFT"         # "LEFT", "RIGHT", "NEUTRAL"
+    axis_crossing_flag: bool = False                 # True if cut crossed 180° line of action without neutral cutaway
+    screen_direction: Optional[str] = None           # "LEFT_TO_RIGHT", "RIGHT_TO_LEFT", "NEUTRAL"
+    line_of_action: Optional[Tuple[str, str]] = None # Pair of focal interactants defining the camera axis
+    blocking_carryover: bool = True                  # True if character positions carried over from prior cut
 
 
 class ShotPlan(BaseModel):
@@ -96,6 +101,9 @@ class ShotPlan(BaseModel):
     rationale: str                               # REQUIRED — why this shot_type/angle, explainable, not a black box
     contributing_signals: dict[str, float] = Field(default_factory=dict)        # REQUIRED — explainability criterion contributions
     composition_plan: CompositionPlan
+    camera_axis_side: Optional[str] = "LEFT"
+    axis_crossing_flag: bool = False
+    screen_direction: Optional[str] = None
 
 
 # =============================================================================
@@ -541,6 +549,22 @@ class ShotPlanner:
             scene_id = proj.scene_id or f"scene_{scene.scene_number:02d}"
 
             # -----------------------------------------------------------------
+            # 180° CAMERA AXIS, SCREEN DIRECTION & BLOCKING TRACKING (Phase H1)
+            # -----------------------------------------------------------------
+            established_line_of_action: Optional[Tuple[str, str]] = None
+            if len(proj.characters_present) >= 2:
+                established_line_of_action = (proj.characters_present[0], proj.characters_present[1])
+            established_blocking: Dict[str, Tuple[float, float, float]] = {}
+            current_axis_side: str = "LEFT"
+            last_shot_type: Optional[ShotType] = None
+
+            # Establish initial staging for line of action characters
+            if established_line_of_action:
+                c1, c2 = established_line_of_action
+                established_blocking[c1] = (0.35, 0.5, 1.0)
+                established_blocking[c2] = (0.65, 0.5, 1.0)
+
+            # -----------------------------------------------------------------
             # 1. ESTABLISHING SHOT AT START OF SCENE
             # -----------------------------------------------------------------
             est_shot_id = f"shot_{scene.scene_number:02d}_000_est"
@@ -548,12 +572,26 @@ class ShotPlanner:
             est_blocks = slugline_blocks if slugline_blocks else [scene.blocks[0].block_id] if scene.blocks else [f"blk_{scene.scene_number}_est"]
             est_events = list(scene.source_event_ids[:1]) if scene.source_event_ids else (proj.source_event_ids[:1] if proj.source_event_ids else ["evt_scene_start"])
 
+            est_positions = dict(established_blocking)
+            est_positions[proj.location_label] = (0.5, 0.5, 1.0)
+
+            est_gaze: Dict[str, str] = {}
+            if established_line_of_action:
+                c1, c2 = established_line_of_action
+                est_gaze[c1] = "screen_right"
+                est_gaze[c2] = "screen_left"
+
             est_composition = CompositionPlan(
                 framing_rect="0,0,1920,1080",
-                subject_positions={proj.location_label: (0.5, 0.5, 1.0)},
-                gaze_vectors={},
+                subject_positions=est_positions,
+                gaze_vectors=est_gaze,
                 depth_layers=["background", "midground", "foreground"],
                 focal_point=proj.location_label,
+                camera_axis_side="NEUTRAL",
+                axis_crossing_flag=False,
+                screen_direction="NEUTRAL",
+                line_of_action=established_line_of_action,
+                blocking_carryover=False,
             )
 
             all_shot_plans.append(
@@ -578,8 +616,12 @@ class ShotPlanner:
                     rationale="scene's first beat: orient the audience",
                     contributing_signals={"scene_opening": 1.0},
                     composition_plan=est_composition,
+                    camera_axis_side="NEUTRAL",
+                    axis_crossing_flag=False,
+                    screen_direction="NEUTRAL",
                 )
             )
+            last_shot_type = ShotType.ESTABLISHING
 
             # -----------------------------------------------------------------
             # 2. ONE SHOT CANDIDATE PER OBSERVABLE BEAT
@@ -594,15 +636,24 @@ class ShotPlanner:
                 ]
                 if not matching_blocks:
                     # Invariant: screenplay_block_ids MUST be non-empty
-                    # Pick closest block in sequence
                     block_idx = min(beat_idx, len(scene.blocks) - 1) if scene.blocks else 0
                     matching_blocks = [scene.blocks[block_idx].block_id] if scene.blocks else [f"blk_{scene.scene_number}_{beat_idx}"]
 
                 # Invariant: source_event_ids MUST be non-empty
                 source_events = [beat.event_id] if beat.event_id else (proj.source_event_ids[:1] or ["evt_default"])
 
-                # Determine focal character
-                if beat.characters_involved:
+                # Determine focal character (prioritize beat's expressive performance cue, then leading actor)
+                if beat.performance_cue_ids:
+                    cue_char = next((c.character_id for c in proj.performance_cues if c.id in beat.performance_cue_ids), None)
+                    if cue_char:
+                        focal_id = cue_char
+                    elif beat.characters_involved:
+                        focal_id = beat.characters_involved[0]
+                    elif proj.characters_present:
+                        focal_id = proj.characters_present[0]
+                    else:
+                        focal_id = "char_focal"
+                elif beat.characters_involved:
                     focal_id = beat.characters_involved[0]
                 elif proj.objective and proj.objective.pov_character_id:
                     focal_id = proj.objective.pov_character_id
@@ -627,14 +678,12 @@ class ShotPlanner:
                 if beat.performance_cue_ids:
                     cue_to_use = next((c for c in proj.performance_cues if c.id in beat.performance_cue_ids), None)
                 if not cue_to_use:
-                    # Match by focal character
                     cue_to_use = next((c for c in proj.performance_cues if c.character_id == focal_id), None)
 
                 if cue_to_use and cue_to_use.observable_behaviour:
                     emotion_text = cue_to_use.observable_behaviour
                     cue_id = cue_to_use.id
                 else:
-                    # Default observable demeanor without internal state verbs
                     emotion_text = "composed posture, watchful expression"
                     cue_id = None
 
@@ -650,18 +699,49 @@ class ShotPlanner:
                             if obj_id not in important_props:
                                 important_props.append(obj_id)
 
-                # Spatial composition & staging
+                # Spatial composition & staging with 180° camera axis continuity & blocking carry-over
                 subject_positions: Dict[str, Tuple[float, float, float]] = {}
                 actor_positions: Dict[str, str] = {}
                 gaze_vectors: Dict[str, str] = {}
 
                 active_chars = beat.characters_involved or proj.characters_present
+                if not established_line_of_action and len(active_chars) >= 2:
+                    established_line_of_action = (active_chars[0], active_chars[1])
+
+                # 180° camera axis continuity
+                desired_axis_side = current_axis_side
+                is_neutral_cutaway = last_shot_type in (ShotType.ESTABLISHING, ShotType.WIDE, ShotType.INSERT)
+                is_axis_crossed = False
+
+                # Screen direction tracking
+                screen_direction = "NEUTRAL"
+
                 for i, cid in enumerate(active_chars):
-                    x_pos = round(0.3 + 0.3 * (i % 3), 2)
+                    # Blocking carry-over (H1.3): reuse established position in scene
+                    if cid in established_blocking:
+                        orig_x, orig_y, _ = established_blocking[cid]
+                        x_pos = orig_x
+                    else:
+                        x_pos = round(0.3 + 0.3 * (i % 3), 2)
+                        established_blocking[cid] = (x_pos, 0.5, 1.0)
+
                     scale = 1.2 if cid == focal_id and shot_type in (ShotType.CLOSE_UP, ShotType.MEDIUM_CLOSE_UP) else 1.0
                     subject_positions[cid] = (x_pos, 0.5, scale)
-                    actor_positions[cid] = f"staging_zone_{i+1}"
-                    gaze_vectors[cid] = f"toward {focal_id if cid != focal_id else 'subject'}"
+                    actor_positions[cid] = f"staging_zone_{'left' if x_pos < 0.5 else 'right'}"
+
+                    # Gaze vectors & screen direction (H1.2)
+                    if x_pos < 0.5:
+                        gaze_vectors[cid] = "screen_right"
+                        if cid == focal_id:
+                            screen_direction = "LEFT_TO_RIGHT"
+                    elif x_pos > 0.5:
+                        gaze_vectors[cid] = "screen_left"
+                        if cid == focal_id:
+                            screen_direction = "RIGHT_TO_LEFT"
+                    else:
+                        gaze_vectors[cid] = "center"
+                        if cid == focal_id:
+                            screen_direction = "NEUTRAL"
 
                 comp_plan = CompositionPlan(
                     framing_rect="0,0,1920,1080",
@@ -669,6 +749,11 @@ class ShotPlanner:
                     gaze_vectors=gaze_vectors,
                     depth_layers=["foreground", "midground", "background"],
                     focal_point=focal_id,
+                    camera_axis_side=desired_axis_side,
+                    axis_crossing_flag=is_axis_crossed,
+                    screen_direction=screen_direction,
+                    line_of_action=established_line_of_action,
+                    blocking_carryover=True,
                 )
 
                 all_shot_plans.append(
@@ -693,7 +778,11 @@ class ShotPlanner:
                         rationale=rationale,
                         contributing_signals=contrib_signals,
                         composition_plan=comp_plan,
+                        camera_axis_side=desired_axis_side,
+                        axis_crossing_flag=is_axis_crossed,
+                        screen_direction=screen_direction,
                     )
                 )
+                last_shot_type = shot_type
 
         return all_shot_plans

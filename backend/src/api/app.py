@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import csv
 import io
+import base64
 from typing import Dict, Any, Optional, List
 
 def _load_env_file() -> None:
@@ -54,6 +55,10 @@ from src.domain.character_completeness import (
 from src.domain.character_dynamics import (
     CharacterDynamicsProfile,
     DYNAMICS_FIELD_NAMES,
+)
+from src.domain.character_reference import (
+    CharacterReferenceProfile,
+    REFERENCE_FIELD_NAMES,
 )
 from src.domain.archetype import (
     ArchetypeType,
@@ -217,6 +222,37 @@ class UpdateArchetypeRequest(BaseModel):
     secondary_archetype: Optional[str] = None
     locked_fields: Optional[List[str]] = None
     force: Optional[bool] = False
+
+
+class UpdateReferenceProfileRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    apparent_age_range: Optional[str] = None
+    build: Optional[str] = None
+    height_impression: Optional[str] = None
+    face_description: Optional[str] = None
+    hair: Optional[str] = None
+    grooming: Optional[str] = None
+    distinguishing_features: Optional[str] = None
+    baseline_wardrobe: Optional[str] = None
+    wardrobe_palette: Optional[List[str]] = None
+    posture: Optional[str] = None
+    body_language: Optional[str] = None
+    signature_objects: Optional[List[str]] = None
+    usual_environments: Optional[List[str]] = None
+    reference_mode: Optional[str] = None
+    locked_fields: Optional[List[str]] = None
+    force: Optional[bool] = False
+
+
+class SetReferenceModeRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    mode: str = Field(..., description="'TEXT_ONLY' or 'USER_UPLOAD'")
+
+
+class UploadReferenceImagePayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    filename: str
+    image_base64: str
 
 
 class GenerateScreenplayRequest(BaseModel):
@@ -1284,6 +1320,172 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         store.save_project(proj)
 
         return char.dynamics.model_dump(mode="json")
+
+    @app.get("/api/projects/{project_id}/characters/{character_id}/reference-profile")
+    def get_character_reference_profile(project_id: str, character_id: str):
+        """Get authoritative CharacterReferenceProfile design metadata for a character."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+        if char.reference_profile is None:
+            if char.visual_profile:
+                char.reference_profile = CharacterReferenceProfile.from_actor_visual_profile(char.visual_profile)
+            else:
+                char.reference_profile = CharacterReferenceProfile()
+            if char.dynamics:
+                char.reference_profile.sync_from_dynamics(char.dynamics)
+            proj.world.characters[character_id] = char
+            store.save_project(proj)
+        return char.reference_profile.model_dump(mode="json")
+
+    @app.put("/api/projects/{project_id}/characters/{character_id}/reference-profile")
+    def update_character_reference_profile(project_id: str, character_id: str, req: UpdateReferenceProfileRequest):
+        """Update CharacterReferenceProfile respecting FieldAuthority locks."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+        if char.reference_profile is None:
+            if char.visual_profile:
+                char.reference_profile = CharacterReferenceProfile.from_actor_visual_profile(char.visual_profile)
+            else:
+                char.reference_profile = CharacterReferenceProfile()
+            if char.dynamics:
+                char.reference_profile.sync_from_dynamics(char.dynamics)
+
+        locked_set = set(req.locked_fields or [])
+
+        # Process each scalar/list field
+        for field_name in REFERENCE_FIELD_NAMES:
+            val = getattr(req, field_name, None)
+            if val is not None:
+                auth = FieldAuthority.USER_LOCKED if field_name in locked_set else FieldAuthority.USER_PREFERRED
+                success = char.reference_profile.set_field(
+                    field_name=field_name,
+                    value=val,
+                    authority=auth,
+                    source_snippet=f"api_update:{field_name}",
+                    force=bool(req.force),
+                )
+                if not success and not req.force:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Field '{field_name}' is USER_LOCKED and cannot be overwritten without force=True",
+                    )
+                if field_name in char.reference_profile.provenance:
+                    char.field_provenance[field_name] = char.reference_profile.provenance[field_name]
+
+        if req.reference_mode is not None:
+            if req.reference_mode not in ("TEXT_ONLY", "USER_UPLOAD"):
+                raise HTTPException(status_code=400, detail="Invalid reference_mode. Must be 'TEXT_ONLY' or 'USER_UPLOAD'")
+            if req.reference_mode == "USER_UPLOAD" and not char.reference_profile.reference_image_path:
+                raise HTTPException(status_code=400, detail="Cannot switch to USER_UPLOAD mode without an uploaded reference image.")
+            char.reference_profile.reference_mode = req.reference_mode
+
+        char.visual_profile = char.reference_profile.to_actor_visual_profile(character_id=char.id, name=char.name)
+        proj.world.characters[character_id] = char
+        store.save_project(proj)
+        return char.reference_profile.model_dump(mode="json")
+
+    @app.post("/api/projects/{project_id}/characters/{character_id}/reference-mode")
+    def set_character_reference_mode(project_id: str, character_id: str, req: SetReferenceModeRequest):
+        """Set visual reference mode: 'TEXT_ONLY' or 'USER_UPLOAD'."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+        if char.reference_profile is None:
+            if char.visual_profile:
+                char.reference_profile = CharacterReferenceProfile.from_actor_visual_profile(char.visual_profile)
+            else:
+                char.reference_profile = CharacterReferenceProfile()
+            if char.dynamics:
+                char.reference_profile.sync_from_dynamics(char.dynamics)
+
+        if req.mode not in ("TEXT_ONLY", "USER_UPLOAD"):
+            raise HTTPException(status_code=400, detail="Invalid mode. Must be 'TEXT_ONLY' or 'USER_UPLOAD'")
+
+        if req.mode == "USER_UPLOAD" and not char.reference_profile.reference_image_path:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot switch to USER_UPLOAD mode without an uploaded reference image.",
+            )
+
+        char.reference_profile.reference_mode = req.mode
+        proj.world.characters[character_id] = char
+        store.save_project(proj)
+        return {
+            "character_id": character_id,
+            "reference_mode": char.reference_profile.reference_mode,
+            "reference_image_path": char.reference_profile.reference_image_path,
+        }
+
+    @app.post("/api/projects/{project_id}/characters/{character_id}/reference-image")
+    def upload_character_reference_image(project_id: str, character_id: str, payload: UploadReferenceImagePayload):
+        """Safely upload and bind a character reference asset."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        char = proj.world.characters.get(character_id)
+        if not char:
+            raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+
+        # Decode base64 content
+        try:
+            raw_data = payload.image_base64
+            if "," in raw_data:
+                raw_data = raw_data.split(",", 1)[1]
+            img_bytes = base64.b64decode(raw_data)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid base64 payload: {str(e)}")
+
+        asset_store = StoryboardAssetStore(store.base_dir)
+        try:
+            asset_url = asset_store.validate_and_save_reference_upload(
+                project_id=project_id,
+                character_id=character_id,
+                filename=payload.filename,
+                content=img_bytes,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save reference asset: {str(e)}")
+
+        if char.reference_profile is None:
+            if char.visual_profile:
+                char.reference_profile = CharacterReferenceProfile.from_actor_visual_profile(char.visual_profile)
+            else:
+                char.reference_profile = CharacterReferenceProfile()
+            if char.dynamics:
+                char.reference_profile.sync_from_dynamics(char.dynamics)
+
+        char.reference_profile.reference_image_path = asset_url
+        char.reference_profile.reference_mode = "USER_UPLOAD"
+        char.reference_profile.set_field(
+            field_name="reference_image_path",
+            value=asset_url,
+            authority=FieldAuthority.USER_LOCKED,
+            source_snippet=f"upload:{payload.filename}",
+            force=True,
+        )
+
+        proj.world.characters[character_id] = char
+        store.save_project(proj)
+
+        return {
+            "character_id": character_id,
+            "reference_image_path": asset_url,
+            "reference_mode": "USER_UPLOAD",
+            "reference_profile": char.reference_profile.model_dump(mode="json"),
+        }
 
     @app.post("/api/projects/{project_id}/characters/{character_id}/project-want")
     def project_character_conscious_want_to_goal(project_id: str, character_id: str):

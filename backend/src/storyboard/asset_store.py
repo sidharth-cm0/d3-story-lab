@@ -69,6 +69,37 @@ class StoryboardAssetStore:
 
         return self.get_asset_url(project_id, category, filename)
 
+    def validate_and_save_reference_upload(
+        self,
+        project_id: str,
+        character_id: str,
+        filename: str,
+        content: bytes,
+        max_bytes: int = 5 * 1024 * 1024,
+    ) -> str:
+        """Validate and save user-uploaded character visual reference asset safely.
+
+        Enforces size cap, safe extensions, and path containment protection.
+        """
+        if len(content) > max_bytes:
+            raise ValueError(f"Reference asset exceeds maximum allowed size ({max_bytes} bytes).")
+        if len(content) < 8:
+            raise ValueError("Reference asset content too small or empty.")
+
+        ext = Path(filename).suffix.lower()
+        if ext not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
+            raise ValueError(f"Unsupported reference image format '{ext}'. Must be PNG, JPEG, WEBP, or SVG.")
+
+        safe_cid = re.sub(r"[^a-zA-Z0-9_\-]", "_", character_id)
+        stem = re.sub(r"[^a-zA-Z0-9_\-]", "_", Path(filename).stem)[:24]
+        safe_fname = f"ref_{safe_cid}_{stem}{ext}"
+        return self.save_asset(
+            project_id=project_id,
+            category="references",
+            filename=safe_fname,
+            content=content,
+        )
+
     def load_asset(
         self,
         project_id: str,
