@@ -54,10 +54,13 @@ Storyboard Preparation (Cinematic Shot Plans & Framing)
 4. **Strict Knowledge & Perception Isolation**: Characters perceive only co-located entities and events. Private beliefs, secrets, and episodic memories are strictly inaccessible to other actors.
 5. **Separation of Objective Truth and Subjective Belief**: Objective facts are immutable; character beliefs evolve dynamically based on observations and trust.
 6. **Immutable Events**: Simulation history is strictly immutable (`frozen=True`).
-7. **Observer Filters, Never Alters**: The Observer clusters and highlights dramatic beats without altering underlying events.
-8. **Scribe Never Hallucinates**: Screenplay action lines and dialogue map with 100% provenance back to `source_event_ids`.
-9. **Zero External API Requirement**: Runs 100% locally and deterministically in Mock LLM mode. Supports Google Gemini via `GEMINI_API_KEY`.
-10. **Decoupled Architecture**: Python (FastAPI / Pydantic v2) backend cleanly decoupled from React / TypeScript frontend.
+7. **Simulation Sovereignty**: Analytics, visual reference profiles, storyboard panels, and continuity metadata are strictly downstream/read-only and must NEVER feed into `DecisionPolicy`, `Motivation`, `ActionProposal`, or `WorldState`.
+8. **Observer Filters, Never Alters**: The Observer clusters and highlights dramatic beats without altering underlying events.
+9. **Scribe Never Hallucinates**: Screenplay action lines and dialogue map with 100% provenance back to `source_event_ids`.
+10. **Single-Authority Architecture**: Stable visual identity is governed by `CharacterReferenceProfile` with `FieldAuthority` tracking (`USER_LOCKED`, `USER_PREFERRED`, `SYSTEM_INFERRED`, `SYSTEM_GENERATED`). Behavioral attributes remain strictly authoritative in `CharacterDynamicsProfile`.
+11. **Shot & Spatial Continuity**: 180° camera axis tracking, screen direction consistency, and blocking carryover across cuts ensure visual integrity.
+12. **Zero External API Requirement**: Runs 100% locally and deterministically with provider-off operation as a first-class citizen. Full external reference-image generation is treated as a non-canonical **FUTURE EXTENSION**.
+13. **Decoupled Architecture**: Python (FastAPI / Pydantic v2) backend cleanly decoupled from React / TypeScript frontend.
 
 ---
 
@@ -140,37 +143,20 @@ To enable live Google Gemini inference:
 | `GET` | `/api/projects/{id}/screenplay` | Retrieve screenplay structure and Fountain text |
 | `GET` | `/api/projects/{id}/screenplay/download` | Download `.fountain` screenplay file |
 | `GET` | `/api/projects/{id}/storyboard` | Generate cinematic ShotPlan and rendered panels |
+| `GET` | `/api/projects/{id}/characters/{cid}/reference-profile` | Inspect character stable visual identity profile |
+| `PUT` | `/api/projects/{id}/characters/{cid}/reference-profile` | Update stable visual reference profile with FieldAuthority |
+| `POST` | `/api/projects/{id}/characters/{cid}/reference-mode` | Set visual reference mode (`TEXT_ONLY` or `USER_UPLOAD`) |
+| `POST` | `/api/projects/{id}/characters/{cid}/reference-image` | Upload user reference asset with strict validation |
 
 ---
 
 ## 🧪 Testing Suite
 
-Run the complete test suite across all 12 test modules:
+Run the complete test suite across all test modules:
 
 ```bash
 cd backend
-pytest
+pytest -q
 ```
 
-**Test Coverage Summary:**
-- `test_world_state.py`: Registries, ID resolution, dangling reference validation.
-- `test_event.py`: Immutable event creation, serialization, frozen constraints.
-- `test_simulation_engine.py`: Deterministic action validator, executor, engine ticks.
-- `test_perception.py`: KnowledgeFilter boundaries, private secret/belief isolation.
-- `test_memory_system.py`: Memory scoring formula, retrieval, compression.
-- `test_evolution.py`: Belief, trust, affinity, and emotional state updates.
-- `test_providers.py`: MockLLMProvider schema generation and Gemini error handling.
-- `test_initializer.py`: World initialization plan, fact tagging (`SOURCE_FACT`, `DERIVED_PREMISE`, `SIMULATION_INVENTION`).
-- `test_actor_agent.py`: Actor cognitive loop, perception, action proposal.
-- `test_director.py`: Pacing monitoring, tension tracking, environmental interventions.
-- `test_orchestrator.py`: Multi-agent cyclic simulation, pause/resume, loop detection.
-- `test_reflection.py`: Episodic memory synthesis into beliefs without event alteration.
-- `test_observer.py`: Significance scoring, noise filtering, beat clustering, provenance.
-- `test_scribe.py`: Fountain screenplay formatting, uppercase cues, dialogue blocks.
-- `test_project_store.py`: Filesystem persistence, round-trip serialization.
-- `test_api.py`: FastAPI end-to-end endpoints, simulation stepping, screenplay download.
-- `test_hotel_intrigue_demo.py`: Flagship Hotel Intrigue end-to-end verification.
-- `test_evaluation.py`: Narrative coherence, action diversity, autonomy metrics, multi-seed experiments.
-- `test_storyboard.py`: Shot plan generation, framing, mock SVG panel rendering.
-
-**Result**: 156 passed, 0 failures, 0 warnings.
+All 640+ backend tests pass with zero warnings. Frontend test suite (`npm test -- --run`) passes 174 unit and integration tests.

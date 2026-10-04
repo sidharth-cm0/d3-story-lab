@@ -150,9 +150,12 @@ def test_simulation_sovereignty_ast_import_isolation():
     sim_files = [
         "src/simulation/orchestrator.py",
         "src/simulation/policy.py",
-        "src/simulation/action_validator.py",
-        "src/simulation/action_executor.py",
+        "src/simulation/actions.py",
+        "src/simulation/affordances.py",
+        "src/simulation/engine.py",
         "src/simulation/perception.py",
+        "src/simulation/recorder.py",
+        "src/simulation/differ.py",
         "src/domain/world_view.py",
     ]
 

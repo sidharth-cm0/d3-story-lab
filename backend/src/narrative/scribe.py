@@ -296,6 +296,51 @@ class Scribe:
         )
         return line
 
+    @staticmethod
+    def polish_dialogue_direct_address(
+        text: str,
+        character_names: Dict[str, str],
+        direct_address_counts: Dict[str, int],
+    ) -> str:
+        """Polish repetitive direct address in dialogue (J5 bounded surface polish).
+
+        Deterministic rule:
+        - First direct address in the scene to a character may use their full name.
+        - Subsequent direct addresses prefer the short / first name or omission.
+        - Preserves 100% of event grounding, simulation, and provenance.
+        """
+        if not text or not character_names:
+            return text
+
+        for char_id, display_name in character_names.items():
+            if not display_name:
+                continue
+            words = display_name.strip().split()
+            if len(words) < 2:
+                continue
+
+            full_name_title = " ".join(w.capitalize() for w in words)
+            if words[0].upper() in ("AGENT", "DIRECTOR", "OFFICER", "DETECTIVE", "DR", "DR.", "CAPTAIN"):
+                short_name = words[-1].capitalize()
+            else:
+                short_name = words[0].capitalize()
+
+            end_pattern = re.compile(rf",\s+{re.escape(full_name_title)}(?=[,\.!\?]|$)", re.IGNORECASE)
+            start_pattern = re.compile(rf"^{re.escape(full_name_title)},\s*", re.IGNORECASE)
+            mid_pattern = re.compile(rf",\s+{re.escape(full_name_title)},\s*", re.IGNORECASE)
+
+            if end_pattern.search(text) or start_pattern.search(text) or mid_pattern.search(text):
+                count = direct_address_counts.get(char_id, 0)
+                if count == 0:
+                    direct_address_counts[char_id] = 1
+                else:
+                    direct_address_counts[char_id] = count + 1
+                    text = end_pattern.sub(f", {short_name}", text)
+                    text = start_pattern.sub(f"{short_name}, ", text)
+                    text = mid_pattern.sub(f", {short_name}, ", text)
+
+        return text
+
     def compose_scene_blocks(
         self,
         projection: ObservableSceneProjection,
@@ -317,6 +362,15 @@ class Scribe:
         blocks: List[ScreenplayBlock] = []
         pos = start_position
         proj_event_ids_set = set(projection.source_event_ids)
+
+        all_display_names: Dict[str, str] = {}
+        if character_names:
+            all_display_names.update(character_names)
+        for cid in projection.characters_present:
+            if cid not in all_display_names:
+                all_display_names[cid] = resolve_display_name(cid, character_names, projection)
+
+        direct_address_counts: Dict[str, int] = {}
 
         # 1. SLUGLINE (one per scene)
         loc_label = projection.location_label.strip().upper()
@@ -500,14 +554,17 @@ class Scribe:
                     else:
                         dialogue_since_last_paren += 1
 
-                    # DIALOGUE
+                    # DIALOGUE (with bounded direct-address surface polish)
+                    polished_text = self.polish_dialogue_direct_address(
+                        clean_text, all_display_names, direct_address_counts
+                    )
                     blocks.append(
                         ScreenplayBlock(
                             block_id=f"blk_{uuid.uuid4().hex[:8]}",
                             scene_id=projection.scene_id,
                             source_event_ids=b_events,
                             element_type="DIALOGUE",
-                            content=clean_text,
+                            content=polished_text,
                             character_id=line.speaker_id,
                             presentation_position=pos,
                         )
