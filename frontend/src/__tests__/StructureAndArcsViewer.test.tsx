@@ -343,6 +343,19 @@ describe('StructureAndArcsViewer Component', () => {
     expect(screen.getByText(/Glances toward the desk/)).toBeDefined();
   });
 
+  it('renders NARRATIVE INTELLIGENCE subnav pill and displays advisory view on click', async () => {
+    render(<StructureAndArcsViewer project={mockProjectData} />);
+
+    const intelligenceBtn = screen.getByText('NARRATIVE INTELLIGENCE');
+    expect(intelligenceBtn).toBeDefined();
+
+    fireEvent.click(intelligenceBtn);
+
+    expect(screen.getByText('SOVEREIGNTY INVARIANT:')).toBeDefined();
+    expect(screen.getByText('NO PUPPETRY')).toBeDefined();
+    expect(screen.getByText(/Narrative Intelligence is strictly/)).toBeDefined();
+  });
+
   it('StructureErrorBoundary safely catches runtime exceptions without blank screen', () => {
     const BadComponent = () => {
       throw new Error('Simulated runtime render crash');

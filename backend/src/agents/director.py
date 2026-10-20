@@ -433,3 +433,117 @@ class DirectorAgent:
                     )
 
         return None
+
+    def consider_narrative_recommendation(
+        self,
+        world: WorldState,
+        recommendation: Any,
+    ) -> Optional[DirectorIntervention]:
+        """Consider a single advisory NarrativeRecommendation for bounded environmental intervention.
+
+        CRITICAL INVARIANTS:
+        - Advisory only: Director may accept, adapt, or decline recommendations.
+        - canonical_mutation_allowed MUST be False.
+        - Translates solely into environmental conditions (DirectorIntervention), never character actions.
+        - Respects pacing budget and cooldown (can_intervene).
+        """
+        if not self.can_intervene(world.current_tick):
+            return None
+
+        # Do not disrupt initial scene establishment before tick 2
+        if world.current_tick < 2:
+            return None
+
+        # Enforce sovereignty invariant: recommendations must not claim canonical mutation authority
+        if getattr(recommendation, "canonical_mutation_allowed", False) is True:
+            return None
+
+        # Decompression / quiet interval recommendation: deliberately refrain from intervening
+        target_pressure = getattr(recommendation, "target_pressure", "")
+        if target_pressure == "QUIET_INTERVAL":
+            return None
+
+        # Determine target location from relevant characters or world locations
+        target_loc: Optional[str] = None
+        rel_chars = getattr(recommendation, "relevant_character_ids", [])
+        for cid in rel_chars:
+            c = world.characters.get(cid)
+            if c and c.current_location_id:
+                target_loc = c.current_location_id
+                break
+
+        if not target_loc:
+            target_loc = next(iter(world.locations.keys()), "loc_room307")
+
+        meta = {
+            "source_recommendation_id": getattr(recommendation, "id", ""),
+            "matched_genome_ids": getattr(recommendation, "matched_genome_ids", []),
+            "dramatic_goal": getattr(recommendation, "dramatic_goal", ""),
+            "rationale": getattr(recommendation, "rationale", ""),
+            "recommendation_type": getattr(recommendation, "recommendation_type", ""),
+            "priority": getattr(recommendation, "priority", 0.5),
+        }
+
+        # Translate recommended pressure into bounded environmental intervention
+        if target_pressure == "ANNOUNCE_DEADLINE":
+            return DirectorIntervention(
+                intervention_type=DirectorInterventionType.ANNOUNCE_DEADLINE,
+                description="An automated security broadcast chimes: facility lockdown begins in three minutes.",
+                target_location_id=target_loc,
+                metadata={"incident_type": "ANNOUNCE_DEADLINE", "urgency": "high", **meta},
+            )
+        elif target_pressure == "REVEAL_CLUE":
+            return DirectorIntervention(
+                intervention_type=DirectorInterventionType.REVEAL_CLUE,
+                description="A misfiled document slips from a folder, resting in plain sight.",
+                target_location_id=target_loc,
+                metadata={"incident_type": "REVEAL_CLUE", "urgency": "medium", **meta},
+            )
+        elif target_pressure == "INTRODUCE_OBSTACLE":
+            return DirectorIntervention(
+                intervention_type=DirectorInterventionType.INTRODUCE_OBSTACLE,
+                description="The corridor security gate drops into place, obstructing the main exit.",
+                target_location_id=target_loc,
+                metadata={"incident_type": "INTRODUCE_OBSTACLE", "urgency": "high", **meta},
+            )
+        elif target_pressure == "TIME_PRESSURE":
+            return DirectorIntervention(
+                intervention_type=DirectorInterventionType.TIME_PRESSURE,
+                description="Approaching footsteps and murmurs echo from the stairwell.",
+                target_location_id=target_loc,
+                metadata={"incident_type": "TIME_PRESSURE", "urgency": "medium", **meta},
+            )
+        elif target_pressure in (DirectorInterventionType.PHONE_RING.value, "PHONE_RING"):
+            return DirectorIntervention(
+                intervention_type=DirectorInterventionType.PHONE_RING,
+                description="A persistent ring from the telephone pierces the room.",
+                target_location_id=target_loc,
+                metadata={"incident_type": "PHONE_RING", "urgency": "medium", **meta},
+            )
+        elif target_pressure in (DirectorInterventionType.KNOCK_ON_DOOR.value, "KNOCK_ON_DOOR"):
+            return DirectorIntervention(
+                intervention_type=DirectorInterventionType.KNOCK_ON_DOOR,
+                description="A sharp knock echoes on the outside door frame.",
+                target_location_id=target_loc,
+                metadata={"incident_type": "KNOCK_ON_DOOR", "urgency": "medium", **meta},
+            )
+
+        return None
+
+    def consider_narrative_recommendations(
+        self,
+        world: WorldState,
+        recommendations: List[Any],
+    ) -> Optional[DirectorIntervention]:
+        """Evaluate a prioritized list of NarrativeRecommendations and return the top viable intervention."""
+        if not recommendations or not self.can_intervene(world.current_tick):
+            return None
+
+        # Sort recommendations by priority descending
+        sorted_recs = sorted(recommendations, key=lambda r: getattr(r, "priority", 0.0), reverse=True)
+        for rec in sorted_recs:
+            interv = self.consider_narrative_recommendation(world, rec)
+            if interv is not None:
+                return interv
+
+        return None

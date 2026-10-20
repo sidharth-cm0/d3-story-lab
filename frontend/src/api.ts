@@ -25,6 +25,9 @@ import {
   CharacterHistoryReport,
   CharacterContinuityState,
   CharacterReferenceProfile,
+  NarrativeGenomeRecord,
+  NarrativeAnalysisResult,
+  NarrativeRecommendation,
 } from './types';
 
 const BASE_URL = '/api';
@@ -789,5 +792,36 @@ export async function uploadCharacterReferenceImage(
     const err = await res.json().catch(() => ({ detail: 'Failed to upload character reference image' }));
     throw new Error(err.detail || 'Failed to upload character reference image');
   }
+  return res.json();
+}
+
+export async function fetchNarrativeGenomePatterns(): Promise<NarrativeGenomeRecord[]> {
+  const res = await fetch(`${BASE_URL}/narrative-genome/patterns`);
+  if (!res.ok) throw new Error('Failed to fetch narrative genome patterns');
+  return res.json();
+}
+
+export async function fetchNarrativeAnalysis(projectId: string): Promise<NarrativeAnalysisResult> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/narrative-genome/analysis`);
+  if (!res.ok) throw new Error('Failed to fetch narrative analysis');
+  return res.json();
+}
+
+export async function fetchNarrativeRecommendations(projectId: string): Promise<NarrativeRecommendation[]> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/narrative-genome/recommendations`);
+  if (!res.ok) throw new Error('Failed to fetch narrative recommendations');
+  return res.json();
+}
+
+export async function applyDirectorNarrativeRecommendation(
+  projectId: string,
+  recommendationId?: string
+): Promise<{ applied: boolean; event?: Event; intervention?: any; reason?: string }> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/director/apply-narrative-recommendation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recommendation_id: recommendationId }),
+  });
+  if (!res.ok) throw new Error('Failed to apply director narrative recommendation');
   return res.json();
 }

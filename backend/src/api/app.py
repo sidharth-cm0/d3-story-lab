@@ -108,6 +108,14 @@ from src.narrative.sufficiency_gate import NarrativeSufficiencyGate
 
 from src.narrative.causal_analyzer import CausalContinuityAnalyzer
 from src.narrative.arc_tracker import CharacterArcTracker
+from src.domain.narrative_genome import (
+    NarrativeGenomeRecord,
+    NarrativeAnalysisResult,
+    NarrativeRecommendation,
+)
+from src.narrative.genome_store import LocalJsonGenomeRepository
+from src.narrative.narrative_analyzer import NarrativeAnalyzer
+from src.narrative.narrative_advisor import NarrativeAdvisor
 from src.storage.project_store import (
     ProjectStore,
     ProjectData,
@@ -2038,8 +2046,108 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         )
         return report.model_dump(mode="json")
 
-    @app.get("/api/projects/{project_id}/causal-continuity")
+    @app.get("/api/narrative-genome/patterns")
+    def list_narrative_genome_patterns():
+        """Retrieve all abstract machine-readable Narrative Genome patterns."""
+        repo = LocalJsonGenomeRepository()
+        patterns = repo.list_patterns()
+        return [p.model_dump(mode="json") for p in patterns]
 
+    @app.get("/api/projects/{project_id}/narrative-genome/analysis")
+    def get_narrative_genome_analysis(project_id: str):
+        """Deterministically analyze recent simulation events against Narrative Genome patterns."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        analyzer = NarrativeAnalyzer()
+        events = sorted(proj.world.events.values(), key=lambda e: (e.tick, e.id))
+        analysis = analyzer.analyze(
+            world=proj.world,
+            events=events,
+            blueprint=proj.story_blueprint,
+            conflict_graph=proj.conflict_graph,
+        )
+        proj.narrative_analysis = analysis
+        store.save_project(proj)
+        return analysis.model_dump(mode="json")
+
+    @app.get("/api/projects/{project_id}/narrative-genome/recommendations")
+    def get_narrative_genome_recommendations(project_id: str):
+        """Synthesize explainable dramatic pressure recommendations without puppeteering characters."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        analyzer = NarrativeAnalyzer()
+        advisor = NarrativeAdvisor()
+        events = sorted(proj.world.events.values(), key=lambda e: (e.tick, e.id))
+        analysis = analyzer.analyze(
+            world=proj.world,
+            events=events,
+            blueprint=proj.story_blueprint,
+            conflict_graph=proj.conflict_graph,
+        )
+        recommendations = advisor.advise(analysis, blueprint=proj.story_blueprint)
+        proj.narrative_analysis = analysis
+        proj.narrative_recommendations = recommendations
+        store.save_project(proj)
+        return [r.model_dump(mode="json") for r in recommendations]
+
+    @app.post("/api/projects/{project_id}/director/apply-narrative-recommendation")
+    def apply_director_narrative_recommendation(
+        project_id: str,
+        recommendation_id: Optional[str] = Body(None, embed=True),
+    ):
+        """Allow Director Agent to consider a narrative recommendation and inject bounded environmental pressure."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        analyzer = NarrativeAnalyzer()
+        advisor = NarrativeAdvisor()
+        events = sorted(proj.world.events.values(), key=lambda e: (e.tick, e.id))
+        analysis = analyzer.analyze(
+            world=proj.world,
+            events=events,
+            blueprint=proj.story_blueprint,
+            conflict_graph=proj.conflict_graph,
+        )
+        recs = advisor.advise(analysis, blueprint=proj.story_blueprint)
+        target_rec = None
+        if recommendation_id:
+            target_rec = next((r for r in recs if r.id == recommendation_id), None)
+            if not target_rec:
+                raise HTTPException(status_code=404, detail=f"Recommendation '{recommendation_id}' not found")
+        elif recs:
+            target_rec = recs[0]
+
+        if not target_rec:
+            return {"applied": False, "reason": "No active recommendations available"}
+
+        director = DirectorAgent(blueprint=proj.story_blueprint)
+        intervention = director.consider_narrative_recommendation(proj.world, target_rec)
+        if not intervention:
+            return {
+                "applied": False,
+                "reason": "Director declined or deferred recommendation based on budget, cooldown, or quiet interval",
+            }
+
+        from src.simulation.recorder import EventRecorder
+        from src.simulation.actions import ActionValidator
+        recorder = EventRecorder(proj.world)
+        validator = ActionValidator()
+        event = director.inject_intervention(proj.world, recorder, intervention, validator=validator)
+        if event:
+            store.save_project(proj)
+            return {
+                "applied": True,
+                "event": event.model_dump(mode="json"),
+                "intervention": intervention.model_dump(mode="json"),
+            }
+        return {"applied": False, "reason": "Intervention failed action validator gate check"}
+
+    @app.get("/api/projects/{project_id}/causal-continuity")
     def get_causal_continuity(project_id: str):
         proj = store.load_project(project_id)
         if not proj:

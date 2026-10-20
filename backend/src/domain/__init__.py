@@ -73,6 +73,19 @@ from .character_history import (
     CharacterHistorySeries,
     CharacterHistoryReport,
 )
+from .narrative_genome import (
+    ConflictType,
+    CausalRelation,
+    TensionDirection,
+    InformationPattern,
+    ScenePurpose as GenomeScenePurpose,
+    SetupPayoffState,
+    GenomeSourceType,
+    GenomeProvenance,
+    NarrativeGenomeRecord,
+    NarrativeAnalysisResult,
+    NarrativeRecommendation,
+)
 
 __all__ = [
     "SimulationClock",
@@ -146,4 +159,15 @@ __all__ = [
     "HistoryPoint",
     "CharacterHistorySeries",
     "CharacterHistoryReport",
+    "ConflictType",
+    "CausalRelation",
+    "TensionDirection",
+    "InformationPattern",
+    "GenomeScenePurpose",
+    "SetupPayoffState",
+    "GenomeSourceType",
+    "GenomeProvenance",
+    "NarrativeGenomeRecord",
+    "NarrativeAnalysisResult",
+    "NarrativeRecommendation",
 ]

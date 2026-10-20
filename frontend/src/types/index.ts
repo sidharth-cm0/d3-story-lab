@@ -901,3 +901,113 @@ export interface CharacterHistoryReport {
   total_events_analyzed: number;
   is_observed_only?: boolean;
 }
+
+export interface NarrativeGenomeRecord {
+  id: string;
+  version: string;
+  name: string;
+  description: string;
+  dramatic_function: string;
+  conflict_types: string[];
+  causal_relations: string[];
+  tension_before: number;
+  tension_after: number;
+  tension_delta: number;
+  tension_direction: string;
+  information_patterns: string[];
+  scene_purposes: string[];
+  setups: string[];
+  payoffs: string[];
+  character_pressures: string[];
+  stakes: string[];
+  prerequisites: string[];
+  expected_effects: string[];
+  genre_tags: string[];
+  provenance: {
+    source_type: string;
+    author_or_model: string;
+    created_at?: string;
+    notes?: string;
+  };
+  confidence: number;
+}
+
+export interface NarrativeAnalysisResult {
+  id: string;
+  timestamp: string;
+  event_ids: string[];
+  dramatic_functions: string[];
+  active_conflicts: Array<{
+    source_character_id: string;
+    target_character_id: string;
+    intensity: number;
+    dimensions: string[];
+    evidence_ids: string[];
+  }>;
+  causal_chain: Array<{
+    from_event_id: string;
+    to_event_id: string;
+    relation: string;
+    tick: number;
+  }>;
+  tension: {
+    before?: number;
+    after?: number;
+    delta?: number;
+  };
+  tension_direction: string;
+  information_state: Array<{
+    pattern: string;
+    secret_id?: string;
+    holder_id?: string;
+    unaware_character_ids?: string[];
+    description: string;
+    event_id?: string;
+  }>;
+  setup_payoff_status: Array<{
+    entity_id: string;
+    name: string;
+    state: string;
+    setup_event_id?: string;
+    payoff_event_id?: string;
+    holder_id?: string;
+    description: string;
+  }>;
+  scene_purpose: string[];
+  pacing_assessment: {
+    pacing_state: string;
+    tension_level: number;
+    tension_direction: string;
+    stalled_relationships_count: number;
+    idle_events_count: number;
+    event_density: number;
+  };
+  unresolved_threads: Array<{
+    thread_type: string;
+    description: string;
+    character_a_id?: string;
+    character_b_id?: string;
+    intensity?: number;
+  }>;
+  opportunities: string[];
+  warnings: string[];
+  matched_genome_ids?: string[];
+  confidence: number;
+}
+
+export interface NarrativeRecommendation {
+  id: string;
+  source_analysis_id: string;
+  recommendation_type: string;
+  dramatic_goal: string;
+  rationale: string;
+  target_pressure: string;
+  relevant_character_ids: string[];
+  related_event_ids: string[];
+  matched_genome_ids: string[];
+  expected_narrative_effect: string;
+  priority: number;
+  confidence: number;
+  canonical_mutation_allowed: false;
+}
+

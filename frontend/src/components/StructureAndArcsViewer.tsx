@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ProjectData, StoryBlueprint, CharacterArcReport, CausalContinuitySummary, ArchetypeTrajectory } from '../types';
+import {
+  ProjectData,
+  StoryBlueprint,
+  CharacterArcReport,
+  CausalContinuitySummary,
+  ArchetypeTrajectory,
+  NarrativeAnalysisResult,
+  NarrativeRecommendation,
+} from '../types';
 import * as api from '../api';
 import { ParticleWave } from './granular';
 
@@ -66,8 +74,12 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
   const [causalSummary, setCausalSummary] = useState<CausalContinuitySummary | null>(project?.causal_summary || null);
   const [scenes, setScenes] = useState<any[]>(project?.scenes || []);
   const [selectedCharId, setSelectedCharId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'blueprint' | 'arcs' | 'causality'>('blueprint');
+  const [activeTab, setActiveTab] = useState<'blueprint' | 'arcs' | 'causality' | 'intelligence'>('blueprint');
   const [archetypeTrajectories, setArchetypeTrajectories] = useState<Record<string, ArchetypeTrajectory>>({});
+  const [narrativeAnalysis, setNarrativeAnalysis] = useState<NarrativeAnalysisResult | null>(null);
+  const [recommendations, setRecommendations] = useState<NarrativeRecommendation[]>([]);
+  const [applyingRecId, setApplyingRecId] = useState<string | null>(null);
+  const [applyMessage, setApplyMessage] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,17 +123,49 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
           // non-fatal
         }
       }
+      // Fetch Narrative Intelligence if tab active or not loaded yet
+      if (!narrativeAnalysis || recommendations.length === 0) {
+        try {
+          const [analysis, recs] = await Promise.all([
+            api.fetchNarrativeAnalysis(pid),
+            api.fetchNarrativeRecommendations(pid),
+          ]);
+          setNarrativeAnalysis(analysis);
+          setRecommendations(recs);
+        } catch {
+          // non-fatal in offline mock runs
+        }
+      }
     } catch (err: any) {
       console.error('Failed to load structure or arc diagnostics', err);
       setError(err?.message || 'Failed to load structure diagnostics from server.');
     } finally {
       setFetching(false);
     }
-  }, [project?.metadata?.id, blueprint, arcs, causalSummary, scenes.length, selectedCharId]);
+  }, [project?.metadata?.id, blueprint, arcs, causalSummary, scenes.length, selectedCharId, narrativeAnalysis, recommendations.length]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleApplyRecommendation = async (recId: string) => {
+    if (!project?.metadata?.id) return;
+    setApplyingRecId(recId);
+    setApplyMessage(null);
+    try {
+      const res = await api.applyDirectorNarrativeRecommendation(project.metadata.id, recId);
+      if (res.applied) {
+        setApplyMessage(`Applied environmental pressure: ${res.intervention?.description || 'Director intervention injected.'}`);
+        await loadData();
+      } else {
+        setApplyMessage(`Director declined: ${res.reason || 'Pacing or validator constraint.'}`);
+      }
+    } catch (err: any) {
+      setApplyMessage(`Error: ${err?.message || 'Failed to apply recommendation.'}`);
+    } finally {
+      setApplyingRecId(null);
+    }
+  };
 
   useEffect(() => {
     if (Object.keys(arcs).length > 0 && (!selectedCharId || !arcs[selectedCharId])) {
@@ -214,6 +258,12 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
             onClick={() => setActiveTab('causality')}
           >
             CAUSAL CONTINUITY
+          </button>
+          <button
+            className={`subnav-pill ${activeTab === 'intelligence' ? 'active' : ''}`}
+            onClick={() => setActiveTab('intelligence')}
+          >
+            NARRATIVE INTELLIGENCE
           </button>
         </div>
       </div>
@@ -651,6 +701,205 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
             </>
           ) : (
             <div className="empty-quiet">NO CAUSALITY ANALYSIS AVAILABLE YET. RUN SIMULATION TICKS.</div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 4: NARRATIVE INTELLIGENCE */}
+      {activeTab === 'intelligence' && (
+        <div className="intelligence-container" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Sovereignty Architecture Banner */}
+          <div style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', color: '#60a5fa' }}>SOVEREIGNTY INVARIANT:</span>
+              <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
+                Narrative Intelligence is strictly <strong>advisory</strong>. Canonical WorldState and EventLog remain authoritative. Characters act autonomously.
+              </p>
+            </div>
+            <span style={{ fontSize: '10px', background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', border: '1px solid rgba(34, 197, 94, 0.3)', padding: '4px 8px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+              NO PUPPETRY
+            </span>
+          </div>
+
+          {applyMessage && (
+            <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', padding: '10px 16px', borderRadius: '4px', fontSize: '12px', color: '#6ee7b7' }}>
+              ❖ {applyMessage}
+            </div>
+          )}
+
+          {narrativeAnalysis ? (
+            <>
+              {/* Metric Overview Grid */}
+              <div className="blueprint-meta-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                <div className="meta-card">
+                  <span className="meta-label">CURRENT DRAMATIC FUNCTION</span>
+                  <span className="meta-val highlight" style={{ color: '#38bdf8' }}>
+                    {narrativeAnalysis.dramatic_functions[0] || 'SETUP'}
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>
+                    {narrativeAnalysis.dramatic_functions.slice(1).join(', ') || 'Phase 1 Window'}
+                  </span>
+                </div>
+
+                <div className="meta-card">
+                  <span className="meta-label">UNRESOLVED TENSION LEVEL</span>
+                  <span className="meta-val" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {(narrativeAnalysis.tension.after ?? narrativeAnalysis.pacing_assessment.tension_level).toFixed(2)}
+                    <span style={{ fontSize: '12px', color: narrativeAnalysis.tension_direction === 'rising' || narrativeAnalysis.tension_direction === 'spike' ? '#f87171' : narrativeAnalysis.tension_direction === 'release' ? '#4ade80' : '#94a3b8' }}>
+                      {narrativeAnalysis.tension_direction === 'rising' ? '▲ RISING' : narrativeAnalysis.tension_direction === 'spike' ? '▲▲ SPIKE' : narrativeAnalysis.tension_direction === 'release' ? '▼ RELEASE' : '► SUSTAINED'}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>
+                    Delta: {((narrativeAnalysis.tension.delta ?? 0) >= 0 ? '+' : '')}{(narrativeAnalysis.tension.delta ?? 0).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="meta-card">
+                  <span className="meta-label">PACING ASSESSMENT</span>
+                  <span className="meta-val" style={{ textTransform: 'uppercase', color: narrativeAnalysis.pacing_assessment.pacing_state === 'healthy' ? '#4ade80' : narrativeAnalysis.pacing_assessment.pacing_state === 'stalled' ? '#fbbf24' : '#f87171' }}>
+                    {narrativeAnalysis.pacing_assessment.pacing_state}
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>
+                    Stalled: {narrativeAnalysis.pacing_assessment.stalled_relationships_count} | Idle: {narrativeAnalysis.pacing_assessment.idle_events_count}
+                  </span>
+                </div>
+
+                <div className="meta-card">
+                  <span className="meta-label">ACTIVE CONFLICT EDGES</span>
+                  <span className="meta-val">
+                    {narrativeAnalysis.active_conflicts.length}
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>
+                    Analyzed Events: {narrativeAnalysis.event_ids.length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Two Column Grid: Conflicts & Information Flow */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                {/* Active Conflicts Card */}
+                <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '6px', padding: '16px' }}>
+                  <h3 style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.05em', color: '#e2e8f0', marginBottom: '12px' }}>
+                    ACTIVE CONFLICT POLARITIES
+                  </h3>
+                  {narrativeAnalysis.active_conflicts.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {narrativeAnalysis.active_conflicts.map((conf, idx) => (
+                        <div key={idx} style={{ background: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255, 255, 255, 0.05)', padding: '10px', borderRadius: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#f8fafc' }}>
+                              {conf.source_character_id} ↔ {conf.target_character_id}
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#f87171', fontWeight: 700 }}>
+                              Intensity: {(conf.intensity * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            Dimensions: {conf.dimensions.join(', ')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>
+                      No acute conflict polarities above threshold.
+                    </div>
+                  )}
+                </div>
+
+                {/* Information Asymmetry & Irony Card */}
+                <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '6px', padding: '16px' }}>
+                  <h3 style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.05em', color: '#e2e8f0', marginBottom: '12px' }}>
+                    INFORMATION ASYMMETRY & IRONY
+                  </h3>
+                  {narrativeAnalysis.information_state.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {narrativeAnalysis.information_state.map((info, idx) => (
+                        <div key={idx} style={{ background: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255, 255, 255, 0.05)', padding: '10px', borderRadius: '4px' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: info.pattern === 'dramatic_irony' ? '#e879f9' : '#38bdf8', letterSpacing: '0.05em' }}>
+                            {info.pattern.replace('_', ' ')}
+                          </span>
+                          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#cbd5e1' }}>
+                            {info.description}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>
+                      Information distribution is symmetrical across present actors.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Advisory Recommendations Panel */}
+              <div style={{ background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '6px', padding: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.05em', color: '#e2e8f0', margin: 0 }}>
+                      DRAMATIC PRESSURE RECOMMENDATIONS ({recommendations.length})
+                    </h3>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                      Advisory world-level opportunities for Director Agent consideration.
+                    </span>
+                  </div>
+                </div>
+
+                {recommendations.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {recommendations.map((rec) => (
+                      <div key={rec.id} style={{ background: 'rgba(0, 0, 0, 0.4)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '6px', padding: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                          <div>
+                            <span style={{ fontSize: '10px', background: 'rgba(99, 102, 241, 0.2)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.3)', padding: '2px 6px', borderRadius: '3px', fontWeight: 700, textTransform: 'uppercase', marginRight: '8px' }}>
+                              {rec.target_pressure}
+                            </span>
+                            <span style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>
+                              {rec.dramatic_goal}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            Priority: {(rec.priority * 100).toFixed(0)}%
+                          </span>
+                        </div>
+
+                        <p style={{ margin: '6px 0', fontSize: '12px', color: '#cbd5e1' }}>
+                          <strong>Rationale:</strong> {rec.rationale}
+                        </p>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginTop: '10px' }}>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>
+                            Matched Patterns: {rec.matched_genome_ids.join(', ')}
+                          </span>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>•</span>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>
+                            Effect: {rec.expected_narrative_effect}
+                          </span>
+                        </div>
+
+                        <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
+                          <button
+                            className="btn-cinematic-primary"
+                            style={{ padding: '6px 14px', fontSize: '11px' }}
+                            disabled={applyingRecId === rec.id}
+                            onClick={() => handleApplyRecommendation(rec.id)}
+                          >
+                            {applyingRecId === rec.id ? 'EVALUATING...' : 'APPLY WORLD PRESSURE VIA DIRECTOR'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', padding: '12px' }}>
+                    No dramatic pressure interventions recommended at this tick. The simulation is progressing organically.
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="empty-quiet">NO NARRATIVE ANALYSIS AVAILABLE YET. RUN SIMULATION TICKS.</div>
           )}
         </div>
       )}

@@ -27,6 +27,7 @@ from src.domain.story_structure import (
 )
 from src.domain.character_creation import CharacterInput, CharacterProfileDraft
 from src.domain.conflict import ConflictGraph
+from src.domain.narrative_genome import NarrativeAnalysisResult, NarrativeRecommendation
 
 
 class ProjectStorageError(Exception):
@@ -85,6 +86,8 @@ class ProjectData(BaseModel):
     character_inputs: Optional[Dict[str, CharacterInput]] = None
     character_drafts: Optional[Dict[str, CharacterProfileDraft]] = None
     conflict_graph: Optional[ConflictGraph] = None
+    narrative_analysis: Optional[NarrativeAnalysisResult] = None
+    narrative_recommendations: Optional[List[NarrativeRecommendation]] = None
 
 
 class ProjectStore:
