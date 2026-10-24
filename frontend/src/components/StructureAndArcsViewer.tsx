@@ -10,6 +10,8 @@ import {
 } from '../types';
 import * as api from '../api';
 import { ParticleWave } from './granular';
+import { TemporalCharacterGraph } from './temporal_graph/TemporalCharacterGraph';
+import { GroundedRAGInquiry } from './temporal_graph/GroundedRAGInquiry';
 
 interface StructureAndArcsViewerProps {
   project: ProjectData | null;
@@ -74,11 +76,13 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
   const [causalSummary, setCausalSummary] = useState<CausalContinuitySummary | null>(project?.causal_summary || null);
   const [scenes, setScenes] = useState<any[]>(project?.scenes || []);
   const [selectedCharId, setSelectedCharId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'blueprint' | 'arcs' | 'causality' | 'intelligence'>('blueprint');
+  const [activeTab, setActiveTab] = useState<'blueprint' | 'arcs' | 'causality' | 'intelligence' | 'graph'>('blueprint');
   const [archetypeTrajectories, setArchetypeTrajectories] = useState<Record<string, ArchetypeTrajectory>>({});
   const [narrativeAnalysis, setNarrativeAnalysis] = useState<NarrativeAnalysisResult | null>(null);
   const [recommendations, setRecommendations] = useState<NarrativeRecommendation[]>([]);
+  const [dismissedRecIds, setDismissedRecIds] = useState<Set<string>>(new Set());
   const [applyingRecId, setApplyingRecId] = useState<string | null>(null);
+  const [recButtonStates, setRecButtonStates] = useState<Record<string, 'Applied' | 'Queued' | 'Failed'>>({});
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -154,13 +158,17 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
     setApplyMessage(null);
     try {
       const res = await api.applyDirectorNarrativeRecommendation(project.metadata.id, recId);
+      console.log('[Director] applyNarrativeRecommendation response payload:', res);
       if (res.applied) {
+        setRecButtonStates((prev) => ({ ...prev, [recId]: 'Applied' }));
         setApplyMessage(`Applied environmental pressure: ${res.intervention?.description || 'Director intervention injected.'}`);
         await loadData();
       } else {
+        setRecButtonStates((prev) => ({ ...prev, [recId]: 'Queued' }));
         setApplyMessage(`Director declined: ${res.reason || 'Pacing or validator constraint.'}`);
       }
     } catch (err: any) {
+      setRecButtonStates((prev) => ({ ...prev, [recId]: 'Failed' }));
       setApplyMessage(`Error: ${err?.message || 'Failed to apply recommendation.'}`);
     } finally {
       setApplyingRecId(null);
@@ -264,6 +272,12 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
             onClick={() => setActiveTab('intelligence')}
           >
             NARRATIVE INTELLIGENCE
+          </button>
+          <button
+            className={`subnav-pill ${activeTab === 'graph' ? 'active' : ''}`}
+            onClick={() => setActiveTab('graph')}
+          >
+            TEMPORAL GRAPH
           </button>
         </div>
       </div>
@@ -846,9 +860,9 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
                   </div>
                 </div>
 
-                {recommendations.length > 0 ? (
+                {recommendations.filter((r) => !dismissedRecIds.has(r.id)).length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {recommendations.map((rec) => (
+                    {recommendations.filter((r) => !dismissedRecIds.has(r.id)).map((rec) => (
                       <div key={rec.id} style={{ background: 'rgba(0, 0, 0, 0.4)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '6px', padding: '14px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                           <div>
@@ -859,10 +873,23 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
                               {rec.dramatic_goal}
                             </span>
                           </div>
-                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                            Priority: {(rec.priority * 100).toFixed(0)}%
-                          </span>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            {rec.relevance_score !== undefined && (
+                              <span style={{ fontSize: '11px', color: '#a5b4fc' }}>
+                                Relevance: {(rec.relevance_score * 100).toFixed(0)}%
+                              </span>
+                            )}
+                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                              Priority: {(rec.priority * 100).toFixed(0)}%
+                            </span>
+                          </div>
                         </div>
+
+                        {rec.observed_issue && (
+                          <div style={{ marginBottom: '8px', padding: '6px 10px', background: 'rgba(239, 68, 68, 0.1)', borderLeft: '3px solid #ef4444', borderRadius: '2px', fontSize: '11px', color: '#fca5a5' }}>
+                            <strong>Observed Issue:</strong> {rec.observed_issue}
+                          </div>
+                        )}
 
                         <p style={{ margin: '6px 0', fontSize: '12px', color: '#cbd5e1' }}>
                           <strong>Rationale:</strong> {rec.rationale}
@@ -872,34 +899,115 @@ const StructureAndArcsViewerContent: React.FC<StructureAndArcsViewerProps> = ({ 
                           <span style={{ fontSize: '11px', color: '#64748b' }}>
                             Matched Patterns: {rec.matched_genome_ids.join(', ')}
                           </span>
+                          {rec.related_event_ids && rec.related_event_ids.length > 0 && (
+                            <>
+                              <span style={{ fontSize: '11px', color: '#64748b' }}>•</span>
+                              <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                Supporting Events: {rec.related_event_ids.join(', ')}
+                              </span>
+                            </>
+                          )}
                           <span style={{ fontSize: '11px', color: '#64748b' }}>•</span>
                           <span style={{ fontSize: '11px', color: '#64748b' }}>
                             Effect: {rec.expected_narrative_effect}
                           </span>
                         </div>
 
-                        <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
+                        {rec.counter_conditions && rec.counter_conditions.length > 0 && (
+                          <div style={{ marginTop: '8px', padding: '4px 8px', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '3px', fontSize: '11px', color: '#fbbf24' }}>
+                            ⚠️ {rec.counter_conditions.join('; ')}
+                          </div>
+                        )}
+
+                        <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                           <button
-                            className="btn-cinematic-primary"
-                            style={{ padding: '6px 14px', fontSize: '11px' }}
-                            disabled={applyingRecId === rec.id}
-                            onClick={() => handleApplyRecommendation(rec.id)}
+                            className="btn-cinematic-secondary"
+                            style={{ padding: '6px 12px', fontSize: '11px', background: 'rgba(255, 255, 255, 0.05)', color: '#94a3b8' }}
+                            onClick={() => setDismissedRecIds((prev) => new Set([...prev, rec.id]))}
                           >
-                            {applyingRecId === rec.id ? 'EVALUATING...' : 'APPLY WORLD PRESSURE VIA DIRECTOR'}
+                            Dismiss
                           </button>
+                          {(() => {
+                            const status = recButtonStates[rec.id];
+                            let buttonText = 'APPLY WORLD PRESSURE VIA DIRECTOR';
+                            let isDisabled = applyingRecId === rec.id;
+
+                            if (applyingRecId === rec.id) {
+                              buttonText = 'EVALUATING...';
+                            } else if (status === 'Applied') {
+                              buttonText = 'Applied';
+                              isDisabled = true;
+                            } else if (status === 'Queued') {
+                              buttonText = 'Queued';
+                              isDisabled = true;
+                            } else if (status === 'Failed') {
+                              buttonText = 'Failed - Retry';
+                              isDisabled = false;
+                            }
+
+                            return (
+                              <button
+                                className="btn-cinematic-primary"
+                                style={{
+                                  padding: '6px 14px',
+                                  fontSize: '11px',
+                                  background: status === 'Applied'
+                                    ? 'rgba(16, 185, 129, 0.25)'
+                                    : status === 'Queued'
+                                    ? 'rgba(245, 158, 11, 0.25)'
+                                    : undefined,
+                                  borderColor: status === 'Applied'
+                                    ? 'rgba(16, 185, 129, 0.6)'
+                                    : status === 'Queued'
+                                    ? 'rgba(245, 158, 11, 0.6)'
+                                    : undefined,
+                                  color: status === 'Applied'
+                                    ? '#34d399'
+                                    : status === 'Queued'
+                                    ? '#fbbf24'
+                                    : undefined,
+                                }}
+                                disabled={isDisabled}
+                                onClick={() => handleApplyRecommendation(rec.id)}
+                              >
+                                {buttonText}
+                              </button>
+                            );
+                          })()}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', padding: '12px' }}>
-                    No dramatic pressure interventions recommended at this tick. The simulation is progressing organically.
+                    No active recommendations. Dramatic pacing is currently balanced.
                   </div>
                 )}
               </div>
             </>
           ) : (
             <div className="empty-quiet">NO NARRATIVE ANALYSIS AVAILABLE YET. RUN SIMULATION TICKS.</div>
+          )}
+
+          {project?.metadata?.id && (
+            <div style={{ marginTop: '24px' }}>
+              <GroundedRAGInquiry projectId={project.metadata.id} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TEMPORAL GRAPH TAB */}
+      {activeTab === 'graph' && (
+        <div style={{ marginTop: '16px' }}>
+          {project?.metadata?.id ? (
+            <TemporalCharacterGraph
+              projectId={project.metadata.id}
+              initialTick={project.metadata.current_tick}
+              onSelectCharacter={(charId) => setSelectedCharId(charId)}
+            />
+          ) : (
+            <div className="empty-quiet">NO PROJECT SELECTED TO VISUALIZE TEMPORAL GRAPH.</div>
           )}
         </div>
       )}

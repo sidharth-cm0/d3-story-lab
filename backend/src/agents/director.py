@@ -1,7 +1,7 @@
 """Director Agent for monitoring scene pacing, tension, and applying bounded environmental pressure."""
 from __future__ import annotations
 from typing import Optional, List, Dict, Any, Tuple, Literal
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from ..domain import (
     WorldState,
@@ -49,10 +49,24 @@ class DirectorIntervention(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     intervention_type: DirectorInterventionType
-    description: str
+    description: str = Field(default="")
     target_location_id: Optional[str] = None
     target_entity_id: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    actor_id: str = "DIRECTOR"
+    action_type: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_defaults(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "actor_id" not in data or data["actor_id"] is None:
+                data["actor_id"] = "DIRECTOR"
+            if "action_type" not in data or data["action_type"] is None:
+                int_type = data.get("intervention_type")
+                if int_type is not None:
+                    data["action_type"] = int_type.value if hasattr(int_type, "value") else str(int_type)
+        return data
 
 
 class DirectorAgent:
@@ -98,10 +112,20 @@ class DirectorAgent:
         action_type = ActionType.INTERACT
         target = intervention.target_entity_id
 
-        if intervention.intervention_type == "CHANGE_DOOR_STATE":
+        int_type_str = intervention.intervention_type.value if hasattr(intervention.intervention_type, "value") else str(intervention.intervention_type)
+        if int_type_str == "CHANGE_DOOR_STATE":
             action_type = ActionType.OPEN_OBJECT
-        elif intervention.intervention_type == "MOVE_NPC":
+        elif int_type_str == "MOVE_NPC":
             action_type = ActionType.MOVE
+        elif intervention.action_type:
+            raw_act = str(intervention.action_type).lower()
+            try:
+                action_type = ActionType(raw_act)
+            except ValueError:
+                try:
+                    action_type = ActionType[str(intervention.action_type).upper()]
+                except (KeyError, AttributeError):
+                    action_type = ActionType.INTERACT
 
         return ActionProposal(
             id=f"prop_dir_{world.current_tick}_{len(self.interventions_history)}",
@@ -488,6 +512,8 @@ class DirectorAgent:
         if target_pressure == "ANNOUNCE_DEADLINE":
             return DirectorIntervention(
                 intervention_type=DirectorInterventionType.ANNOUNCE_DEADLINE,
+                actor_id="DIRECTOR",
+                action_type="ANNOUNCE_DEADLINE",
                 description="An automated security broadcast chimes: facility lockdown begins in three minutes.",
                 target_location_id=target_loc,
                 metadata={"incident_type": "ANNOUNCE_DEADLINE", "urgency": "high", **meta},
@@ -495,6 +521,8 @@ class DirectorAgent:
         elif target_pressure == "REVEAL_CLUE":
             return DirectorIntervention(
                 intervention_type=DirectorInterventionType.REVEAL_CLUE,
+                actor_id="DIRECTOR",
+                action_type="REVEAL_CLUE",
                 description="A misfiled document slips from a folder, resting in plain sight.",
                 target_location_id=target_loc,
                 metadata={"incident_type": "REVEAL_CLUE", "urgency": "medium", **meta},
@@ -502,6 +530,8 @@ class DirectorAgent:
         elif target_pressure == "INTRODUCE_OBSTACLE":
             return DirectorIntervention(
                 intervention_type=DirectorInterventionType.INTRODUCE_OBSTACLE,
+                actor_id="DIRECTOR",
+                action_type="INTRODUCE_OBSTACLE",
                 description="The corridor security gate drops into place, obstructing the main exit.",
                 target_location_id=target_loc,
                 metadata={"incident_type": "INTRODUCE_OBSTACLE", "urgency": "high", **meta},
@@ -509,6 +539,8 @@ class DirectorAgent:
         elif target_pressure == "TIME_PRESSURE":
             return DirectorIntervention(
                 intervention_type=DirectorInterventionType.TIME_PRESSURE,
+                actor_id="DIRECTOR",
+                action_type="TIME_PRESSURE",
                 description="Approaching footsteps and murmurs echo from the stairwell.",
                 target_location_id=target_loc,
                 metadata={"incident_type": "TIME_PRESSURE", "urgency": "medium", **meta},
@@ -516,6 +548,8 @@ class DirectorAgent:
         elif target_pressure in (DirectorInterventionType.PHONE_RING.value, "PHONE_RING"):
             return DirectorIntervention(
                 intervention_type=DirectorInterventionType.PHONE_RING,
+                actor_id="DIRECTOR",
+                action_type="PHONE_RING",
                 description="A persistent ring from the telephone pierces the room.",
                 target_location_id=target_loc,
                 metadata={"incident_type": "PHONE_RING", "urgency": "medium", **meta},
@@ -523,12 +557,128 @@ class DirectorAgent:
         elif target_pressure in (DirectorInterventionType.KNOCK_ON_DOOR.value, "KNOCK_ON_DOOR"):
             return DirectorIntervention(
                 intervention_type=DirectorInterventionType.KNOCK_ON_DOOR,
+                actor_id="DIRECTOR",
+                action_type="KNOCK_ON_DOOR",
                 description="A sharp knock echoes on the outside door frame.",
                 target_location_id=target_loc,
                 metadata={"incident_type": "KNOCK_ON_DOOR", "urgency": "medium", **meta},
             )
+        elif hasattr(DirectorInterventionType, str(target_pressure)):
+            int_type = getattr(DirectorInterventionType, str(target_pressure))
+            act_type = int_type.value if hasattr(int_type, "value") else str(int_type)
+            return DirectorIntervention(
+                intervention_type=int_type,
+                actor_id="DIRECTOR",
+                action_type=act_type,
+                description=f"Director intervention: {target_pressure}.",
+                target_location_id=target_loc,
+                metadata={"incident_type": act_type, "urgency": "medium", **meta},
+            )
 
         return None
+
+    def evaluate_recommendation_lifecycle(
+        self,
+        world: WorldState,
+        recommendation: Any,
+        validator: Optional[Any] = None,
+    ) -> Tuple[Any, str, Optional[DirectorIntervention]]:
+        """Evaluate an advisory recommendation through the complete Director lifecycle.
+
+        Explicitly distinguishes:
+        - REJECTED_DUPLICATE: Already applied in history.
+        - BLOCKED_BUDGET: Director intervention budget exhausted.
+        - BLOCKED_COOLDOWN: Cooldown interval not yet elapsed.
+        - BLOCKED_QUIET_PERIOD: Initial scene establishment or decompression interval.
+        - REJECTED_VALIDATION: ActionValidator rejected proposed physical intervention.
+        - ACCEPTED: Viable environmental intervention approved for execution.
+        """
+        from ..domain.narrative_genome import RecommendationLifecycleStatus
+
+        rec_id = getattr(recommendation, "id", "")
+        # 1. Duplicate check: verify this recommendation has not already been executed
+        for past_int in self.interventions_history:
+            if getattr(past_int, "metadata", {}).get("source_recommendation_id") == rec_id:
+                return (
+                    RecommendationLifecycleStatus.REJECTED_DUPLICATE,
+                    f"Recommendation '{rec_id}' has already been executed in this simulation.",
+                    None,
+                )
+        for ev in world.events.values():
+            if getattr(ev, "metadata", {}).get("recommendation_id") == rec_id or getattr(ev, "metadata", {}).get("source_recommendation_id") == rec_id:
+                return (
+                    RecommendationLifecycleStatus.REJECTED_DUPLICATE,
+                    f"Recommendation '{rec_id}' has already been recorded in canonical EventLog.",
+                    None,
+                )
+
+        # 2. Budget check
+        if len(self.interventions_history) >= self.max_interventions_total:
+            return (
+                RecommendationLifecycleStatus.BLOCKED_BUDGET,
+                f"Director budget exhausted ({len(self.interventions_history)}/{self.max_interventions_total} max interventions used).",
+                None,
+            )
+
+        # 3. Cooldown check
+        if (world.current_tick - self.last_intervention_tick) < self.min_ticks_between_interventions:
+            remaining = self.min_ticks_between_interventions - (world.current_tick - self.last_intervention_tick)
+            return (
+                RecommendationLifecycleStatus.BLOCKED_COOLDOWN,
+                f"Director in cooldown for {remaining} tick(s). Minimum interval between interventions is {self.min_ticks_between_interventions} ticks.",
+                None,
+            )
+
+        # 4. Scene establishment check
+        if world.current_tick < 2:
+            return (
+                RecommendationLifecycleStatus.BLOCKED_QUIET_PERIOD,
+                f"Initial scene establishment in progress at tick {world.current_tick}. Interventions are permitted starting at tick 2.",
+                None,
+            )
+
+        # 5. Sovereignty check
+        if getattr(recommendation, "canonical_mutation_allowed", False) is True:
+            return (
+                RecommendationLifecycleStatus.FAILED,
+                "Recommendation violates sovereignty invariant by requesting direct canonical mutation.",
+                None,
+            )
+
+        # 6. Quiet interval
+        target_pressure = getattr(recommendation, "target_pressure", "")
+        if target_pressure in ("QUIET_INTERVAL", "DECOMPRESSION", "TENSION_RELEASE"):
+            return (
+                RecommendationLifecycleStatus.BLOCKED_QUIET_PERIOD,
+                "Decompression / quiet interval recommendation accepted; Director will intentionally refrain from injecting pressure.",
+                None,
+            )
+
+        # 7. Map to intervention
+        intervention = self.consider_narrative_recommendation(world, recommendation)
+        if not intervention:
+            return (
+                RecommendationLifecycleStatus.FAILED,
+                f"Unable to formulate a viable Director intervention for target pressure '{target_pressure}'.",
+                None,
+            )
+
+        # 8. Action validation check
+        if validator is not None:
+            proposal = self.create_action_proposal(intervention, world)
+            is_valid, err, gate = validator.validate_proposal(world, proposal)
+            if not is_valid:
+                return (
+                    RecommendationLifecycleStatus.REJECTED_VALIDATION,
+                    f"Action validation rejected by {gate}: {err}",
+                    intervention,
+                )
+
+        return (
+            RecommendationLifecycleStatus.ACCEPTED,
+            "Recommendation approved and environmental intervention successfully validated.",
+            intervention,
+        )
 
     def consider_narrative_recommendations(
         self,

@@ -64,7 +64,7 @@ class Character(BaseModel):
         default_factory=dict,
         description="Personality traits with values 0-1 (e.g., ambitious, loyal, cautious)",
     )
-    emotional_state: EmotionalState = Field(
+    emotional_state: Optional[EmotionalState] = Field(
         default_factory=EmotionalState, description="Current emotional state"
     )
     goals: List[str] = Field(default_factory=list, description="Goal IDs")

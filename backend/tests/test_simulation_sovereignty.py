@@ -145,6 +145,11 @@ def test_simulation_sovereignty_ast_import_isolation():
         "sketch",
         "storyboard",
         "analytics",
+        "narrative.rag",
+        "narrative.genome",
+        "narrative_genome",
+        "temporal_graph",
+        "scribe",
     ]
 
     sim_files = [

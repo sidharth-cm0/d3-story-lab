@@ -49,7 +49,7 @@ class ObjectAffordanceResolver:
     ) -> List[ObjectAffordance]:
         affordances: List[ObjectAffordance] = []
         name_lower = obj.name.lower()
-        desc_lower = obj.description.lower()
+        desc_lower = (obj.description or "").lower()
         props = obj.properties or {}
         is_held_by_actor = (obj.holder_id == actor.id)
         is_unheld = (obj.holder_id is None)

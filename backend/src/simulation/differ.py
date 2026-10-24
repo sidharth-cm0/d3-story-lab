@@ -153,6 +153,17 @@ class StateSnapshotDiffer:
             character_emotions={k: dict(v) for k, v in snap.character_emotions.items()},
         )
 
+        # Roll back character beliefs acquired after target_tick
+        for (bcid, prop_id) in list(snap.character_beliefs.keys()):
+            char = world.characters.get(bcid)
+            if char and hasattr(char, "knowledge") and prop_id in char.knowledge:
+                k_item = char.knowledge[prop_id]
+                acq_evt_id = getattr(k_item, "acquired_at_event", "")
+                if acq_evt_id:
+                    acq_evt = world.events.get(acq_evt_id)
+                    if acq_evt and getattr(acq_evt, "tick", 0) > target_tick:
+                        del snap.character_beliefs[(bcid, prop_id)]
+
         for evt in events_after:
             if evt.event_type == EventType.OBJECT_PICKED_UP:
                 oid = evt.metadata.get("object_id")

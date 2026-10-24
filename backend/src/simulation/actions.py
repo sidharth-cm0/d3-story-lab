@@ -471,18 +471,28 @@ class ActionExecutor:
         caused_by: List[str] = []
         if proposal.motivation:
             if proposal.motivation.prior_event_id:
-                if proposal.motivation.prior_event_id not in caused_by:
-                    caused_by.append(proposal.motivation.prior_event_id)
+                peid = proposal.motivation.prior_event_id.strip()
+                pevt = world.events.get(peid)
+                # Causal validation: parent event cannot originate from a future tick
+                if peid and (pevt is None or pevt.tick <= world.current_tick):
+                    if peid not in caused_by:
+                        caused_by.append(peid)
             if proposal.motivation.knowledge_item_id:
                 k_item = actor.knows(proposal.motivation.knowledge_item_id)
                 if k_item and k_item.acquired_at_event:
-                    if k_item.acquired_at_event not in caused_by:
-                        caused_by.append(k_item.acquired_at_event)
+                    keid = k_item.acquired_at_event.strip()
+                    kevt = world.events.get(keid)
+                    if keid and (kevt is None or kevt.tick <= world.current_tick):
+                        if keid not in caused_by:
+                            caused_by.append(keid)
             if proposal.motivation.goal_id:
                 goal = world.goals.get(proposal.motivation.goal_id)
                 if goal and getattr(goal, "created_at_event", None):
-                    if goal.created_at_event not in caused_by:
-                        caused_by.append(goal.created_at_event)
+                    geid = str(goal.created_at_event).strip()
+                    gevt = world.events.get(geid)
+                    if geid and (gevt is None or gevt.tick <= world.current_tick):
+                        if geid not in caused_by:
+                            caused_by.append(geid)
 
         motivation_snapshot = proposal.motivation.model_dump() if proposal.motivation else None
 

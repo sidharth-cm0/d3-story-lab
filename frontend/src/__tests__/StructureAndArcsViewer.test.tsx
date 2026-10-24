@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { StructureAndArcsViewer, StructureErrorBoundary } from '../components/StructureAndArcsViewer';
 import { Header } from '../components/Header';
 import { ProjectData } from '../types';
+import * as api from '../api';
 
 const mockProjectData: ProjectData = {
   metadata: {
@@ -374,5 +375,141 @@ describe('StructureAndArcsViewer Component', () => {
     expect(screen.getByText('RETRY DIAGNOSTICS')).toBeDefined();
 
     spy.mockRestore();
+  });
+
+  it('applies recommendation, logs payload to console, and sets button to Applied on success', async () => {
+    const mockAnalysis = {
+      id: 'na_5_1',
+      timestamp: '2026-10-24T12:00:00Z',
+      event_ids: [],
+      dramatic_functions: ['SETUP', 'INCITING_INCIDENT'],
+      active_conflicts: [],
+      causal_chain: [],
+      tension: { before: 0.4, after: 0.6, delta: 0.2 },
+      tension_direction: 'rising',
+      information_state: [],
+      setup_payoff_status: [],
+      scene_purpose: ['EXPOSITION'],
+      pacing_assessment: {
+        pacing_state: 'BALANCED',
+        tension_level: 0.6,
+        tension_direction: 'rising',
+        stalled_relationships_count: 0,
+        idle_events_count: 0,
+        event_density: 0.8,
+      },
+      unresolved_threads: [],
+      opportunities: [],
+      warnings: [],
+      confidence: 0.9,
+    };
+    const mockRecs = [
+      {
+        id: 'rec_001',
+        source_analysis_id: 'na_5_1',
+        recommendation_type: 'opportunity_creation',
+        dramatic_goal: 'Test dramatic goal',
+        target_pressure: 'REVEAL_CLUE',
+        rationale: 'Secret test rationale',
+        expected_narrative_effect: 'Escalation',
+        priority: 0.85,
+        matched_genome_ids: ['NG-001'],
+        relevant_character_ids: ['char_evelyn'],
+        related_event_ids: [],
+        confidence: 0.9,
+        canonical_mutation_allowed: false,
+      },
+    ];
+
+    vi.spyOn(api, 'fetchNarrativeAnalysis').mockResolvedValue(mockAnalysis as any);
+    vi.spyOn(api, 'fetchNarrativeRecommendations').mockResolvedValue(mockRecs as any);
+    const applySpy = vi.spyOn(api, 'applyDirectorNarrativeRecommendation').mockResolvedValue({
+      applied: true,
+      event: { id: 'evt_dir_1', tick: 5, event_type: 'OTHER', description: 'Document slips', actor_ids: [], source: 'DIRECTOR', metadata: {} } as any,
+      intervention: { actor_id: 'DIRECTOR', action_type: 'REVEAL_CLUE', intervention_type: 'REVEAL_CLUE', description: 'Document slips' },
+    });
+    const consoleSpy = vi.spyOn(console, 'log');
+
+    render(<StructureAndArcsViewer project={mockProjectData} />);
+
+    const intelligenceBtn = screen.getByText('NARRATIVE INTELLIGENCE');
+    fireEvent.click(intelligenceBtn);
+
+    const applyBtn = await screen.findByText('APPLY WORLD PRESSURE VIA DIRECTOR');
+    expect(applyBtn).toBeDefined();
+
+    fireEvent.click(applyBtn);
+
+    await waitFor(() => {
+      expect(applySpy).toHaveBeenCalledWith('proj_arc_test', 'rec_001');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[Director] applyNarrativeRecommendation response payload:'),
+        expect.objectContaining({ applied: true })
+      );
+      expect(screen.getByText('Applied')).toBeDefined();
+    });
+  });
+
+  it('sets button state to Queued when recommendation is deferred/declined', async () => {
+    const mockAnalysis = {
+      id: 'na_5_2',
+      timestamp: '2026-10-24T12:00:00Z',
+      event_ids: [],
+      dramatic_functions: ['SETUP'],
+      active_conflicts: [],
+      causal_chain: [],
+      tension: { before: 0.4, after: 0.4, delta: 0.0 },
+      tension_direction: 'sustained',
+      information_state: [],
+      setup_payoff_status: [],
+      scene_purpose: ['EXPOSITION'],
+      pacing_assessment: {
+        pacing_state: 'BALANCED',
+        tension_level: 0.4,
+        tension_direction: 'sustained',
+        stalled_relationships_count: 0,
+        idle_events_count: 0,
+        event_density: 0.5,
+      },
+      unresolved_threads: [],
+      opportunities: [],
+      warnings: [],
+      confidence: 0.8,
+    };
+    const mockRecs = [
+      {
+        id: 'rec_002',
+        source_analysis_id: 'na_5_2',
+        recommendation_type: 'pacing_acceleration',
+        dramatic_goal: 'Pacing test goal',
+        target_pressure: 'ANNOUNCE_DEADLINE',
+        rationale: 'Pacing rationale',
+        expected_narrative_effect: 'Urgency',
+        priority: 0.75,
+        matched_genome_ids: ['NG-002'],
+        relevant_character_ids: [],
+        related_event_ids: [],
+        confidence: 0.8,
+        canonical_mutation_allowed: false,
+      },
+    ];
+
+    vi.spyOn(api, 'fetchNarrativeAnalysis').mockResolvedValue(mockAnalysis as any);
+    vi.spyOn(api, 'fetchNarrativeRecommendations').mockResolvedValue(mockRecs as any);
+    vi.spyOn(api, 'applyDirectorNarrativeRecommendation').mockResolvedValue({
+      applied: false,
+      reason: 'Director declined or deferred recommendation based on budget, cooldown, or quiet interval',
+    });
+
+    render(<StructureAndArcsViewer project={mockProjectData} />);
+
+    fireEvent.click(screen.getByText('NARRATIVE INTELLIGENCE'));
+
+    const applyBtn = await screen.findByText('APPLY WORLD PRESSURE VIA DIRECTOR');
+    fireEvent.click(applyBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Queued')).toBeDefined();
+    });
   });
 });

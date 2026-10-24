@@ -5,7 +5,10 @@ import os
 import csv
 import io
 import base64
+import logging
 from typing import Dict, Any, Optional, List
+
+logger = logging.getLogger(__name__)
 
 def _load_env_file() -> None:
     candidate_paths = [
@@ -32,12 +35,13 @@ def _load_env_file() -> None:
                 pass
 
 _load_env_file()
-from fastapi import FastAPI, HTTPException, Response, Body
+from fastapi import FastAPI, HTTPException, Response, Body, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ConfigDict
 
 from src.domain.world import WorldState
+from src.domain.event import EventLog, Event
 from src.domain.character import Character
 from src.domain.goal import Goal, GoalStatus
 from src.domain.secret import Secret
@@ -113,6 +117,20 @@ from src.domain.narrative_genome import (
     NarrativeAnalysisResult,
     NarrativeRecommendation,
 )
+from src.narrative.rag.models import (
+    NarrativeKnowledgeRecord,
+    RAGSearchFilter,
+    RAGSearchResult,
+    GroundedRAGResponse,
+)
+from src.narrative.rag.service import NarrativeRAGService
+from src.narrative.temporal_graph.models import (
+    TemporalGraphNode,
+    TemporalGraphEdge,
+    TemporalGraphSnapshot,
+    TemporalGraphDiff,
+)
+from src.narrative.temporal_graph.projector import TemporalGraphProjector
 from src.narrative.genome_store import LocalJsonGenomeRepository
 from src.narrative.narrative_analyzer import NarrativeAnalyzer
 from src.narrative.narrative_advisor import NarrativeAdvisor
@@ -267,6 +285,12 @@ class GenerateScreenplayRequest(BaseModel):
     framing_mode: Optional[str] = "chronological"
 
 
+class NarrativeRAGQueryRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    query: str = Field(..., description="Grounded query prompt")
+    filters: Optional[Dict[str, Any]] = Field(default=None, description="Optional metadata filters")
+
+
 class PlanStoryboardRequest(BaseModel):
     density_mode: str = Field(default="standard")  # "quick" | "standard" | "detailed"
     panels_per_page: int = Field(default=4, ge=1, le=8)
@@ -308,6 +332,12 @@ class ExternalRenderRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     provider: str = "huggingface"
     model: Optional[str] = None
+
+
+class ApplyNarrativeRecommendationRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    recommendation_id: Optional[str] = None
+    recommendationId: Optional[str] = None
 
 
 def get_llm_provider() -> LLMProvider:
@@ -2097,12 +2127,19 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
     @app.post("/api/projects/{project_id}/director/apply-narrative-recommendation")
     def apply_director_narrative_recommendation(
         project_id: str,
-        recommendation_id: Optional[str] = Body(None, embed=True),
+        req: Optional[ApplyNarrativeRecommendationRequest] = None,
+        recommendation_id: Optional[str] = Query(None),
     ):
         """Allow Director Agent to consider a narrative recommendation and inject bounded environmental pressure."""
         proj = store.load_project(project_id)
         if not proj:
             raise HTTPException(status_code=404, detail="Project not found")
+
+        target_rec_id = None
+        if req:
+            target_rec_id = req.recommendation_id or req.recommendationId
+        if not target_rec_id and recommendation_id:
+            target_rec_id = recommendation_id
 
         analyzer = NarrativeAnalyzer()
         advisor = NarrativeAdvisor()
@@ -2115,37 +2152,195 @@ def create_app(store_dir: Optional[str] = None) -> FastAPI:
         )
         recs = advisor.advise(analysis, blueprint=proj.story_blueprint)
         target_rec = None
-        if recommendation_id:
-            target_rec = next((r for r in recs if r.id == recommendation_id), None)
+        if target_rec_id:
+            target_rec = next((r for r in recs if r.id == target_rec_id), None)
+            if not target_rec and proj.narrative_recommendations:
+                target_rec = next((r for r in proj.narrative_recommendations if r.id == target_rec_id), None)
             if not target_rec:
-                raise HTTPException(status_code=404, detail=f"Recommendation '{recommendation_id}' not found")
+                target_rec = next(
+                    (r for r in recs if target_rec_id.endswith(r.target_pressure.lower()) or r.id.endswith(target_rec_id.split("_")[-1])),
+                    None,
+                )
+            if not target_rec:
+                raise HTTPException(status_code=404, detail=f"Recommendation '{target_rec_id}' not found")
         elif recs:
             target_rec = recs[0]
+        elif proj.narrative_recommendations:
+            target_rec = proj.narrative_recommendations[0]
 
         if not target_rec:
-            return {"applied": False, "reason": "No active recommendations available"}
-
-        director = DirectorAgent(blueprint=proj.story_blueprint)
-        intervention = director.consider_narrative_recommendation(proj.world, target_rec)
-        if not intervention:
             return {
                 "applied": False,
-                "reason": "Director declined or deferred recommendation based on budget, cooldown, or quiet interval",
+                "status": "FAILED",
+                "reason": "No active recommendations available",
+                "canonical_state_changed": False,
             }
 
+        from src.domain.narrative_genome import RecommendationLifecycleStatus
         from src.simulation.recorder import EventRecorder
         from src.simulation.actions import ActionValidator
-        recorder = EventRecorder(proj.world)
+
+        # Re-use cached director if orchestrator is warm to respect historical budgets & cooldowns
+        if project_id in orchestrator_cache and hasattr(orchestrator_cache[project_id], "director"):
+            director = orchestrator_cache[project_id].director
+        else:
+            director = DirectorAgent(blueprint=proj.story_blueprint)
+
         validator = ActionValidator()
+        status, reason, intervention = director.evaluate_recommendation_lifecycle(
+            proj.world, target_rec, validator=validator
+        )
+
+        logger.info(
+            f"[Director Lifecycle] Project '{project_id}' Rec '{target_rec.id}' -> Status: {status.value} (Tick {proj.world.current_tick}): {reason}"
+        )
+
+        if status != RecommendationLifecycleStatus.ACCEPTED or intervention is None:
+            return {
+                "applied": False,
+                "status": status.value,
+                "recommendation_id": target_rec.id,
+                "reason": reason,
+                "canonical_state_changed": False,
+            }
+
+        recorder = EventRecorder(proj.world)
         event = director.inject_intervention(proj.world, recorder, intervention, validator=validator)
         if event:
+            # Tag event with source recommendation ID for duplicate protection and traceability
+            event.metadata["recommendation_id"] = target_rec.id
+
+            # Append to canonical EventLog
+            current_events = list(proj.event_log.events) if (proj.event_log and proj.event_log.events) else list(proj.world.events.values())
+            if not any(e.id == event.id for e in current_events):
+                current_events.append(event)
+            current_events.sort(key=lambda e: (e.tick, e.id))
+            proj.event_log = EventLog(events=current_events)
+            proj.metadata = proj.metadata.model_copy(update={"total_events": len(proj.world.events)})
+
+            # Sync with cached orchestrator if active
+            if project_id in orchestrator_cache:
+                orchestrator_cache[project_id].world = proj.world
+                if hasattr(orchestrator_cache[project_id], "director"):
+                    orchestrator_cache[project_id].director = director
+
             store.save_project(proj)
             return {
                 "applied": True,
+                "status": RecommendationLifecycleStatus.EXECUTED.value,
+                "recommendation_id": target_rec.id,
+                "intervention_id": intervention.id if hasattr(intervention, "id") else None,
+                "event_id": event.id,
+                "reason": "Intervention successfully validated, executed into EventLog, and persisted.",
+                "canonical_state_changed": True,
                 "event": event.model_dump(mode="json"),
                 "intervention": intervention.model_dump(mode="json"),
             }
-        return {"applied": False, "reason": "Intervention failed action validator gate check"}
+
+        return {
+            "applied": False,
+            "status": RecommendationLifecycleStatus.REJECTED_VALIDATION.value,
+            "recommendation_id": target_rec.id,
+            "reason": "Intervention failed action validator gate check during injection",
+            "canonical_state_changed": False,
+        }
+
+    _rag_service_instance: Optional[NarrativeRAGService] = None
+
+    def _get_app_rag_service() -> NarrativeRAGService:
+        nonlocal _rag_service_instance
+        if _rag_service_instance is None:
+            _rag_service_instance = NarrativeRAGService.get_instance()
+        return _rag_service_instance
+
+    @app.post("/api/projects/{project_id}/narrative-rag/query")
+    def query_project_narrative_rag(project_id: str, req: NarrativeRAGQueryRequest):
+        """Query project narrative intelligence with strict evidence grounding and citations."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        if not proj.conflict_graph:
+            from src.narrative.conflict_engine import ConflictEngine
+            proj.conflict_graph = ConflictEngine.derive_conflict_graph(proj.world, project_id)
+
+        service = _get_app_rag_service()
+        filter_obj = None
+        if req.filters:
+            filter_obj = RAGSearchFilter(**req.filters)
+
+        response = service.query_project(proj, req.query, filter=filter_obj)
+        return response.model_dump(mode="json")
+
+    @app.post("/api/narrative-rag/search")
+    def search_narrative_knowledge(filter_req: RAGSearchFilter):
+        """Search curated narrative knowledge patterns via BM25 lexical or embedding retrieval."""
+        service = _get_app_rag_service()
+        results = service.search(filter_req)
+        return [r.model_dump(mode="json") for r in results]
+
+    @app.get("/api/narrative-rag/patterns")
+    def list_rag_patterns():
+        """List all verified Narrative Genome knowledge records in the RAG repository."""
+        service = _get_app_rag_service()
+        patterns = service.list_patterns()
+        return [p.model_dump(mode="json") for p in patterns]
+
+    @app.get("/api/narrative-rag/patterns/{pattern_id}")
+    def get_rag_pattern(pattern_id: str):
+        """Retrieve a specific Narrative Genome knowledge record by ID."""
+        service = _get_app_rag_service()
+        pattern = service.get_pattern(pattern_id)
+        if not pattern:
+            raise HTTPException(status_code=404, detail=f"Knowledge record '{pattern_id}' not found")
+        return pattern.model_dump(mode="json")
+
+    @app.get("/api/narrative-rag/benchmark")
+    def benchmark_rag_retrieval(query: str = Query("confrontation revelation betrayal")):
+        """Compare lexical BM25 vs local feature embeddings on a given test query."""
+        service = _get_app_rag_service()
+        return service.benchmark_lexical_vs_semantic(query)
+
+    @app.get("/api/projects/{project_id}/graph")
+    def get_project_temporal_graph(project_id: str, tick: Optional[int] = Query(None)):
+        """Reconstruct the multidimensional character-relationship graph at a discrete simulation tick."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        snapshot = TemporalGraphProjector.project_at_tick(
+            project_id=project_id,
+            world=proj.world,
+            tick=tick,
+            conflict_graph=proj.conflict_graph,
+        )
+        return snapshot.model_dump(mode="json")
+
+    @app.get("/api/projects/{project_id}/graph/diff")
+    def get_project_temporal_graph_diff(
+        project_id: str,
+        from_tick: int = Query(..., ge=0),
+        to_tick: int = Query(..., ge=0),
+    ):
+        """Compute state and multidimensional relationship differences between two discrete ticks."""
+        proj = store.load_project(project_id)
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        snap_a = TemporalGraphProjector.project_at_tick(
+            project_id=project_id,
+            world=proj.world,
+            tick=from_tick,
+            conflict_graph=proj.conflict_graph,
+        )
+        snap_b = TemporalGraphProjector.project_at_tick(
+            project_id=project_id,
+            world=proj.world,
+            tick=to_tick,
+            conflict_graph=proj.conflict_graph,
+        )
+        diff = TemporalGraphProjector.compute_diff(snap_a, snap_b, world=proj.world)
+        return diff.model_dump(mode="json")
 
     @app.get("/api/projects/{project_id}/causal-continuity")
     def get_causal_continuity(project_id: str):

@@ -15,6 +15,7 @@ Verifies:
 
 import copy
 import json
+import tempfile
 import pytest
 from pathlib import Path
 
@@ -493,3 +494,79 @@ def test_narrative_genome_api_endpoints():
         apply_data = apply_res.json()
         assert "applied" in apply_data
 
+        # 6. Apply with explicit recommendation_id in JSON body
+        if recs:
+            rec_id = recs[0]["id"]
+            specific_res = client.post(
+                f"/api/projects/{pid}/director/apply-narrative-recommendation",
+                json={"recommendation_id": rec_id},
+            )
+            assert specific_res.status_code == 200
+            data = specific_res.json()
+            assert "applied" in data
+
+            # Verify 404 for unknown recommendation_id
+            missing_res = client.post(
+                f"/api/projects/{pid}/director/apply-narrative-recommendation",
+                json={"recommendation_id": "nonexistent_rec_999"},
+            )
+            assert missing_res.status_code == 404
+
+
+def test_director_apply_recommendation_persistence_and_validation():
+    """Verify ActionValidator gating, EventLog canonical persistence, and DirectorIntervention fields."""
+    from fastapi.testclient import TestClient
+    from src.api.app import create_app
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        app = create_app(store_dir=tmpdir)
+        client = TestClient(app)
+
+        create_res = client.post(
+            "/api/projects",
+            json={
+                "seed_prompt": "An operative searches an abandoned office while security approaches.",
+                "title": "Search Protocol",
+            },
+        )
+        assert create_res.status_code == 200
+        pid = create_res.json()["id"]
+
+        # Step twice so current_tick >= 2
+        client.post(f"/api/projects/{pid}/step", json={"ticks": 2})
+
+        # Fetch recommendations
+        recs_res = client.get(f"/api/projects/{pid}/narrative-genome/recommendations")
+        assert recs_res.status_code == 200
+        recs = recs_res.json()
+        assert len(recs) > 0
+
+        target_rec = recs[0]
+        apply_res = client.post(
+            f"/api/projects/{pid}/director/apply-narrative-recommendation",
+            json={"recommendation_id": target_rec["id"]},
+        )
+        assert apply_res.status_code == 200
+        res_data = apply_res.json()
+        assert res_data["applied"] is True
+        assert "event" in res_data
+        assert "intervention" in res_data
+
+        # Verify intervention structure has actor_id and action_type
+        intervention = res_data["intervention"]
+        assert intervention["actor_id"] == "DIRECTOR"
+        assert intervention["action_type"] is not None
+        assert intervention["intervention_type"] is not None
+
+        # Verify event was recorded
+        evt = res_data["event"]
+        assert evt["source"] == "DIRECTOR"
+
+        # Verify persistence to disk and canonical EventLog
+        from src.storage.project_store import ProjectStore
+        store = ProjectStore(base_dir=tmpdir)
+        reloaded = store.load_project(pid)
+        assert reloaded is not None
+        assert reloaded.event_log is not None
+        assert any(e.id == evt["id"] for e in reloaded.event_log.events)
+        assert evt["id"] in reloaded.world.events

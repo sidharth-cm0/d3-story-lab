@@ -1009,5 +1009,191 @@ export interface NarrativeRecommendation {
   priority: number;
   confidence: number;
   canonical_mutation_allowed: false;
+  observed_issue?: string;
+  relevance_score?: number;
+  counter_conditions?: string[];
+  limitations?: string[];
+  status?: string;
+}
+
+// -------------------------------------------------------------
+// TEMPORAL CHARACTER GRAPH & GROUNDED RAG DOMAIN TYPES
+// -------------------------------------------------------------
+
+export interface TemporalGraphNode {
+  id: string;
+  name: string;
+  role: string;
+  location_id?: string | null;
+  location_name?: string | null;
+  goals: string[];
+  beliefs: Record<string, boolean>;
+  emotional_state: Record<string, number>;
+  active_conflicts: Array<{
+    peer_id: string;
+    aggregate_intensity: number;
+    dimensions: Record<string, number>;
+  }>;
+  secrets_count: number;
+  inventory_count: number;
+}
+
+export interface TemporalGraphEdge {
+  id: string;
+  source_id: string;
+  target_id: string;
+  source_name: string;
+  target_name: string;
+  relationship_type: 'allies' | 'hostile' | 'guarded' | 'conflicted' | 'neutral' | 'complex' | string;
+  dimensions: {
+    affinity?: number;
+    trust?: number;
+    affection?: number;
+    fear?: number;
+    dependency?: number;
+    respect?: number;
+    resentment?: number;
+    suspicion?: number;
+    power_imbalance?: number;
+    [key: string]: number | undefined;
+  };
+  aggregate_intensity: number;
+  directionality: string;
+  evidence_event_ids: string[];
+  recent_event_id?: string | null;
+  first_observed_tick: number;
+  last_changed_tick: number;
+}
+
+export interface TemporalGraphSnapshot {
+  project_id: string;
+  tick: number;
+  max_tick: number;
+  nodes: TemporalGraphNode[];
+  edges: TemporalGraphEdge[];
+  event_count: number;
+  summary: string;
+  generated_at: string;
+}
+
+export interface TemporalGraphDiff {
+  project_id: string;
+  from_tick: number;
+  to_tick: number;
+  node_changes: Array<{
+    character_id: string;
+    change_type: string;
+    description: string;
+    from_location?: string;
+    to_location?: string;
+    deltas?: Record<string, number>;
+    details?: string[];
+  }>;
+  edge_changes: Array<{
+    edge_id: string;
+    source_id: string;
+    target_id: string;
+    source_name?: string;
+    target_name?: string;
+    change_type: string;
+    previous_type?: string;
+    new_type?: string;
+    deltas?: Record<string, number>;
+    new_evidence_events?: string[];
+    description: string;
+  }>;
+  causal_event_ids: string[];
+  summary: string;
+}
+
+export type EvidenceCategory =
+  | 'canonical_fact'
+  | 'character_belief'
+  | 'narrative_interpretation'
+  | 'retrieved_principle'
+  | 'advisory_hypothesis';
+
+export type ClaimVerificationStatus =
+  | 'verified_true'
+  | 'subjective_belief'
+  | 'sound_inference'
+  | 'knowledge_backed'
+  | 'advisory_proposal'
+  | 'unverified';
+
+export type RAGAnswerStatus =
+  | 'success'
+  | 'insufficient_evidence'
+  | 'contradictory_evidence'
+  | 'no_relevant_patterns';
+
+export interface EvidenceReference {
+  id: string;
+  category: EvidenceCategory;
+  summary: string;
+  source_type: string;
+  source_id: string;
+  tick?: number | null;
+  verified: boolean;
+}
+
+export interface GroundedClaim {
+  claim_id: string;
+  claim_text: string;
+  category: EvidenceCategory;
+  verification_status: ClaimVerificationStatus;
+  cited_evidence_ids: string[];
+  contradiction_ids?: string[];
+  caveats?: string[];
+}
+
+export interface GroundedRAGResponse {
+  query: string;
+  status: RAGAnswerStatus;
+  answer: string;
+  claims: GroundedClaim[];
+  evidence: EvidenceReference[];
+  retrieved_pattern_ids?: string[];
+  warnings?: string[];
+  project_id?: string;
+  generated_at: string;
+}
+
+export interface NarrativeKnowledgeRecord {
+  id: string;
+  title: string;
+  content: string;
+  pattern_type: string;
+  dramatic_function: string;
+  conflict_types: string[];
+  tension_direction: string;
+  setup_payoff_role?: string;
+  genre_tags: string[];
+  applicability_conditions: string[];
+  counter_conditions: string[];
+  limitations: string[];
+  source_type: string;
+  source_reference: string;
+  license: string;
+  provenance: string;
+  schema_version: string;
+}
+
+export interface RAGSearchResult {
+  record: NarrativeKnowledgeRecord;
+  score: number;
+  match_reasons: string[];
+  retrieval_mode: string;
+}
+
+export interface RAGSearchFilter {
+  query?: string;
+  pattern_type?: string;
+  dramatic_function?: string;
+  conflict_type?: string;
+  genre?: string;
+  mode?: 'hybrid' | 'lexical' | 'semantic';
+  min_score?: number;
+  top_k?: number;
 }
 

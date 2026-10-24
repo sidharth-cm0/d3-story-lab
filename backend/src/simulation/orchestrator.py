@@ -516,10 +516,11 @@ class SimulationOrchestrator:
                 tags=["inspect", str(target_id)],
             )
             if target_obj:
+                desc_snip = (target_obj.description or target_obj.name)[:40]
                 BeliefUpdater.form_or_reinforce_belief(
                     self.world,
                     character_id=actor.id,
-                    statement=f"{target_obj.name} is {target_obj.description[:40]}",
+                    statement=f"{target_obj.name} is {desc_snip}",
                     confidence_delta=0.3,
                 )
             EmotionUpdater.adjust_emotion(actor, delta_curiosity=-0.1)

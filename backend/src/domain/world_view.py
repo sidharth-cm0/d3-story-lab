@@ -28,7 +28,7 @@ class ObservableObject(BaseModel):
 
     id: str
     name: str
-    description: str
+    description: str = Field(default="")
     location_id: Optional[str] = None
     holder_id: Optional[str] = None
     portable: bool = True
@@ -121,7 +121,7 @@ def project_view(world: WorldState, character: Character) -> CharacterWorldView:
                 perceivable_objects[obj.id] = ObservableObject(
                     id=obj.id,
                     name=obj.name,
-                    description=obj.description,
+                    description=obj.description or "",
                     location_id=obj.location_id,
                     holder_id=obj.holder_id,
                     portable=obj.portable,

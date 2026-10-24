@@ -209,7 +209,13 @@ class ProjectStore:
 
         ev_log = project.event_log
         if ev_log is None and project.world and project.world.events:
-            ev_log = EventLog(events=list(project.world.events.values()))
+            ev_log = EventLog(events=sorted(project.world.events.values(), key=lambda e: (e.tick, e.id)))
+        elif ev_log is not None and project.world and project.world.events:
+            ev_map = {e.id: e for e in ev_log.events}
+            for eid, evt in project.world.events.items():
+                if eid not in ev_map:
+                    ev_map[eid] = evt
+            ev_log = EventLog(events=sorted(ev_map.values(), key=lambda e: (e.tick, e.id)))
 
         project_to_save = ProjectData(
             schema_version=2,
@@ -235,6 +241,8 @@ class ProjectStore:
             character_inputs=project.character_inputs,
             character_drafts=project.character_drafts,
             conflict_graph=project.conflict_graph,
+            narrative_analysis=project.narrative_analysis,
+            narrative_recommendations=project.narrative_recommendations,
         )
 
         data_dict = project_to_save.model_dump(mode="json")
@@ -290,7 +298,13 @@ class ProjectStore:
 
         ev_log = project.event_log
         if ev_log is None and project.world and project.world.events:
-            ev_log = EventLog(events=list(project.world.events.values()))
+            ev_log = EventLog(events=sorted(project.world.events.values(), key=lambda e: (e.tick, e.id)))
+        elif ev_log is not None and project.world and project.world.events:
+            ev_map = {e.id: e for e in ev_log.events}
+            for eid, evt in project.world.events.items():
+                if eid not in ev_map:
+                    ev_map[eid] = evt
+            ev_log = EventLog(events=sorted(ev_map.values(), key=lambda e: (e.tick, e.id)))
 
         project_to_save = ProjectData(
             schema_version=2,
@@ -316,6 +330,8 @@ class ProjectStore:
             character_inputs=project.character_inputs,
             character_drafts=project.character_drafts,
             conflict_graph=project.conflict_graph,
+            narrative_analysis=project.narrative_analysis,
+            narrative_recommendations=project.narrative_recommendations,
         )
 
         data_dict = project_to_save.model_dump(mode="json")

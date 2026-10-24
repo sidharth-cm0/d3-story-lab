@@ -28,6 +28,12 @@ import {
   NarrativeGenomeRecord,
   NarrativeAnalysisResult,
   NarrativeRecommendation,
+  TemporalGraphSnapshot,
+  TemporalGraphDiff,
+  GroundedRAGResponse,
+  NarrativeKnowledgeRecord,
+  RAGSearchResult,
+  RAGSearchFilter,
 } from './types';
 
 const BASE_URL = '/api';
@@ -823,5 +829,84 @@ export async function applyDirectorNarrativeRecommendation(
     body: JSON.stringify({ recommendation_id: recommendationId }),
   });
   if (!res.ok) throw new Error('Failed to apply director narrative recommendation');
+  return res.json();
+}
+
+// -------------------------------------------------------------
+// TEMPORAL CHARACTER GRAPH API
+// -------------------------------------------------------------
+
+export async function fetchTemporalGraph(
+  projectId: string,
+  tick?: number,
+  signal?: AbortSignal
+): Promise<TemporalGraphSnapshot> {
+  const url = tick !== undefined
+    ? `${BASE_URL}/projects/${projectId}/graph?tick=${tick}`
+    : `${BASE_URL}/projects/${projectId}/graph`;
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error('Failed to fetch temporal character graph');
+  return res.json();
+}
+
+export async function fetchTemporalGraphDiff(
+  projectId: string,
+  fromTick: number,
+  toTick: number,
+  signal?: AbortSignal
+): Promise<TemporalGraphDiff> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/graph/diff?from_tick=${fromTick}&to_tick=${toTick}`, { signal });
+  if (!res.ok) throw new Error('Failed to fetch temporal graph diff');
+  return res.json();
+}
+
+// -------------------------------------------------------------
+// GROUNDED NARRATIVE RAG API
+// -------------------------------------------------------------
+
+export async function queryNarrativeRAG(
+  projectId: string,
+  query: string,
+  filters?: RAGSearchFilter
+): Promise<GroundedRAGResponse> {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/narrative-rag/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, filters }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to run grounded narrative RAG query' }));
+    throw new Error(err.detail || 'Failed to run grounded narrative RAG query');
+  }
+  return res.json();
+}
+
+export async function searchNarrativeKnowledge(
+  filters: RAGSearchFilter
+): Promise<RAGSearchResult[]> {
+  const res = await fetch(`${BASE_URL}/narrative-rag/search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(filters),
+  });
+  if (!res.ok) throw new Error('Failed to search narrative knowledge');
+  return res.json();
+}
+
+export async function fetchNarrativeKnowledgePatterns(): Promise<NarrativeKnowledgeRecord[]> {
+  const res = await fetch(`${BASE_URL}/narrative-rag/patterns`);
+  if (!res.ok) throw new Error('Failed to fetch narrative knowledge patterns');
+  return res.json();
+}
+
+export async function fetchNarrativeKnowledgePattern(patternId: string): Promise<NarrativeKnowledgeRecord> {
+  const res = await fetch(`${BASE_URL}/narrative-rag/patterns/${patternId}`);
+  if (!res.ok) throw new Error(`Failed to fetch pattern ${patternId}`);
+  return res.json();
+}
+
+export async function fetchNarrativeRAGBenchmark(query: string): Promise<any> {
+  const res = await fetch(`${BASE_URL}/narrative-rag/benchmark?query=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error('Failed to fetch RAG benchmark');
   return res.json();
 }

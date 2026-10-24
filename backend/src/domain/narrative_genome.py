@@ -106,6 +106,20 @@ class SetupPayoffState(str, Enum):
     ABANDONED = "abandoned"
 
 
+class RecommendationLifecycleStatus(str, Enum):
+    """Explicit lifecycle state of a Director narrative recommendation."""
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    BLOCKED_COOLDOWN = "BLOCKED_COOLDOWN"
+    BLOCKED_BUDGET = "BLOCKED_BUDGET"
+    BLOCKED_QUIET_PERIOD = "BLOCKED_QUIET_PERIOD"
+    REJECTED_VALIDATION = "REJECTED_VALIDATION"
+    REJECTED_DUPLICATE = "REJECTED_DUPLICATE"
+    EXECUTED = "EXECUTED"
+    PERSISTENCE_FAILED = "PERSISTENCE_FAILED"
+    FAILED = "FAILED"
+
+
 class GenomeSourceType(str, Enum):
     """Provenance category for narrative knowledge and patterns."""
     SYSTEM_AUTHORED = "system-authored"
@@ -207,8 +221,13 @@ class NarrativeRecommendation(BaseModel):
     matched_genome_ids: List[str] = Field(default_factory=list)
 
     expected_narrative_effect: str = Field(..., description="Projected dramatic change if characters react")
+    observed_issue: str = Field(default="", description="Explainable diagnostic finding motivating recommendation")
     priority: float = Field(default=0.5, ge=0.0, le=1.0)
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    relevance_score: float = Field(default=0.8, ge=0.0, le=1.0, description="Heuristic relevance to dramatic pacing need")
+    counter_conditions: List[str] = Field(default_factory=list, description="Conditions under which this recommendation should NOT be applied")
+    limitations: List[str] = Field(default_factory=list, description="Operational constraints or known limitations")
+    status: RecommendationLifecycleStatus = Field(default=RecommendationLifecycleStatus.PENDING, description="Current lifecycle status")
 
     # Invariant: Must always be False
     canonical_mutation_allowed: Literal[False] = False

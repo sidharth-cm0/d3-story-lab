@@ -271,19 +271,46 @@ class NarrativeAnalyzer:
                     "description": f"Concealed secret '{sec.statement}' remains hidden from {len(non_knowers)} character(s).",
                 })
 
-        # 2. Event-based discoveries and revelations
+        # 2. Event-based discoveries, revelations, and belief flips (deduplicated by event ID)
+        seen_event_ids: Set[str] = set()
         for ev in events:
+            if ev.id in seen_event_ids:
+                continue
+            seen_event_ids.add(ev.id)
+
             desc = (ev.description or "").lower()
-            if any(w in desc for w in ["discover", "found", "uncover"]):
+            meta = ev.metadata or {}
+
+            if any(w in desc for w in ["discover", "found", "uncover"]) or meta.get("discovery"):
                 info_items.append({
                     "pattern": InformationPattern.DISCOVERY.value,
                     "event_id": ev.id,
                     "actor_ids": ev.actor_ids,
                     "description": ev.description,
                 })
-            elif any(w in desc for w in ["reveal", "confess"]):
+            elif (
+                any(w in desc for w in ["reveal", "confess", "secret revealed"])
+                or meta.get("secret_revealed")
+                or meta.get("speech_act") == "reveal"
+            ):
                 info_items.append({
                     "pattern": InformationPattern.REVELATION.value,
+                    "event_id": ev.id,
+                    "actor_ids": ev.actor_ids,
+                    "description": ev.description,
+                })
+            elif (
+                ev.event_type == EventType.BELIEF_FORMED
+                or "belief" in desc
+                or meta.get("belief_flipped")
+            ):
+                is_contradiction = (
+                    meta.get("belief_flipped")
+                    or any(w in desc for w in ["contradict", "inverted", "false", "doubt", "shattered"])
+                )
+                pattern = InformationPattern.CONTRADICTION.value if is_contradiction else InformationPattern.CONFIRMATION.value
+                info_items.append({
+                    "pattern": pattern,
                     "event_id": ev.id,
                     "actor_ids": ev.actor_ids,
                     "description": ev.description,
@@ -421,6 +448,17 @@ class NarrativeAnalyzer:
                     "holder_id": sec.character_id,
                     "description": f"Unrevealed secret '{sec.statement}' held by {sec.character_id}.",
                 })
+
+        # 3. Stalled interpersonal relationships
+        for stalled in signals.stalled_relationships:
+            c_a = getattr(stalled, "source_character_id", getattr(stalled, "character_a_id", ""))
+            c_b = getattr(stalled, "target_character_id", getattr(stalled, "character_b_id", ""))
+            threads.append({
+                "thread_type": "stalled_relationship",
+                "character_a_id": c_a,
+                "character_b_id": c_b,
+                "description": f"Stalled relationship interaction deadlock between {c_a} and {c_b}.",
+            })
 
         return threads
 
