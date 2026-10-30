@@ -1,0 +1,8 @@
+{
+  "name": "D3 Story Lab",
+  "description": "Emergent narrative simulation platform with autonomous character sandboxes, causal arc tracking, and Fountain screenplay export.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
